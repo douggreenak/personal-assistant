@@ -74,7 +74,7 @@ async function run(ctx: Ctx, job: AutoJob, input: string, apiKey: string | undef
     const mcpKey = [apiKey?.trim(), ...mcpScan.keys].find((k) => !!k);
     note(job, 'This looks like an MCP server — connecting…');
     try { await connectMcp(ctx, job, mcp, mcpKey, fetchImpl); return; }
-    catch (e) { if (!(e instanceof McpError) || e.auth || mcp.explicit || !bare) throw e; note(job, 'It does not speak MCP — reading it as API docs instead.'); }
+    catch (e) { if (mcp.explicit || !(e instanceof McpError)) throw e; note(job, 'It does not speak MCP — reading it as API docs instead.'); }
   }
   const docs = await loadDocs(scan.clean, fetchImpl);
   note(job, 'Designing a connector…');

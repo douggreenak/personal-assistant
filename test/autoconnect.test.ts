@@ -258,3 +258,14 @@ test('mcp: tool calls convert types, join text, report tool errors, and stay beh
   setAutoAllowed(ctx, 'mcp-notes', 'create_task', true);
   assert.match(await testConnector(ctx, 'mcp-notes', f), /3 tool/);
 });
+
+test('mcp detection: API docs that mention MCP or contain /sse stay API docs; clear MCP pastes are recognized', async () => {
+  const { parseMcpInput } = await import('../src/mcp.ts');
+  const docs = 'Acme API\nBase URL: https://api.acme.com/v1\nWe also offer an MCP server and server-sent events at https://api.acme.com/v1/sse.\n' + 'GET /widgets returns widgets. '.repeat(30);
+  assert.equal(parseMcpInput(docs), null);
+  assert.equal(parseMcpInput('Docs: https://api.acme.com/docs\nBase https://api.acme.com/v1'), null);
+  assert.equal(parseMcpInput('https://api.acme.com/docs')?.explicit, false);       // probed, may fall back to docs
+  assert.equal(parseMcpInput('https://x.com/mcp')?.explicit, true);
+  assert.equal(parseMcpInput('claude mcp add --transport http acme https://x.com/api')?.explicit, true);
+  assert.equal(parseMcpInput('{"mcpServers":{"a":{"url":"https://x.com/api"}}}')?.explicit, true);
+});

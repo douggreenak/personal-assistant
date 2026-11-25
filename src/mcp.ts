@@ -123,17 +123,22 @@ export function parseMcpInput(clean: string): McpCandidate | null {
   const text = clean.trim();
   const urls = [...text.matchAll(/https:\/\/[^\s"'`<>)\]},]+(?:<API_KEY_\d+>)?[^\s"'`)\]},]*/g)].map((m) => m[0]);
   if (!urls.length) return null;
-  const mentions = /\bmcp\b|mcpServers|--transport|"type"\s*:\s*"(?:http|sse|streamable)/i.test(text);
+  // Only a clear signal makes this MCP: an MCP config snippet / `claude mcp add`, or a SHORT paste (a URL and a few words).
+  // Long pasted API docs that merely mention "MCP" or contain a /sse URL stay API docs.
+  const structured = /mcpServers|claude\s+mcp\s+add|--transport\s+(?:http|sse|streamable)|"type"\s*:\s*"(?:http|sse|streamable)/i.test(text);
+  const short = text.length < 400 && new Set(urls).size === 1;
   const bare = /^https:\/\/\S+$/.test(text);
-  const pathy = urls.find((u) => /\/(mcp|sse)(\/|\?|$)/i.test(u));
-  const url = pathy ?? (bare || mentions ? urls[0] : undefined);
+  const pathy = urls.find((u) => /\/mcp(\/|\?|$)/i.test(u));
+  const wordMcp = /\bmcp\b/i.test(text);
+  const url = structured ? (pathy ?? urls[0]) : short && (bare || wordMcp || /\/sse(\/|\?|$)/i.test(urls[0])) ? urls[0] : undefined;
   if (!url) return null;
+  const explicit = structured || (short && (wordMcp || !!pathy));
   let authHeader: string | undefined; let hasKey = KEYREF.test(text);
   const hdr = /["']?([A-Za-z][A-Za-z0-9-]{1,40})["']?\s*[:=]\s*["']?(?:Bearer\s+|Token\s+)?<API_KEY_\d+>/.exec(text);
   if (hdr && !/^(key|token|api_?key|secret)$/i.test(hdr[1])) authHeader = hdr[1];
   let queryParam: string | undefined;
   try { const u = new URL(url); for (const [k, v] of u.searchParams) if (KEYREF.test(decodeURIComponent(v))) { queryParam = k; hasKey = true; } } catch { return null; }
-  return { url, authHeader, queryParam, hasKey, explicit: mentions || !!pathy };
+  return { url, authHeader, queryParam, hasKey, explicit };
 }
 
 export const mcpIdFor = (url: string): string => {
