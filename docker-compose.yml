@@ -17,7 +17,7 @@ services:
     ports: ["${BIND_ADDR:-127.0.0.1}:8090:8090"]
     depends_on: [ticketing, whisper]
   ticketing:
-    build: ../Ticketing
+    build: ../ticketing
     restart: unless-stopped
     environment:
       TICKETS_TOKEN: ${TICKETS_TOKEN:?set TICKETS_TOKEN in .env}
