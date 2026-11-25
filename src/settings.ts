@@ -10,20 +10,20 @@ export interface SettingDef {
   help?: string; placeholder?: string; default?: string;
 }
 export const SETTINGS: SettingDef[] = [
-  { key: 'TZ_NAME', label: 'Time zone', group: 'General', type: 'text', help: 'IANA name, e.g. America/Anchorage' },
+  { key: 'TZ_NAME', label: 'Time zone', group: 'General', type: 'text', help: 'IANA time zone name.' },
   { key: 'QUIET_HOURS', label: 'Quiet hours', group: 'General', type: 'text', placeholder: '22-7', help: 'Nags are held between these local hours (start-end). Urgent reminders still go through.' },
   { key: 'NAG_MINUTES', label: 'Nag gaps (minutes)', group: 'General', type: 'list', placeholder: '15,15,30,60', help: 'Minutes between repeated nags; the last value repeats until you acknowledge.' },
   { key: 'AUTO_APPLY_MIN_CONFIDENCE', label: 'Auto-apply confidence', group: 'General', type: 'number', placeholder: '0.6', help: 'Updates and completions below this confidence ask for approval first (0–1).' },
   { key: 'IGNORE_SENDERS', label: 'Ignore senders', group: 'General', type: 'list', help: 'Comma-separated regexes of automated senders that are skipped without a model call.' },
 
-  { key: 'CLAUDE_MODEL', label: 'Claude model', group: 'Brain', type: 'text', placeholder: 'claude-sonnet-5-5', help: 'Model used to understand messages. Leave blank for the Claude Code default.' },
+  { key: 'CLAUDE_MODEL', label: 'Claude model', group: 'Brain', type: 'text', help: 'Model used to understand messages. Leave blank for the Claude Code default.' },
   { key: 'CLAUDE_TIMEOUT_MS', label: 'Model timeout (ms)', group: 'Brain', type: 'number', placeholder: '180000' },
 
   { key: 'TICKETING_URL', label: 'Ticketing URL', group: 'Ticketing', type: 'text', help: 'Where the ticket tracker lives (inside Docker: http://ticketing:8080).' },
   { key: 'TICKETING_TOKEN', label: 'Ticketing token', group: 'Ticketing', type: 'secret' },
   { key: 'TICKETING_WEBHOOK_SECRET', label: 'Webhook secret', group: 'Ticketing', type: 'secret', help: 'Mirrors stage changes made in the Ticketing UI back here.' },
 
-  { key: 'CANOPY_URL', label: 'Canopy URL', group: 'Canopy', type: 'text', placeholder: 'https://your-canopy-host.example' },
+  { key: 'CANOPY_URL', label: 'Canopy URL', group: 'Canopy', type: 'text' },
   { key: 'CANOPY_READ_TOKEN', label: 'Read-only token', group: 'Canopy', type: 'secret' },
   { key: 'CANOPY_WRITE_TOKEN', label: 'Read/write token', group: 'Canopy', type: 'secret' },
   { key: 'CANOPY_GRADE_DROP_PCT', label: 'Grade-drop alert (%)', group: 'Canopy', type: 'number', placeholder: '2' },
@@ -33,17 +33,17 @@ export const SETTINGS: SettingDef[] = [
   { key: 'GOOGLE_REFRESH_TOKEN', label: 'OAuth refresh token', group: 'Google', type: 'secret', help: 'Create with `npm run google-auth` (see docs/google-setup.md).' },
   { key: 'GMAIL_ENABLED', label: 'Read Gmail', group: 'Google', type: 'bool' },
   { key: 'GMAIL_SKIP_BULK', label: 'Skip bulk mail', group: 'Google', type: 'bool', default: '1', help: 'Ignore newsletters and promotions.' },
-  { key: 'GOOGLE_SERVICE_ACCOUNT_FILE', label: 'Service account file', group: 'Google', type: 'text', placeholder: '/data/chat-service-account.json', help: 'Upload one on the Settings page, or enter a path inside the container.' },
-  { key: 'CHAT_PUBSUB_SUBSCRIPTION', label: 'Chat Pub/Sub subscription', group: 'Google', type: 'text', placeholder: 'projects/YOUR_PROJECT/subscriptions/assistant-chat' },
+  { key: 'GOOGLE_SERVICE_ACCOUNT_FILE', label: 'Service account file', group: 'Google', type: 'text', help: 'Upload one on the Settings page, or enter a path inside the container.' },
+  { key: 'CHAT_PUBSUB_SUBSCRIPTION', label: 'Chat Pub/Sub subscription', group: 'Google', type: 'text' },
   { key: 'CHAT_NOTIFY_SPACE', label: 'Chat notify space', group: 'Google', type: 'text' },
   { key: 'CHAT_ALLOWED_USERS', label: 'Chat allowed users', group: 'Google', type: 'list', help: 'ONLY these Chat users may command the assistant.' },
   { key: 'CHAT_READ_SPACES', label: 'Read my Chat spaces', group: 'Google', type: 'bool' },
   { key: 'DRIVE_FOLDER_IDS', label: 'Drive folder IDs', group: 'Google', type: 'list', help: 'Folders indexed so questions can cite them.' },
 
-  { key: 'NTFY_URL', label: 'ntfy server URL', group: 'Notifications', type: 'text', placeholder: 'http://ntfy:80' },
+  { key: 'NTFY_URL', label: 'ntfy server URL', group: 'Notifications', type: 'text' },
   { key: 'NTFY_TOPIC', label: 'ntfy topic', group: 'Notifications', type: 'text', placeholder: 'assistant' },
 
-  { key: 'INDEX_PATHS', label: 'Index paths', group: 'Files & voice', type: 'list', help: 'Folders inside the container to index for questions (e.g. /index).' },
+  { key: 'INDEX_PATHS', label: 'Index paths', group: 'Files & voice', type: 'list', help: 'Folders inside the container to index for questions.' },
   { key: 'TRANSCRIBE_URL', label: 'Transcription URL', group: 'Files & voice', type: 'text', help: 'OpenAI-compatible /v1/audio/transcriptions endpoint.' },
 
   { key: 'INGEST_TOKEN', label: 'Ingest token', group: 'Access', type: 'secret', help: 'Send-input-only token for the Mac agent and phone app.' },

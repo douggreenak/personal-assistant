@@ -195,7 +195,7 @@ try {
   });
 
   await step('chat page: renders, suggestions present (no message is sent)', async () => {
-    await page.setViewportSize({ width: 1300, height: 900 }); await goto('chat'); assert.ok((await page.locator('md-assist-chip').count()) >= 3); await page.locator('.seg button', { hasText: 'Ask a question' }).click();
+    await page.setViewportSize({ width: 1300, height: 900 }); await goto('chat'); assert.ok((await page.locator('md-assist-chip').count()) >= 2); await page.locator('.seg button', { hasText: 'Ask a question' }).click();
     assert.equal(await page.locator('.seg button[aria-pressed=true]').innerText(), 'Ask a question');
   });
 

@@ -26,7 +26,7 @@ export default async function home(view, { nav, refreshStatus }) {
       h('div', { class: 'grid cols-2' },
         h('div', { class: 'card' }, h('h2', {}, icon('history'), 'Recent activity'), events.length ? h('div', { class: 'timeline' }, events.map((e) => h('div', {}, h('div', { class: 't' }, `${e.type} · ${e.title}`), h('div', { class: 'muted' }, `${e.actor} · ${ago(e.at)}`)))) : h('div', { class: 'muted' }, 'No activity yet.')),
         h('div', { class: 'card' }, h('h2', {}, icon('chat'), 'Tell the assistant'), h('p', { class: 'muted' }, 'Type or paste anything — it becomes tickets, reminders and tasks.'),
-          (() => { const f = h('md-outlined-text-field', { label: 'e.g. remind me to call Sam tomorrow 9am', type: 'textarea', rows: 3 }); const b = h('md-filled-button', { onclick: async () => {
+          (() => { const f = h('md-outlined-text-field', { label: 'What should I remember or track?', type: 'textarea', rows: 3 }); const b = h('md-filled-button', { onclick: async () => {
             if (!f.value.trim()) return; b.disabled = true; const r = await guarded(() => api('/chat', { method: 'POST', body: { text: f.value } })); b.disabled = false; if (r) { f.value = ''; toast(r.reply.slice(0, 200)); refresh(); } } }, icon('send'), 'Send');
             return h('div', { class: 'form' }, f, h('div', {}, b)); })())));
   };

@@ -3,7 +3,7 @@ import { h, icon, clear, spinner } from '../ui.js';
 
 const KEY = 'chat_history';
 const load = () => { try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch { return []; } };
-const SUGGEST = ['open', 'approvals', 'what did I miss today?', 'remind me to stretch in 1 hour'];
+const SUGGEST = ['open', 'approvals'];
 
 export default async function chat(view) {
   let hist = load(); let ask = false;
