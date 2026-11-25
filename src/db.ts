@@ -67,6 +67,8 @@ CREATE TABLE connectors (
 CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE VIRTUAL TABLE search USING fts5(kind UNINDEXED, ref UNINDEXED, title, body, tokenize = 'porter unicode61');
 CREATE TABLE docs (path TEXT PRIMARY KEY, mtime TEXT NOT NULL, chunks INTEGER NOT NULL);
+CREATE TABLE doc_rows (path TEXT NOT NULL, fts_rowid INTEGER NOT NULL);
+CREATE INDEX doc_rows_path ON doc_rows(path);
 `];
 
 export function openDb(path: string): Db {

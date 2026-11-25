@@ -63,26 +63,29 @@ export async function processMessage(ctx: Ctx, msg: MessageRow): Promise<Process
   return report;
 }
 
-/** Worker step: process the oldest pending message. Returns false when the queue is empty. */
-export async function processNext(ctx: Ctx): Promise<boolean> {
+/** Worker step: process the oldest pending message. Returns its report, or null when the queue is empty. */
+export async function processNextReport(ctx: Ctx): Promise<{ msg: MessageRow; report: ProcessReport } | null> {
   const row = ctx.db.prepare('SELECT * FROM messages WHERE processed_at IS NULL AND attempts < 5 ORDER BY id LIMIT 1').get() as Record<string, unknown> | undefined;
-  if (!row) return false;
+  if (!row) return null;
   const msg = rowToMsg(row);
   ctx.db.prepare('UPDATE messages SET attempts = attempts + 1 WHERE id = ?').run(msg.id);
   try {
     const report = await processMessage(ctx, msg);
     ctx.db.prepare('UPDATE messages SET processed_at = ?, error = NULL WHERE id = ?').run(nowIso(), msg.id);
-    await announce(ctx, msg, report);
+    // Chat replies carry their own summary; everything else is announced here.
+    if (msg.source !== 'chat') await announce(ctx, msg, report);
+    return { msg, report };
   } catch (e) {
     const err = (e as Error).message.slice(0, 300);
     ctx.db.prepare('UPDATE messages SET error = ? WHERE id = ?').run(err, msg.id);
     if (msg.attempts + 1 >= 5) await ctx.notify.send(`⚠️ Couldn't process a ${msg.source} message after 5 tries: ${err}`);
+    return { msg, report: { applied: [], queued: [], rejected: [], skipped: `error: ${err}` } };
   }
-  return true;
 }
+export async function processNext(ctx: Ctx): Promise<boolean> { return (await processNextReport(ctx)) !== null; }
 
 async function announce(ctx: Ctx, msg: MessageRow, r: ProcessReport): Promise<void> {
   if (!r.applied.length) return;  // queued items are announced by the approvals loop
-  const who = msg.source === 'voice' || msg.source === 'chat' ? '' : ` (from ${msg.sender || msg.source})`;
+  const who = msg.source === 'voice' ? '' : ` (from ${msg.sender || msg.source})`;
   await ctx.notify.send(`✅ ${r.applied.map((s) => `• ${s}`).join('\n')}${who}`);
 }
