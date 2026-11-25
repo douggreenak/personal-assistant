@@ -58,6 +58,11 @@ Approving applies the stored action exactly once (a second call says it was alre
 Called by the ticket tracker's webhooks. No bearer token; authenticated by the `X-Tickets-Signature: sha256=<hmac>` header using `TICKETING_WEBHOOK_SECRET`. `401` on a bad signature.
 
 ### Connect a service in one step
-`POST /connectors/auto` (full token) `{input, apiKey?}` → `202 {job}`. `input` is pasted API docs or an `https://` docs URL; `apiKey` is optional and is stored in `secrets.json`, never sent to the model.
+`POST /connectors/auto` (full token) `{input, apiKey?}` → `202 {job}`. `input` is pasted API docs or an `https://` docs URL; `apiKey` is optional: keys inside `input` (labelled values, `Bearer …`, `?key=…`, well-known prefixes) are detected, stored in `secrets.json` and replaced by `<API_KEY_n>` before the model sees the text. Auth styles: bearer, header, basic, or `query` (key in a URL parameter).
 The server designs a read-only connector, saves it, dry-runs it against the real service and — if that fails — shows the model what the service actually returned so it can fix the manifest (up to 4 tries), then enables it. On failure nothing is left behind.
 `GET /connectors/auto/{id}` → `{job:{id,state,steps[],connectorId,secret,result}}` with `state` = `running | needs_key | done | failed`. `POST /connectors/auto/{id}/key` `{apiKey}` resumes a job that is `needs_key`.
+
+### Write connectors
+A manifest may have `actions` (writes) as well as `poll` (read); either may be missing, not both. `actions[]`: `{id, name, description, method: POST|PUT|PATCH|DELETE, path: "/x/{id}", params: [{name, description, in: path|query|body, required?}]}`.
+The model can request one with an action `{op:"connector_call", connectorId, actionId, args}`, but only from the owner's own messages (chat/voice) — messages from other people never see write actions. Every call goes to Approvals unless the owner switched that action to *no need to ask*; DELETE always asks, and money/outbound-flagged calls always ask.
+`POST /connectors/{id}/actions/{action}/auto` `{allow: boolean}` sets that switch. `GET /connectors/full` lists the allowed ones in `autoActions`. A write-only connector is never called to "test" it.

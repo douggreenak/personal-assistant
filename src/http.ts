@@ -13,7 +13,7 @@ import { storeMessage } from './pipeline.ts';
 import { ask } from './qa.ts';
 import { applyTicketingEvent, verifySignature } from './sync/ticketing.ts';
 import { ingestVoice } from './voice.ts';
-import { listConnectors, proposeConnector, testConnector, enableConnector } from './connectors.ts';
+import { listConnectors, proposeConnector, testConnector, enableConnector, setAutoAllowed } from './connectors.ts';
 import { startAutoConnect, continueWithKey, getJob, type AutoJob } from './autoconnect.ts';
 import { applyAction, type Action } from './actions.ts';
 import { search } from './qa.ts';
@@ -187,6 +187,10 @@ export function createHttp(ctx: Ctx, deps: HttpDeps): Server {
       const r = await applyAction(ctx, a, null, 'owner'); return send(res, 200, { summary: r.summary, item: r.item });
     }
     if (path === '/connectors/full' && method === 'GET') return send(res, 200, { connectors: connectorsFull(ctx) });
+    if ((m = /^\/connectors\/([\w-]+)\/actions\/(\w+)\/auto$/.exec(path)) && method === 'POST') {
+      try { setAutoAllowed(ctx, m[1], m[2], !!(await readJson(req)).allow); } catch (e) { throw new HttpError(400, (e as Error).message); }
+      return send(res, 200, { ok: true });
+    }
     if (path === '/connectors/auto' && method === 'POST') { const b = await readJson(req); const j = startAutoConnect(ctx, String(b.input ?? ''), b.apiKey ? String(b.apiKey) : undefined); return send(res, 202, { job: pub(j) }); }
     if ((m = /^\/connectors\/auto\/(\w+)(\/key)?$/.exec(path))) {
       const j = getJob(m[1]); if (!j) throw new HttpError(404, 'unknown job');

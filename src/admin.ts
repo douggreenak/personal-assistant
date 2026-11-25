@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, chmodSync } from 'node:fs';
 import type { Ctx } from './ctx.ts';
 import { nowIso } from './db.ts';
-import { listConnectors } from './connectors.ts';
+import { listConnectors, isAutoAllowed } from './connectors.ts';
 
 type Row = Record<string, unknown>;
 const startedAt = Date.now();
@@ -82,7 +82,8 @@ export function connectorsFull(ctx: Ctx) {
   return listConnectors(ctx).map((c) => {
     const secret = c.manifest.auth.type !== 'none' ? c.manifest.auth.secret : undefined;
     return { ...c, secretName: secret ?? null, secretSet: secret ? hasSecret(ctx, secret) : null,
-      tested: !!ctx.db.prepare('SELECT 1 FROM kv WHERE key = ?').get(`connector.tested.${c.id}`) };
+      tested: !!ctx.db.prepare('SELECT 1 FROM kv WHERE key = ?').get(`connector.tested.${c.id}`),
+      autoActions: (c.manifest.actions ?? []).filter((x) => isAutoAllowed(ctx, c.id, x.id)).map((x) => x.id) };
   });
 }
 export function setConnectorStatus(ctx: Ctx, id: string, status: 'disabled'): boolean {

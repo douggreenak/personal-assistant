@@ -234,3 +234,7 @@ kbd { font: 650 .8rem/1 var(--font); background: var(--md-sys-color-surface-cont
 .astep.bad { color: var(--md-sys-color-error); } .astep.bad .dot { background: var(--md-sys-color-error); }
 .ok-box { display: flex; gap: 10px; align-items: center; padding: 14px 16px; border-radius: var(--r-m); background: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); font-weight: 650; }
 @keyframes pulse { 50% { opacity: .25; transform: scale(.7); } }
+
+.acts-list { margin-top: 4px; } .acts-list summary { cursor: pointer; font-weight: 650; }
+.actrow { display: flex; gap: 14px; align-items: center; justify-content: space-between; padding: 10px 0; border-top: 1px solid var(--md-sys-color-outline-variant); }
+.actrow > div { min-width: 0; overflow-wrap: anywhere; }

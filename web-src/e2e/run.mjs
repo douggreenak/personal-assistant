@@ -20,12 +20,14 @@ for (let i = 0; i < 50; i++) { try { if ((await fetch(base + '/healthz')).ok) br
 const results = []; let current = '';
 // E2E_GROUP=a|b runs half of the steps (each half has its own server + browser), so the two halves can run side by side. Default: all.
 const GROUP = process.env.E2E_GROUP || 'all';
-const groupOf = (n) => /^(keyboard:|items: sort|command palette|unsaved settings|connection lost|dialogs ignore|connect wizard)/.test(n) ? 'b' : 'a';
+const groupOf = (n) => /^(keyboard:|items: sort|command palette|unsaved settings|connection lost)/.test(n) ? 'b'
+  : /^(settings: (edit|theme)|system:|connectors:|mobile:|chat page|connect wizard|dialogs ignore|write connectors)/.test(n) ? 'c' : 'a';
 const step = async (name, fn) => { if (GROUP !== 'all' && !/^no JavaScript errors/.test(name) && groupOf(name) !== GROUP) return; current = name; try { await fn(); results.push([true, name]); console.log('  ✔', name); } catch (e) { results.push([false, name, e]); console.log('  ✖', name, '\n     ', String(e.message).split('\n').slice(0, 4).join('\n      ')); await page.screenshot({ path: join(dir, 'fail-' + results.length + '.png') }); } };
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--no-sandbox'] });
 const ctx = await browser.newContext({ viewport: { width: 1300, height: 900 } });
 const page = await ctx.newPage();
+{ const wait = page.waitForTimeout.bind(page); page.waitForTimeout = (ms) => wait(Math.max(60, Math.round(ms * 0.4))); }   // the fixed pauses were generous; real waits are on selectors
 const errors = [];
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 page.on('console', (m) => { if (m.type() === 'error' && !/status of (4\d\d)|ERR_INTERNET_DISCONNECTED/.test(m.text())) errors.push('console: ' + m.text()); });
@@ -44,7 +46,7 @@ const db = () => new DatabaseSync(join(dir, 'assistant.db'));
 
 console.log('E2E against', base);
 try {
-  if (GROUP === 'b') { await page.goto(base + '/'); await setField('Password', PW); await btn('Sign in').click(); await heading(/Good (morning|afternoon|evening)|Still up/); }
+  if (GROUP !== 'all' && GROUP !== 'a') { await page.goto(base + '/'); await setField('Password', PW); await btn('Sign in').click(); await heading(/Good (morning|afternoon|evening)|Still up/); }
   await step('login: wrong password is refused, right one signs in', async () => {
     await page.goto(base + '/'); await page.locator('md-outlined-text-field[label="Password"]').waitFor();
     await setField('Password', 'nope'); await btn('Sign in').click(); await page.locator('.err', { hasText: 'Wrong password' }).waitFor();
@@ -317,9 +319,9 @@ try {
   await step('dialogs ignore clicks outside; proposed connectors can be approved right on their card', async () => {
     await page.setViewportSize({ width: 1300, height: 900 });
     await goto('connectors'); await page.locator('h1').click(); await press('n'); await dlg().waitFor();
-    await page.locator('md-outlined-text-field[label^="Paste the API docs"]').click(); await page.keyboard.type('draft text');
+    await page.locator('md-outlined-text-field[label^="Paste everything"]').click(); await page.keyboard.type('draft text');
     await page.mouse.click(6, 450); await page.waitForTimeout(500); assert.equal(await dlg().count(), 1, 'a click on the dim area must not close the dialog');
-    assert.equal(await page.locator('md-outlined-text-field[label^="Paste the API docs"]').evaluate((e) => e.value), 'draft text');
+    assert.equal(await page.locator('md-outlined-text-field[label^="Paste everything"]').evaluate((e) => e.value), 'draft text');
     await press('Escape'); await page.waitForTimeout(600); assert.equal(await dlg().count(), 0, 'Esc still closes');
     const man = { id: 'proposed-co', name: 'Proposed Co', description: 'x', baseUrl: 'https://api.proposed.example', auth: { type: 'bearer', secret: 'PROPOSED_KEY' }, poll: { path: '/v1/a', intervalMinutes: 15, bodyFields: ['title'], itemsPath: '', idField: 'id', params: {} } };
     const d = db(); d.prepare("INSERT INTO connectors (id, manifest, status, created_at) VALUES ('proposed-co', ?, 'proposed', ?)").run(JSON.stringify(man), new Date().toISOString());
@@ -335,13 +337,29 @@ try {
     await goto('home'); await goto('connectors'); await page.locator('h1').click(); await press('n'); await dlg().waitFor();
     assert.equal(await page.locator('md-filled-button', { hasText: /Propose|Review/ }).count(), 0);
     await btn('Connect', dlg()).click(); await page.waitForTimeout(300); assert.ok(await dlg().count(), 'empty paste does nothing');
-    await page.locator('md-outlined-text-field[label^="Paste the API docs"]').click(); await page.keyboard.type('Acme API: GET https://api.acme.example/orders returns a list of orders');
+    await page.locator('md-outlined-text-field[label^="Paste everything"]').click(); await page.keyboard.type('Acme API: GET https://api.acme.example/orders returns a list of orders');
     await btn('Connect', dlg()).click();
     await dlg().locator('.autolog .astep').first().waitFor(); await dlg().locator('.err').waitFor({ timeout: 20000 });
-    assert.match(await dlg().innerText(), /Reading the pasted docs/); assert.match(await dlg().innerText(), /build a safe connector|claude exited/);
+    assert.match(await dlg().innerText(), /Reading what you pasted/); assert.match(await dlg().innerText(), /build a safe connector|claude exited/);
     await btn('Edit and try again', dlg()).click(); await page.waitForTimeout(300);
-    assert.equal(await page.locator('md-outlined-text-field[label^="Paste the API docs"]').evaluate((e) => e.value), 'Acme API: GET https://api.acme.example/orders returns a list of orders', 'text is kept for the retry');
+    assert.equal(await page.locator('md-outlined-text-field[label^="Paste everything"]').evaluate((e) => e.value), 'Acme API: GET https://api.acme.example/orders returns a list of orders', 'text is kept for the retry');
     await press('Escape'); await page.waitForTimeout(500);
+  });
+
+
+  await step('write connectors: card shows reads/writes, per-action "no need to ask" switch (DELETE always asks)', async () => {
+    const man = { id: 'billing', name: 'Billing Co', description: 'x', baseUrl: 'https://api.billing.example', auth: { type: 'none' }, actions: [
+      { id: 'create_invoice', name: 'Create invoice', description: 'Bill a customer', method: 'POST', path: '/invoices', params: [{ name: 'amount', description: 'dollars', in: 'body', required: true }] },
+      { id: 'delete_invoice', name: 'Delete invoice', description: 'Remove one', method: 'DELETE', path: '/invoices/{id}', params: [{ name: 'id', description: 'id', in: 'path', required: true }] }] };
+    const d = db(); d.prepare("INSERT INTO connectors (id, manifest, status, created_at) VALUES ('billing', ?, 'enabled', ?)").run(JSON.stringify(man), new Date().toISOString()); d.close();
+    await goto('home'); await goto('connectors'); const card = page.locator('.card', { hasText: 'Billing Co' }); await card.waitFor();
+    assert.match(await card.innerText(), /writes/i); assert.match(await card.innerText(), /Writes only/);
+    await card.locator('summary', { hasText: '2 write actions' }).click();
+    assert.match(await card.innerText(), /always asks/);
+    await card.getByRole('switch', { name: /Allow Create invoice without asking/ }).click(); await toastText(/without asking/);
+    assert.deepEqual((await api('GET', '/connectors/full')).connectors.find((c) => c.id === 'billing').autoActions, ['create_invoice']);
+    await card.getByRole('switch', { name: /Allow Create invoice without asking/ }).click(); await toastText(/will ask first/);
+    assert.deepEqual((await api('GET', '/connectors/full')).connectors.find((c) => c.id === 'billing').autoActions, []);
   });
 
   await step('no JavaScript errors were logged during the whole run', async () => { assert.deepEqual(errors, []); });

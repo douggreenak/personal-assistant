@@ -2,6 +2,7 @@ import type { Ctx } from './ctx.ts';
 import { nowIso } from './db.ts';
 import { ACTIONS_SCHEMA, applyAction, describeAction, parseActions } from './actions.ts';
 import { decide } from './policy.ts';
+import { connectorActionMap, isAutoAllowed } from './connectors.ts';
 import { EXTRACT_SYSTEM, buildExtractPrompt } from './prompts.ts';
 import { describeNow } from './time.ts';
 import { createApproval } from './approvals.ts';
@@ -37,15 +38,18 @@ export async function processMessage(ctx: Ctx, msg: MessageRow): Promise<Process
 
   const candidates = ctx.items.candidates(`${msg.subject} ${msg.body}`, 25);
   const stages = ctx.ticketing ? (await ctx.ticketing.defaultPipeline().catch(() => null))?.stages ?? DEFAULT_STAGES : DEFAULT_STAGES;
-  const prompt = buildExtractPrompt({ now: describeNow(ctx.now(), ctx.cfg.tz), source: msg.source, sender: msg.sender, subject: msg.subject, body: msg.body, fromOwner, candidates, stages });
+  const writes: ReturnType<typeof connectorActionMap> = fromOwner ? connectorActionMap(ctx) : new Map();   // only the owner's own words can ask for a write
+  const connectorActions = [...writes].map(([k, v]) => `- ${k} — ${v.name}: ${v.action.description} (${v.action.method}; params: ${v.action.params.map((q) => `${q.name}${q.required ? '*' : ''}${q.description ? ` (${q.description})` : ''}`).join(', ') || 'none'})`);
+  const prompt = buildExtractPrompt({ connectorActions, now: describeNow(ctx.now(), ctx.cfg.tz), source: msg.source, sender: msg.sender, subject: msg.subject, body: msg.body, fromOwner, candidates, stages });
 
   const raw = await ctx.llm.json({ system: EXTRACT_SYSTEM, prompt, schema: ACTIONS_SCHEMA as unknown as Record<string, unknown> });
-  const { actions, rejected } = parseActions(raw, new Set(candidates.map((c) => c.id)));
+  const { actions, rejected } = parseActions(raw, new Set(candidates.map((c) => c.id)), writes);
   report.rejected = rejected;
 
   for (const a of actions) {
     const item = a.itemId ? ctx.items.get(a.itemId) : undefined;
-    const d = decide(a, ctx.cfg);
+    const m = a.op === 'connector_call' ? writes.get(`${a.connectorId}.${a.actionId}`) : undefined;
+    const d = decide(a, ctx.cfg, !!m && fromOwner && m.action.method !== 'DELETE' && isAutoAllowed(ctx, a.connectorId!, a.actionId!));
     if (d.mode === 'ask') {
       createApproval(ctx, { kind: 'action', summary: describeAction(a, item), reason: d.reason, payload: { action: a }, messageId: msg.id });
       report.queued.push(describeAction(a, item));

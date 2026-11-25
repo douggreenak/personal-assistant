@@ -47,7 +47,10 @@ Press `?` in the UI for the live list.
 Shortcuts are ignored while you are typing in a field or a dialog is open (except `Ctrl K` and `Esc`).
 
 ## Connectors: paste, connect, done
-**Add** opens one box: paste the API docs (or a link) and, if the service needs one, the key. **Connect** designs the connector, tests it against the real service, fixes what goes wrong using the service's actual response, and switches it on — you watch the steps live. If no key was given and one is needed, it asks right there. On failure the half-built connector is removed and the dialog keeps your text for another try. The old approve → set key → test → enable path still exists for connectors proposed from chat.
+**Add** opens one box: paste whatever the service gave you — docs, a curl example, the key, all mixed together (or a docs link). Keys are found in the paste, stored on the server and replaced with a placeholder before the model sees anything; it works out the login style (bearer, header, basic, or `?api_key=` in the URL) from the docs. **Connect** designs the connector, tests it against the real service, fixes what goes wrong using the service's actual response, and switches it on — you watch the steps live. If no key was given and one is needed, it asks right there. On failure the half-built connector is removed and the dialog keeps your text for another try. The old approve → set key → test → enable path still exists for connectors proposed from chat.
 
 ## Other behaviour worth knowing
 Dialogs no longer close when you click outside them (Esc and Close still do). Items has sort, Overdue/Today/Next 7 days filters, quick-add, CSV/JSON export, and remembers your view. `Ctrl K` is also a command palette. Leaving Settings with unsaved changes asks first; a banner shows when the server is unreachable.
+
+## Read and write connectors
+A connector can read (polled into the inbox), write (create an invoice, close a ticket…), or both. Writes you ask for in Chat or by voice show up in **Approvals** first. On a connector's card, open *Can do N write actions* and flip **no need to ask** for the ones you trust; deletes always ask, and anything that came from someone else's message can never trigger a write.

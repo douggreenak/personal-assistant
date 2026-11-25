@@ -7,10 +7,11 @@ export const FLAGS: Flag[] = ['money', 'others_deadline', 'outbound', 'uncertain
 
 /** What the model is allowed to ask for. Everything else is impossible by construction. */
 export interface Action {
-  op: 'create' | 'update' | 'stage' | 'complete' | 'drop';
+  op: 'create' | 'update' | 'stage' | 'complete' | 'drop' | 'connector_call';
   kind?: Kind; title?: string; detail?: string; dueAt?: string; priority?: 'low' | 'normal' | 'high' | 'urgent';
   classHint?: string;            // a school class name → lands in Canopy
   itemId?: string; stageId?: string;
+  connectorId?: string; actionId?: string; args?: Record<string, string>;   // op 'connector_call': a WRITE through a connector the owner set up
   confidence: number; flags: Flag[]; why: string;
 }
 
@@ -22,7 +23,8 @@ export const ACTIONS_SCHEMA = {
       items: {
         type: 'object',
         properties: {
-          op: { type: 'string', enum: ['create', 'update', 'stage', 'complete', 'drop'] },
+          op: { type: 'string', enum: ['create', 'update', 'stage', 'complete', 'drop', 'connector_call'] },
+          connectorId: { type: 'string' }, actionId: { type: 'string' }, args: { type: 'object', additionalProperties: { type: 'string' } },
           kind: { type: 'string', enum: ['ticket', 'reminder', 'task'] },
           title: { type: 'string' }, detail: { type: 'string' }, dueAt: { type: 'string' },
           priority: { type: 'string', enum: ['low', 'normal', 'high', 'urgent'] },
@@ -39,13 +41,13 @@ export const ACTIONS_SCHEMA = {
 } as const;
 
 /** Validates untrusted model output into Actions, dropping anything malformed. */
-export function parseActions(raw: unknown, knownItemIds: Set<string>): { actions: Action[]; rejected: string[] } {
+export function parseActions(raw: unknown, knownItemIds: Set<string>, connectorActions: Map<string, { action: { params: { name: string; required?: boolean }[] } }> = new Map()): { actions: Action[]; rejected: string[] } {
   const actions: Action[] = []; const rejected: string[] = [];
   const arr = (raw as { actions?: unknown })?.actions;
   if (!Array.isArray(arr)) return { actions, rejected: ['no actions array'] };
   for (const a of arr.slice(0, 20) as Record<string, unknown>[]) {
     const op = a?.op;
-    if (!['create', 'update', 'stage', 'complete', 'drop'].includes(op as string)) { rejected.push(`bad op ${String(op)}`); continue; }
+    if (!['create', 'update', 'stage', 'complete', 'drop', 'connector_call'].includes(op as string)) { rejected.push(`bad op ${String(op)}`); continue; }
     const conf = typeof a.confidence === 'number' ? Math.min(1, Math.max(0, a.confidence)) : 0;
     const flags = (Array.isArray(a.flags) ? a.flags : []).filter((f): f is Flag => FLAGS.includes(f as Flag));
     const s = (v: unknown, max: number) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : undefined);
@@ -56,7 +58,15 @@ export function parseActions(raw: unknown, knownItemIds: Set<string>): { actions
       priority: (['low', 'normal', 'high', 'urgent'] as const).find((p) => p === a.priority),
       itemId: s(a.itemId, 64),
     };
-    if (act.op === 'create') {
+    if (act.op === 'connector_call') {
+      const known = connectorActions.get(`${String(a.connectorId)}.${String(a.actionId)}`);
+      if (!known) { rejected.push(`unknown connector action ${String(a.connectorId)}.${String(a.actionId)}`); continue; }
+      const given = (a.args && typeof a.args === 'object' ? a.args : {}) as Record<string, unknown>; const args: Record<string, string> = {};
+      for (const p of known.action.params) if (given[p.name] !== undefined && given[p.name] !== null) args[p.name] = String(given[p.name]).slice(0, 4000);
+      const missing = known.action.params.find((p) => p.required && !args[p.name]?.trim());
+      if (missing) { rejected.push(`${String(a.connectorId)}.${String(a.actionId)} missing "${missing.name}"`); continue; }
+      act.connectorId = String(a.connectorId); act.actionId = String(a.actionId); act.args = args;
+    } else if (act.op === 'create') {
       if (!act.title) { rejected.push('create without title'); continue; }
       act.kind ??= 'task';
     } else {
@@ -97,6 +107,11 @@ export async function applyAction(ctx: Ctx, a: Action, sourceMessageId: number |
     }
     const { item } = items.create({ ...base, kind: a.kind === 'ticket' ? 'task' : a.kind! }, actor);
     return { summary: `${item.kind === 'reminder' ? 'Reminder' : 'Task'}: ${a.title}${due ? ` (due ${due.slice(0, 16).replace('T', ' ')}Z)` : ''}`, item };
+  }
+
+  if (a.op === 'connector_call') {
+    const { callConnectorAction } = await import('./connectors.ts');   // dynamic: connectors.ts imports the pipeline, which imports this file
+    return { summary: await callConnectorAction(ctx, a.connectorId!, a.actionId!, a.args ?? {}) };
   }
 
   const item = items.get(a.itemId!);
@@ -154,5 +169,6 @@ export function describeAction(a: Action, item?: Item): string {
     case 'stage': return `Move "${t}" to stage ${a.stageId}`;
     case 'complete': return `Mark done: "${t}"`;
     case 'drop': return `Drop: "${t}"`;
+    case 'connector_call': return `Call ${a.connectorId}.${a.actionId} ${JSON.stringify(a.args ?? {}).slice(0, 300)}`;
   }
 }
