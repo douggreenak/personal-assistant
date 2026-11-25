@@ -292,7 +292,7 @@ test('chat commands: open, approvals, ack/snooze/done by short id, questions vs 
 test('HTTP: bearer auth, ingest, idempotent voice upload, webhook signature, approvals', async () => {
   const transcribeCalls: number[] = [];
   const stt = (async () => { transcribeCalls.push(1); return json({ text: 'order SDI cables' }); }) as unknown as typeof fetch;
-  const { ctx } = makeCtx([], { env: { ASSISTANT_TOKEN: 'a'.repeat(32), TRANSCRIBE_URL: 'http://stt.test/v1/audio/transcriptions' } });
+  const { ctx } = makeCtx([], { env: { ASSISTANT_TOKEN: 'a'.repeat(32), INGEST_TOKEN: 'i'.repeat(32), TRANSCRIBE_URL: 'http://stt.test/v1/audio/transcriptions' } });
   const server = createHttp(ctx, { wake: () => {}, ticketingSecret: 'whsec', fetchImpl: stt });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -303,6 +303,7 @@ test('HTTP: bearer auth, ingest, idempotent voice upload, webhook signature, app
     assert.equal((await fetch(base + '/items', { headers: { authorization: 'Bearer nope' } })).status, 401);
     assert.equal((await fetch(base + '/ingest/message', { method: 'POST', headers: H, body: JSON.stringify({ source: 'api', sourceId: 'x1', body: 'hi' }) })).status, 202);
     assert.equal((await fetch(base + '/ingest/message', { method: 'POST', headers: H, body: JSON.stringify({ body: 'no id' }) })).status, 400);
+    assert.equal((ctx.db.prepare("SELECT COUNT(*) n FROM messages WHERE body = 'no id'").get() as { n: number }).n, 0);   // a rejected request stores nothing
     const voice = () => fetch(base + '/ingest/voice', { method: 'POST', headers: { authorization: H.authorization, 'x-capture-id': 'cap-12345678', 'x-filename': 'a.m4a' }, body: new Uint8Array([1, 2, 3]) });
     const v1 = await (await voice()).json() as { duplicate: boolean; text: string }; assert.equal(v1.duplicate, false); assert.equal(v1.text, 'order SDI cables');
     const v2 = await (await voice()).json() as { duplicate: boolean }; assert.equal(v2.duplicate, true);
@@ -313,6 +314,12 @@ test('HTTP: bearer auth, ingest, idempotent voice upload, webhook signature, app
     assert.equal((await fetch(base + '/hooks/ticketing', { method: 'POST', body, headers: { 'x-tickets-signature': sig } })).status, 200);
     assert.equal((await fetch(base + '/hooks/ticketing', { method: 'POST', body, headers: { 'x-tickets-signature': 'sha256=00' } })).status, 401);
     assert.equal((await fetch(base + '/approvals', { headers: H })).status, 200);
+    // the ingest-only token can send input but cannot read items, approve, or chat
+    const IH = { authorization: 'Bearer ' + 'i'.repeat(32), 'content-type': 'application/json' };
+    assert.equal((await fetch(base + '/ingest/message', { method: 'POST', headers: IH, body: JSON.stringify({ sourceId: 'z9', body: 'from the mac' }) })).status, 202);
+    for (const [m, p] of [['GET', '/items'], ['GET', '/approvals'], ['POST', '/approvals/1/approve'], ['POST', '/chat']] as const) {
+      assert.equal((await fetch(base + p, { method: m, headers: IH, body: m === 'POST' ? '{}' : undefined })).status, 401, `${m} ${p}`);
+    }
     assert.equal((await fetch(base + '/nope', { headers: H })).status, 404);
   } finally { server.close(); }
   // voice with no transcriber configured must fail loudly (so the phone keeps the recording queued)

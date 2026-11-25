@@ -1,6 +1,6 @@
 /** All configuration comes from environment variables; see .env.example. */
 export interface Config {
-  port: number; host: string; token: string; dbPath: string; dataDir: string; tz: string;
+  port: number; host: string; token: string; ingestToken: string; dbPath: string; dataDir: string; tz: string;
   quietHours: { start: number; end: number };           // local hours; nagging is held inside [start, end)
   nagMinutes: number[];                                  // gaps between nags: 0th = after first notice, last repeats
   ticketing: { url: string; token: string } | null;
@@ -9,7 +9,7 @@ export interface Config {
   google: { serviceAccountFile?: string; oauth?: { clientId: string; clientSecret: string; refreshToken: string } } ;
   chat: { pubsubSubscription?: string; notifySpace?: string; allowedUsers: string[]; readUserSpaces: boolean };
   ntfy: { url: string; topic: string } | null;
-  gmail: { enabled: boolean; query: string; skipBulk: boolean };
+  gmail: { enabled: boolean; skipBulk: boolean };
   transcribeUrl: string | null;                          // OpenAI-compatible /v1/audio/transcriptions endpoint
   indexPaths: string[]; driveFolderIds: string[];
   claude: { bin: string; model?: string; timeoutMs: number };
@@ -23,7 +23,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const dataDir = env.ASSISTANT_DATA ?? './data';
   const [qs, qe] = (env.QUIET_HOURS ?? '22-7').split('-').map(Number);
   return {
-    port: Number(env.PORT ?? 8090), host: env.HOST ?? '0.0.0.0', token: env.ASSISTANT_TOKEN ?? '',
+    port: Number(env.PORT ?? 8090), host: env.HOST ?? '0.0.0.0', token: env.ASSISTANT_TOKEN ?? '', ingestToken: env.INGEST_TOKEN ?? '',
     dbPath: env.ASSISTANT_DB ?? `${dataDir}/assistant.db`, dataDir, tz: env.TZ_NAME ?? 'America/Anchorage',
     quietHours: { start: qs, end: qe },
     nagMinutes: list(env.NAG_MINUTES ?? '15,15,30,60').map(Number),
@@ -36,7 +36,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     },
     chat: { pubsubSubscription: env.CHAT_PUBSUB_SUBSCRIPTION, notifySpace: env.CHAT_NOTIFY_SPACE, allowedUsers: list(env.CHAT_ALLOWED_USERS), readUserSpaces: env.CHAT_READ_SPACES === '1' },
     ntfy: env.NTFY_URL ? { url: env.NTFY_URL.replace(/\/$/, ''), topic: env.NTFY_TOPIC ?? 'assistant' } : null,
-    gmail: { enabled: env.GMAIL_ENABLED === '1', query: env.GMAIL_QUERY ?? '-category:promotions -category:social', skipBulk: env.GMAIL_SKIP_BULK !== '0' },
+    gmail: { enabled: env.GMAIL_ENABLED === '1', skipBulk: env.GMAIL_SKIP_BULK !== '0' },
     transcribeUrl: env.TRANSCRIBE_URL ?? null,
     indexPaths: list(env.INDEX_PATHS), driveFolderIds: list(env.DRIVE_FOLDER_IDS),
     claude: { bin: env.CLAUDE_BIN ?? 'claude', model: env.CLAUDE_MODEL, timeoutMs: Number(env.CLAUDE_TIMEOUT_MS ?? 180000) },

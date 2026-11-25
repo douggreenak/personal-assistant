@@ -49,13 +49,17 @@ export function createHttp(ctx: Ctx, deps: HttpDeps): Server {
       if (!verifySignature(deps.ticketingSecret ?? '', raw, req.headers['x-tickets-signature'] as string | undefined)) throw new HttpError(401, 'Bad signature.');
       return send(res, 200, { applied: applyTicketingEvent(ctx, JSON.parse(raw)) });
     }
-    if (!tokenOk(req.headers.authorization, ctx.cfg.token)) throw new HttpError(401, 'Missing or invalid bearer token.');
+    // Two credentials: the full token, and an optional ingest-only token for devices (Mac agent, phone) that only ever need to send input.
+    const full = tokenOk(req.headers.authorization, ctx.cfg.token);
+    const ingestOnly = !full && ctx.cfg.ingestToken.length >= 16 && path.startsWith('/ingest/') && tokenOk(req.headers.authorization, ctx.cfg.ingestToken);
+    if (!full && !ingestOnly) throw new HttpError(401, 'Missing or invalid bearer token.');
     let m: RegExpExecArray | null;
 
     if (path === '/ingest/message' && method === 'POST') {
       const b = await readJson(req);
-      const id = storeMessage(ctx, { source: String(b.source ?? 'api'), sourceId: String(b.sourceId ?? ''), sender: String(b.sender ?? ''), subject: String(b.subject ?? ''), body: String(b.body ?? ''), receivedAt: typeof b.receivedAt === 'string' ? b.receivedAt : undefined });
-      if (!b.sourceId) throw new HttpError(400, 'sourceId is required.');
+      if (typeof b.sourceId !== 'string' || !b.sourceId) throw new HttpError(400, 'sourceId is required.');
+      if (typeof b.body !== 'string' || !b.body.trim()) throw new HttpError(400, 'body is required.');
+      const id = storeMessage(ctx, { source: String(b.source ?? 'api'), sourceId: b.sourceId, sender: String(b.sender ?? ''), subject: String(b.subject ?? ''), body: b.body, receivedAt: typeof b.receivedAt === 'string' ? b.receivedAt : undefined });
       deps.wake(); return send(res, 202, { queued: id !== null });
     }
     if (path === '/ingest/mac' && method === 'POST') {

@@ -1,60 +1,75 @@
-# Assistant
+# Personal Assistant
 
-Turns what you say and what people send you into tasks, tickets and nagging reminders, and keeps them updated.
-Private (Tailscale only), free to run (your own Claude Code login, local speech-to-text, SQLite), and the Mac piece is a 30-line shell script.
+A self-hosted assistant that turns **what you say and what people send you** into tickets, nagging reminders and tasks — and keeps them up to date.
+
+> *"The encoder is dropping frames, remind me to order SDI cables, and call Sam this week about the invoice."*
+> → a **ticket** (tracked through Reported → Diagnosing → Waiting on parts → Fix applied → Verified → Closed), a **reminder** that nags until you acknowledge it, and a **task** due Friday.
+> Later: *"the cables arrived"* → the matching item is checked off, no duplicate created.
+
+It runs on your own Linux server (Docker), is reachable only over [Tailscale](https://tailscale.com), uses your existing **Claude Code** login as its brain (no API bill), transcribes voice locally, and needs almost nothing on your always-on Mac.
+
+## What it does
+- **Understands messy input** — long, rambling speech or text becomes separate items; updates match existing items instead of duplicating.
+- **Reads your world** — texts (from a Mac), Gmail, Google Chat, plus anything you connect later by pasting its API docs.
+- **Right place for each thing** — IT-style **tickets** with stages ([Ticketing](https://github.com/douggreenak/ticketing), a standalone app), **reminders** that keep nagging, plain **tasks**, and school work into [Canopy](https://github.com/douggreenak/Canopy-School-Planner).
+- **Voice from anywhere** — iPhone and Apple Watch record offline and upload when connected.
+- **Talk to it in Google Chat** — "what's open?", approvals, snoozes, and questions answered from your own messages and files (SMB share, Drive) with citations.
+- **Asks before it matters** — it adds new things freely, but asks first about money, other people's deadlines, contacting anyone, dropping things, or when it's unsure.
+- **Connects to new services** — send API docs; it proposes a read-only connector, you approve, add the credential yourself, dry-run, then enable.
 
 ```
- iPhone / Watch ──voice──┐                                   ┌─► Ticketing app (tickets, stages)
- Mac texts (agent.sh) ───┤                                   ├─► Canopy (school tasks; alerts back in)
- Gmail ──────────────────┼─► messages ─► Claude Code ─► actions ─► policy gate ─┤
- Google Chat (talk + read)┤   (queue)     (headless,    (typed)    apply / ask   └─► local reminders & tasks (nagging)
- New "connectors" ───────┘                no tools)                    │
-                                                              approvals in Chat ◄─┘
+ iPhone / Watch voice ─► local Whisper ─┐
+ Mac texts (tiny script) ───────────────┤                         ┌─► Ticketing app (stages)
+ Gmail ─────────────────────────────────┼─► messages ─► Claude ─► typed ─► policy ─┼─► Canopy (school)
+ Google Chat (read + talk) ─────────────┤   (queue)    Code     actions   apply/ask └─► reminders & tasks (nag)
+ Connectors / your own typing ──────────┘            (no tools)                │
+                                                          approvals & alerts ◄──┘ Google Chat / ntfy
 ```
 
-## How it decides
+## Documentation
+Start with **[Getting started](docs/getting-started.md)**. Everything is in [`docs/`](docs/README.md):
 
-1. **Extract & match** — one Claude Code call per message (`claude -p`, **all tools disabled**, JSON-schema output). It splits rambling input into separate items and matches updates ("the cables arrived") to open items instead of duplicating.
-2. **Typed actions only** — the model can return `create / update / stage / complete / drop`, with a confidence and risk flags. Unknown item ids and anything malformed are discarded. Message text is treated as data, so an email saying "mark everything done" does nothing.
-3. **Policy** — *lean toward adding*: new items are created without asking. It **asks first** for: anything involving money being settled/committed, other people's deadlines or commitments, anything outbound, drops, and low-confidence or unsure updates. Approve in Chat (`approve 3`).
-4. **Nagging** — reminders repeat (15, 15, 30, then hourly by default) until you `ack` them; quiet hours 22:00–07:00 Alaska time hold them (urgent ones break through); `snooze ID 2h`.
+| | |
+|---|---|
+| [Getting started](docs/getting-started.md) | deploy on your server in ~15 minutes |
+| [Configuration reference](docs/configuration.md) | every setting |
+| [Using it](docs/usage.md) | what to say, commands, nagging, approvals, questions |
+| [Architecture](docs/architecture.md) | how it works inside, data model, module map |
+| [Google setup](docs/google-setup.md) · [Mac agent](docs/mac-agent.md) · [iPhone & Watch](docs/ios-watch.md) | connect each source |
+| [Canopy](docs/canopy.md) · [Ticketing](docs/ticketing.md) · [Connectors](docs/connectors.md) | integrations |
+| [HTTP API](docs/api.md) | script against it |
+| [Security & privacy](docs/security.md) | threat model, what leaves your server |
+| [Operations](docs/operations.md) · [Development](docs/development.md) | run it, change it |
 
-Talk to it in Google Chat (or `POST /chat`): `open` · `approvals` · `approve N` / `reject N` · `ack ID` · `snooze ID 1h` · `done ID` · `ask <question>` · or just say things.
-
-## Setup (Linux server)
-
+## Quick start
 ```bash
-cp .env.example .env       # fill in tokens; BIND_ADDR = `tailscale ip -4`
-docker compose run --rm assistant claude      # one-time: log in to Claude Code inside the container, then exit
+git clone https://github.com/douggreenak/personal-assistant && git clone https://github.com/douggreenak/ticketing
+cd personal-assistant && cp .env.example .env     # set ASSISTANT_TOKEN, INGEST_TOKEN, TICKETS_TOKEN, BIND_ADDR
+docker compose run --rm assistant claude          # one-time Claude Code login, then /exit
 docker compose up -d --build
-curl http://$BIND_ADDR:8090/healthz
 ```
-The ticketing app is a separate repo (`../Ticketing`) and works on its own; compose builds it next to the assistant.
 
-### Google setup (one time)
-1. Google Cloud project → enable **Gmail API, Drive API, Chat API, Pub/Sub API**.
-2. **OAuth client** (type *Desktop app*) → `GOOGLE_CLIENT_ID/SECRET` → run `npm run google-auth` once (works headless) → `GOOGLE_REFRESH_TOKEN`.
-3. **Chat app** (Workspace): create a service account, download its key to `data/chat-service-account.json`; in the Chat API configuration choose *Cloud Pub/Sub* as the connection, create a topic + pull subscription, and give the service account Pub/Sub Subscriber on it. Set `CHAT_PUBSUB_SUBSCRIPTION` and `CHAT_ALLOWED_USERS`. Send the bot one DM so it learns where to reach you. **Nothing is exposed to the internet** — the server pulls events outbound.
-4. Optional: `GMAIL_ENABLED=1`, `CHAT_READ_SPACES=1`, `DRIVE_FOLDER_IDS=…`.
-
-### Your Mac (old Intel, Tahoe)
-Install Tailscale, then `./mac/install.sh http://<server-tailnet-name>:8090 <ASSISTANT_TOKEN>` and grant **Full Disk Access to `/bin/bash`**. It runs every 60 s, starts from "now" (never your history), and sends only new rows. SMS requires Text Message Forwarding from the iPhone.
-
-### iPhone + Watch
-`ios/` has the SwiftUI sources (they type-check against the iOS 27 / watchOS 27 SDKs). In Xcode: new iOS app + watchOS app, drop in the files, add the *Background Modes → Audio* capability and the microphone usage string. Install Tailscale on the phone. Recording works offline; uploads wait for the server, are retried, and are de-duplicated by a capture id. The watch hands recordings to the phone (it can't reach your tailnet itself).
-
-### Canopy
-Create a **read-only** and a **read/write** API token in Canopy (Settings → API & MCP access). Reads (alerts) use the read-only one; only approved/allowed actions use the write one. Alerts: due soon, overdue, missing work, exams, grade drops ≥ `CANOPY_GRADE_DROP_PCT`.
-
-### New services ("connectors")
-Say `connector <paste API docs or an https URL>`. It proposes a **read-only** polling manifest → you `approve N` → you store the credential yourself (`echo "$KEY" | npm run secret -- set NAME`; the model never sees it) → `test connector id` (dry run, saves nothing) → `enable connector id`. HTTPS only; hosts resolving to private/tailnet addresses are refused.
+## Repository layout
+```
+src/        the assistant (TypeScript, Node 24, zero runtime dependencies)
+test/       25 automated tests
+mac/        the tiny Mac agent (bash + sqlite3 + curl) and its launchd installer
+ios/        SwiftUI sources: iPhone recorder/uploader and Apple Watch recorder
+scripts/    one-time helpers (Google OAuth token, connector secrets)
+docs/       full documentation
+Dockerfile, docker-compose.yml, .env.example
+```
+Companion projects: **[Ticketing](https://github.com/douggreenak/ticketing)** (standalone ticket tracker) and **[Canopy](https://github.com/douggreenak/Canopy-School-Planner)** (school planner; its API now exposes task stages for this project).
 
 ## What is and isn't verified
-**Tested (25 automated tests + live runs):** extraction → actions → policy → approvals; the real Claude Code model end-to-end against the real Ticketing app (your encoder/cables/Sam sentence splits correctly, updates match, injection text is ignored); atomic message leasing and retry backoff; nagging/quiet hours/snooze; Alaska time handling; Mac agent against a synthetic `chat.db` incl. `attributedBody` decoding; Gmail parsing/history; Chat event parsing + allow-list; service-account JWT; connector validation/SSRF guards; Canopy sync logic; search/Q&A; HTTP auth + idempotent voice upload.
+**Tested (25 automated tests + live runs):** extraction → typed actions → policy → approvals; the real Claude Code model end-to-end against the real Ticketing app (the example sentence above splits correctly, updates match, injection text is ignored, money updates ask); atomic message leasing and retry backoff; nagging, quiet hours and snoozing; Alaska time handling; the Mac agent against a synthetic `chat.db` including `attributedBody` decoding; Gmail parsing and history; the Chat allow-list and event shapes; service-account JWT signing; connector validation and SSRF guards; Canopy sync logic; search and Q&A; HTTP auth (full vs ingest-only token) and idempotent voice upload; the Swift sources type-check against the iOS 27 / watchOS 27 SDKs.
 
-**Not verified (needs your accounts/hardware):** live Gmail/Chat/Pub/Sub/Drive calls (written against the documented APIs with stubs only — expect to fix small payload differences on first contact); the Docker images (no Docker on the dev Mac; the `speaches` Whisper image name should be checked on first pull); the Mac agent against your real Tahoe `chat.db`; the iPhone/Watch apps beyond type-checking; Canopy's `/api/v1` against the live site (the staged-task change is deployed, the sync is tested against a stub).
+**Not verified (needs real accounts/hardware):** live Gmail/Chat/Pub/Sub/Drive calls (stubs only — expect small payload fixes on first contact); the Docker images (never built on the dev machine; check the `speaches` Whisper image name on first pull); the Mac agent on a real macOS Tahoe `chat.db`; the phone/watch apps beyond type-checking; the Canopy sync against the live site.
 
-**Known limits:** search is keyword (SQLite FTS5), not embeddings, to keep it tiny; Chat approvals are text commands (no buttons yet); connectors are read-only; one LLM call at a time (a few seconds each).
+**Known limits:** keyword search (FTS5), not embeddings; Chat approvals are text commands (no buttons yet); connectors are read-only polling; one model call at a time.
 
-## Develop
-`npm test` · `npm run typecheck` (Node 24, zero runtime dependencies).
+## Privacy
+Message text, open-item titles and search snippets are sent to Anthropic through Claude Code to be understood — see [what leaves your server](docs/security.md#what-leaves-your-server). Voice audio is transcribed locally. This repository contains no secrets; `.env`, `data/` and `claude-home/` are git-ignored.
+
+## Contributing / issues
+Issues and pull requests are welcome; please keep private message content and secrets out of them.
