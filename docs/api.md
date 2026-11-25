@@ -27,6 +27,12 @@ Headers: `X-Capture-Id` (**required**, 8–64 chars `[A-Za-z0-9-]`, unique per r
 ### `POST /ingest/mac` → `{"accepted":N,"maxRowid":N}`
 Used by the [Mac agent](mac-agent.md). Body `{"rows":[{rowid,guid,text,attr_hex,date,is_from_me,handle}]}` (max 500 rows).
 
+## Mac app
+### `GET /app/mac/latest` (full token) → `{"release":{available,version,tag,name,publishedAt,notes,size,assetName,releaseUrl,error?}}`
+The newest Mac app release on GitHub (`GITHUB_REPO`), cached 10 minutes; `?refresh=1` bypasses the cache. `available:false` + `error` when nothing is released or GitHub can't be reached.
+### `GET /app/mac/download` (full token) → the `Assistant-Mac.zip` file
+Streams the newest release asset through the server (so a private repo works with `GITHUB_TOKEN`). `404` if nothing is released, `502` if GitHub refuses.
+
 ## Items
 ### `GET /items?state=open|done|dropped|all&kind=ticket|reminder|task`
 `{"items":[{id,kind,title,detail,state,stageId,stageLabel,dueAt,priority,backend,backendRef,classId,externalKey,createdAt,updatedAt,ackedAt,snoozeUntil,nextNagAt,nagCount}]}` — default `state=open`.

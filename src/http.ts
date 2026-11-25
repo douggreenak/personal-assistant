@@ -1,5 +1,7 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join, extname } from 'node:path';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import type { Ctx } from './ctx.ts';
@@ -18,6 +20,7 @@ import { indexPaths } from './index/indexer.ts';
 import { activity, connectorsFull, deleteConnector, integrations, listMessages, retryMessage, saveServiceAccount, setConnectorStatus, setSecret, skipMessage, status } from './admin.ts';
 import { saveSettings, viewSettings } from './settings.ts';
 import { getLogs } from './logs.ts';
+import { latestMacRelease, openMacDownload, publicRelease } from './macapp.ts';
 
 class HttpError extends Error { status: number; constructor(status: number, m: string) { super(m); this.status = status; } }
 const JSON_LIMIT = 1024 * 1024, AUDIO_LIMIT = 60 * 1024 * 1024;
@@ -135,6 +138,15 @@ export function createHttp(ctx: Ctx, deps: HttpDeps): Server {
     }
 
     // ---- management API used by the web UI ----
+    if (path === '/app/mac/latest' && method === 'GET') return send(res, 200, { release: publicRelease(await latestMacRelease(ctx, deps.fetchImpl, url.searchParams.get('refresh') === '1')) });
+    if (path === '/app/mac/download' && method === 'GET') {
+      let dl: Awaited<ReturnType<typeof openMacDownload>>;
+      try { dl = await openMacDownload(ctx, deps.fetchImpl); } catch (e) { throw new HttpError(502, (e as Error).message); }
+      if (!dl) throw new HttpError(404, 'No Mac app has been released yet.');
+      res.writeHead(200, { 'content-type': 'application/zip', 'content-disposition': `attachment; filename="${dl.rel.assetName}"`, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', ...(dl.rel.size ? { 'content-length': String(dl.rel.size) } : {}) });
+      try { await pipeline(Readable.fromWeb(dl.res.body as never), res); } catch { res.destroy(); }
+      return;
+    }
     if (path === '/status' && method === 'GET') return send(res, 200, status(ctx));
     if (path === '/status/integrations' && method === 'GET') return send(res, 200, { integrations: await integrations(ctx) });
     if (path === '/activity' && method === 'GET') return send(res, 200, { events: activity(ctx, Number(url.searchParams.get('limit') ?? 60)) });

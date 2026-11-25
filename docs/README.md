@@ -7,7 +7,8 @@
 | [Using it](usage.md) | know what to say, what the chat commands are, how nagging and approvals feel day to day |
 | [Architecture](architecture.md) | understand how a message becomes a task, the data model, and the module map |
 | [Google setup](google-setup.md) | connect Gmail, Google Chat, and Drive |
-| [Mac agent](mac-agent.md) | read your texts from the always-on Mac |
+| [Mac app](mac-app.md) | native menu-bar app: texts, Calendar, Reminders, Contacts, Shortcuts — downloaded from the web UI |
+| [Mac agent](mac-agent.md) | the tiny script alternative for reading texts from an old always-on Mac |
 | [iPhone & Apple Watch](ios-watch.md) | record voice offline and have it upload later |
 | [Canopy integration](canopy.md) | send school work to Canopy and get grade/due alerts back |
 | [Ticketing integration](ticketing.md) | how the standalone ticket app plugs in |

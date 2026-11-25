@@ -15,6 +15,7 @@ export interface Config {
   claude: { bin: string; model?: string; timeoutMs: number };
   autoApplyMinConfidence: number;                        // below this, updates/completions go to the approval queue
   ignoreSenders: RegExp[];
+  github: { repo: string; token: string };               // where the Mac app releases live
 }
 
 const list = (v: string | undefined) => (v ?? '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -41,6 +42,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     indexPaths: list(env.INDEX_PATHS), driveFolderIds: list(env.DRIVE_FOLDER_IDS),
     claude: { bin: env.CLAUDE_BIN ?? 'claude', model: env.CLAUDE_MODEL, timeoutMs: Number(env.CLAUDE_TIMEOUT_MS ?? 180000) },
     autoApplyMinConfidence: Number(env.AUTO_APPLY_MIN_CONFIDENCE ?? 0.6),
+    github: { repo: env.GITHUB_REPO ?? 'douggreenak/personal-assistant', token: env.GITHUB_TOKEN ?? '' },
     ignoreSenders: list(env.IGNORE_SENDERS ?? 'no-?reply,mailer-daemon,notifications?@').map((s) => new RegExp(s, 'i')),
   };
 }

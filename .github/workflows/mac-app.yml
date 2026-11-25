@@ -1,0 +1,35 @@
+name: Mac app
+# Publishes the Mac app as a GitHub release. The web UI's "Download" button serves the newest one.
+#   git tag mac-v1.0.0 && git push origin mac-v1.0.0
+on:
+  push:
+    tags: ['mac-v*']
+  workflow_dispatch:
+    inputs:
+      version: { description: 'Version to build, e.g. 1.0.0 (builds only; publish by pushing a mac-v tag)', required: true }
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Work out the version
+        id: v
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then V="${GITHUB_REF_NAME#mac-v}"; else V="${{ inputs.version }}"; fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+      - name: Build
+        run: ./mac-app/build.sh "${{ steps.v.outputs.version }}" "${{ github.run_number }}"
+      - uses: actions/upload-artifact@v4
+        with: { name: Assistant-Mac, path: mac-app/dist/Assistant-Mac.zip }
+      - name: Publish release
+        if: github.event_name == 'push'
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: |
+          gh release create "$GITHUB_REF_NAME" mac-app/dist/Assistant-Mac.zip \
+            --title "Mac app ${{ steps.v.outputs.version }}" --generate-notes

@@ -1,4 +1,5 @@
 let token = localStorage.getItem('assistant_token') || '';
+export const getToken = () => token;
 export const hasToken = () => !!token;
 export const setToken = (t) => { token = t; localStorage.setItem('assistant_token', t); };
 export const clearToken = () => { token = ''; localStorage.removeItem('assistant_token'); };

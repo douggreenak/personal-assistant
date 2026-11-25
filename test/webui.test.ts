@@ -301,7 +301,7 @@ test('log buffer captures console output with levels and a cap', () => {
 test('web build is in sync: every page/route the UI calls exists on the server', () => {
   const js = readFileSync(new URL('../src/web/assets/app.js', import.meta.url), 'utf8');
   assert.ok(existsSync(new URL('../src/web/assets/fonts/roboto-flex.woff2', import.meta.url)));
-  for (const needle of ['/status', '/items', '/messages', '/approvals', '/connectors/full', '/admin/restart', '/settings', '/auth/login', '/auth/password', '/search?q=']) assert.ok(js.includes(needle), needle);
+  for (const needle of ['/status', '/items', '/messages', '/approvals', '/connectors/full', '/admin/restart', '/settings', '/auth/login', '/auth/password', '/search?q=', '/app/mac/download', '/app/mac/latest']) assert.ok(js.includes(needle), needle);
   assert.ok(!/#c2478f|#6750a4/i.test(readFileSync(new URL('../src/web/assets/styles.css', import.meta.url), 'utf8')));
 });
 

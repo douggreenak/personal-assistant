@@ -1,5 +1,7 @@
 # Mac agent (texts)
 
+> The native **[Mac app](mac-app.md)** does everything this script does and more (Calendar, Reminders, Contacts, Shortcuts). Use the script when you want something with no app at all — e.g. an old always-on Intel Mac on an old macOS.
+
 The always-on Mac's only job is to forward new Messages rows to the server. The agent is a single ~40-line `bash` script that uses only what ships with macOS (`bash`, `sqlite3`, `curl`) — no Node, no Python, no daemon — so it costs an old Intel MacBook essentially nothing. All parsing and all the thinking happen on the server.
 
 ## What it does

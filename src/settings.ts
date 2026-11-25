@@ -46,6 +46,9 @@ export const SETTINGS: SettingDef[] = [
   { key: 'INDEX_PATHS', label: 'Index paths', group: 'Files & voice', type: 'list', help: 'Folders inside the container to index for questions.' },
   { key: 'TRANSCRIBE_URL', label: 'Transcription URL', group: 'Files & voice', type: 'text', help: 'OpenAI-compatible /v1/audio/transcriptions endpoint.' },
 
+  { key: 'GITHUB_REPO', label: 'GitHub repository', group: 'Mac app', type: 'text', placeholder: 'douggreenak/personal-assistant', help: 'Where Mac app releases are published (owner/name).' },
+  { key: 'GITHUB_TOKEN', label: 'GitHub token', group: 'Mac app', type: 'secret', help: 'Only needed if the repository is private (read access to releases).' },
+
   { key: 'INGEST_TOKEN', label: 'Ingest token', group: 'Access', type: 'secret', help: 'Send-input-only token for the Mac agent and phone app.' },
 ];
 const BY_KEY = new Map(SETTINGS.map((s) => [s.key, s]));

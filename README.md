@@ -12,6 +12,7 @@ It runs on your own Linux server (Docker), is reachable only over [Tailscale](ht
 - **Understands messy input** — long, rambling speech or text becomes separate items; updates match existing items instead of duplicating.
 - **Reads your world** — texts (from a Mac), Gmail, Google Chat, plus anything you connect later by pasting its API docs.
 - **Right place for each thing** — IT-style **tickets** with stages ([Ticketing](https://github.com/douggreenak/ticketing), a standalone app), **reminders** that keep nagging, plain **tasks**, and school work into [Canopy](https://github.com/douggreenak/Canopy-School-Planner).
+- **A Mac app** — download it from the web UI; it reads your texts and talks to Calendar, Reminders, Contacts and Shortcuts.
 - **Voice from anywhere** — iPhone and Apple Watch record offline and upload when connected.
 - **Talk to it in Google Chat** — "what's open?", approvals, snoozes, and questions answered from your own messages and files (SMB share, Drive) with citations.
 - **Asks before it matters** — it adds new things freely, but asks first about money, other people's deadlines, contacting anyone, dropping things, or when it's unsure.
@@ -35,7 +36,7 @@ Start with **[Getting started](docs/getting-started.md)**. Everything is in [`do
 | [Configuration reference](docs/configuration.md) | every setting |
 | [Using it](docs/usage.md) | what to say, commands, nagging, approvals, questions |
 | [Architecture](docs/architecture.md) | how it works inside, data model, module map |
-| [Google setup](docs/google-setup.md) · [Mac agent](docs/mac-agent.md) · [iPhone & Watch](docs/ios-watch.md) | connect each source |
+| [Google setup](docs/google-setup.md) · [Mac app](docs/mac-app.md) · [Mac agent](docs/mac-agent.md) · [iPhone & Watch](docs/ios-watch.md) | connect each source |
 | [Canopy](docs/canopy.md) · [Ticketing](docs/ticketing.md) · [Connectors](docs/connectors.md) | integrations |
 | [Web UI](docs/web-ui.md) · [HTTP API](docs/api.md) | manage it from a browser · script against it |
 | [Security & privacy](docs/security.md) | threat model, what leaves your server |
@@ -53,6 +54,7 @@ docker compose up -d --build
 ```
 src/        the assistant (TypeScript, Node 24, zero runtime dependencies)
 test/       25 automated tests
+mac-app/    the native Mac app (SwiftUI menu-bar app: Messages, Calendar, Reminders, Contacts, Shortcuts)
 mac/        the tiny Mac agent (bash + sqlite3 + curl) and its launchd installer
 ios/        SwiftUI sources: iPhone recorder/uploader and Apple Watch recorder
 scripts/    one-time helpers (Google OAuth token, connector secrets)

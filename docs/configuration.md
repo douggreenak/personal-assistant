@@ -64,6 +64,12 @@ All settings are environment variables (put them in `.env`; Docker Compose passe
 | `TRANSCRIBE_URL` | OpenAI-compatible transcription endpoint (set by compose to the local Whisper). Unset → voice uploads return 503 so phones keep them queued. |
 | `TRANSCRIBE_MODEL` | default `Systran/faster-whisper-small`. |
 
+## Mac app downloads
+| Variable | Default | Meaning |
+|---|---|---|
+| `GITHUB_REPO` | `douggreenak/personal-assistant` | `owner/name` whose `mac-v*` releases the System page offers |
+| `GITHUB_TOKEN` | (none) | only for a private repo; needs read access to releases. Sent to GitHub only. |
+
 ## Push
 | Variable | Meaning |
 |---|---|

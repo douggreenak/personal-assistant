@@ -1,0 +1,47 @@
+name: Assistant
+options:
+  bundleIdPrefix: com.assistant
+  deploymentTarget: { macOS: "14.0" }     # Sonoma or newer (also runs on Intel Macs)
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"            # CI overrides this from the release tag
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_HARDENED_RUNTIME: YES
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"               # ad-hoc: no Apple developer account needed (see docs/mac-app.md)
+    ARCHS: "arm64 x86_64"                  # Apple silicon + Intel
+    ONLY_ACTIVE_ARCH: NO
+targets:
+  Assistant:
+    type: application
+    platform: macOS
+    sources: [Assistant]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.assistant.mac
+        PRODUCT_NAME: Assistant
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Assistant/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Assistant/Assistant.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    info:
+      path: Assistant/Info.plist
+      properties:
+        CFBundleName: Assistant
+        CFBundleDisplayName: Assistant
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationCategoryType: public.app-category.productivity
+        LSMinimumSystemVersion: "14.0"
+        LSUIElement: true                  # menu-bar app, no Dock icon
+        NSHumanReadableCopyright: Personal Assistant
+        NSCalendarsFullAccessUsageDescription: Reads upcoming events so the assistant can remind you about them.
+        NSRemindersFullAccessUsageDescription: Sends what you add to "Assistant Inbox" to your assistant, and shows your assistant's reminders and tasks in the "Assistant" list.
+        NSContactsUsageDescription: Shows names instead of phone numbers for the people who text you.
+    entitlements:
+      path: Assistant/Assistant.entitlements
+      properties:
+        com.apple.security.personal-information.calendars: true
+        com.apple.security.personal-information.addressbook: true
