@@ -1,5 +1,5 @@
 import { api, clearToken } from '../api.js';
-import { h, icon, clear, chip, guarded, toast, dialog, confirmDialog } from '../ui.js';
+import { h, icon, clear, chip, guarded, toast, dialog, confirmDialog, page } from '../ui.js';
 import { PRESETS, prefs, applyTheme } from '../theme.js';
 import { restartServer } from './system.js';
 
@@ -8,6 +8,7 @@ const GROUP_ICON = { General: 'tune', Brain: 'smart_toy', Ticketing: 'confirmati
 export default async function settings(view) {
   const { settings: defs } = await api('/settings');
   const dirty = new Map(); const bar = h('div', {});
+  page.guard = () => dirty.size > 0;
   const touch = (k, v) => { dirty.set(k, v); drawBar(); };
   function drawBar() {
     clear(bar); if (!dirty.size) return;

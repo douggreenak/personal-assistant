@@ -40,7 +40,7 @@ export const SHORTCUTS = [
     ['s', 'Snooze the selected reminder 2 hours'], ['Delete', 'Drop (item) · reject (approval)'], ['Shift R', 'Process the selected message again']]],
 ];
 export function showHelp() {
-  const { close } = dialog({ title: 'Keyboard shortcuts', fullscreen: true,
+  const { close } = dialog({ title: 'Keyboard shortcuts', fullscreen: true, dismissable: true,
     content: SHORTCUTS.map(([g, rows]) => h('div', {}, h('div', { class: 'label', style: 'margin:6px 0 8px' }, g), h('div', { class: 'keys' }, rows.map(([k, d]) => [h('span', { class: 'keycaps' }, k.split(' ').map((x) => h('kbd', {}, x))), h('span', {}, d)])))),
     actions: [h('md-filled-button', { onclick: () => close() }, 'Got it')] });
 }

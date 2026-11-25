@@ -30,7 +30,7 @@ export const MANIFEST_SCHEMA = {
   required: ['id', 'name', 'description', 'baseUrl', 'auth', 'poll'],
 } as const;
 
-const CONNECTOR_SYSTEM = `You design READ-ONLY polling connectors from API documentation supplied by the owner of a personal assistant.
+export const CONNECTOR_SYSTEM = `You design READ-ONLY polling connectors from API documentation supplied by the owner of a personal assistant.
 Produce a manifest: one HTTPS GET endpoint that lists recent records (new messages, orders, alerts, tickets...), where in the JSON response the array is
 (itemsPath, dotted, omit if the response itself is the array), which field is a stable unique id (idField), a title field, the fields to read as the body, and
 optionally sender/time fields. Choose the simplest auth the docs support; name the secret in UPPER_SNAKE_CASE (e.g. ACME_API_KEY). Never include real credentials.
@@ -89,8 +89,12 @@ export function getSecret(ctx: Ctx, name: string): string | undefined {
   return undefined;
 }
 
-const dig = (o: unknown, path: string): unknown => path.split('.').reduce<unknown>((v, k) => (v && typeof v === 'object' ? (v as Record<string, unknown>)[k] : undefined), o);
-const asText = (v: unknown): string => (v == null ? '' : typeof v === 'string' ? v : JSON.stringify(v));
+export const dig = (o: unknown, path: string): unknown => path.split('.').reduce<unknown>((v, k) => (v && typeof v === 'object' ? (v as Record<string, unknown>)[k] : undefined), o);
+export const asText = (v: unknown): string => (v == null ? '' : typeof v === 'string' ? v : JSON.stringify(v));
+
+/** A failed fetch/parse that carries a short sample of what the service actually returned, so a repair attempt can see it. */
+export class FetchProblem extends Error { sample = ''; }
+const problem = (msg: string, sample: string): FetchProblem => { const e = new FetchProblem(msg); e.sample = sample.slice(0, 1500); return e; };
 
 export async function fetchRecords(ctx: Ctx, m: Manifest, fetchImpl: typeof fetch = fetch): Promise<Record<string, unknown>[]> {
   const u = await assertPublicHttps(m.baseUrl + m.poll.path);
@@ -103,15 +107,15 @@ export async function fetchRecords(ctx: Ctx, m: Manifest, fetchImpl: typeof fetc
     else headers.authorization = `Basic ${Buffer.from(s).toString('base64')}`;
   }
   const res = await fetchImpl(u, { method: 'GET', headers, redirect: 'manual', signal: AbortSignal.timeout(20000) });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) throw problem(`HTTP ${res.status}`, await res.text().catch(() => ''));
   const text = await res.text(); if (text.length > 2_000_000) throw new Error('response too large');
-  const body = JSON.parse(text) as unknown;
+  let body: unknown; try { body = JSON.parse(text); } catch { throw problem('the response was not JSON', text); }
   const arr = m.poll.itemsPath ? dig(body, m.poll.itemsPath) : body;
-  if (!Array.isArray(arr)) throw new Error('itemsPath did not point to an array');
+  if (!Array.isArray(arr)) throw problem('itemsPath did not point to an array', text);
   return arr.slice(0, 200) as Record<string, unknown>[];
 }
 
-const toMessage = (m: Manifest, r: Record<string, unknown>) => ({
+export const toMessage = (m: Manifest, r: Record<string, unknown>) => ({
   source: `connector:${m.id}`, sourceId: asText(dig(r, m.poll.idField)),
   sender: m.poll.senderField ? asText(dig(r, m.poll.senderField)) : m.name, subject: m.poll.titleField ? asText(dig(r, m.poll.titleField)) : '',
   body: m.poll.bodyFields.map((f) => `${f}: ${asText(dig(r, f))}`).join('\n'),
@@ -123,18 +127,23 @@ export function listConnectors(ctx: Ctx): ConnRow[] {
   return (ctx.db.prepare('SELECT * FROM connectors ORDER BY created_at').all() as Record<string, unknown>[]).map((r) => ({
     id: r.id as string, manifest: JSON.parse(r.manifest as string), status: r.status as string, lastRunAt: (r.last_run_at as string) ?? null, lastError: (r.last_error as string) ?? null }));
 }
-const getConn = (ctx: Ctx, id: string) => listConnectors(ctx).find((c) => c.id === id);
+export const getConn = (ctx: Ctx, id: string) => listConnectors(ctx).find((c) => c.id === id);
+
+/** The pasted text itself, or — if it is just an https URL — that page's visible text. Throws a user-readable message. */
+export async function loadDocs(input: string, fetchImpl: typeof fetch = fetch): Promise<string> {
+  const docs = input.trim();
+  if (!/^https:\/\/\S+$/.test(docs)) return docs;
+  try {
+    const u = await assertPublicHttps(docs);
+    const r = await fetchImpl(u, { redirect: 'manual', signal: AbortSignal.timeout(20000) });
+    if (!r.ok) throw new Error(`Couldn't read ${docs} (HTTP ${r.status}). Paste the docs text instead.`);
+    return (await r.text()).replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>|<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 60000);
+  } catch (e) { const m = (e as Error).message; throw new Error(m.startsWith("Couldn't read") ? m : `Couldn't fetch that URL: ${m}. Paste the docs text instead.`); }
+}
 
 export async function proposeConnector(ctx: Ctx, input: string, fetchImpl: typeof fetch = fetch): Promise<string> {
-  let docs = input.trim();
-  if (/^https:\/\/\S+$/.test(docs)) {
-    try {
-      const u = await assertPublicHttps(docs);
-      const r = await fetchImpl(u, { redirect: 'manual', signal: AbortSignal.timeout(20000) });
-      if (!r.ok) return `Couldn't read ${docs} (HTTP ${r.status}). Paste the docs text instead.`;
-      docs = (await r.text()).replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>|<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 60000);
-    } catch (e) { return `Couldn't fetch that URL: ${(e as Error).message}. Paste the docs text instead.`; }
-  }
+  let docs: string;
+  try { docs = await loadDocs(input, fetchImpl); } catch (e) { return (e as Error).message; }
   const raw = await ctx.llm.json({ system: CONNECTOR_SYSTEM, prompt: `<docs>\n${docs.slice(0, 60000)}\n</docs>`, schema: MANIFEST_SCHEMA as unknown as Record<string, unknown> });
   let m: Manifest;
   try { m = validateManifest(raw); await assertPublicHttps(m.baseUrl); } catch (e) { return `I couldn't build a safe connector from that: ${(e as Error).message}`; }

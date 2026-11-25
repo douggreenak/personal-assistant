@@ -46,3 +46,6 @@ Mirror `src/backends/ticketing.ts` (a small `fetch` client taking an injectable 
 ## Web UI tests
 - `npm test` includes `test/webui.test.ts`: static serving, password login, settings, inbox, items, connectors, admin endpoints (no model calls).
 - `npm run e2e` drives the real UI in Chromium against a throwaway assistant (temp data dir; the model binary is stubbed out). Needs `cd web-src && npm install` and a Chromium, e.g. `CHROMIUM=/usr/bin/chromium npm run e2e`.
+
+## Running the tests fast
+`npm run test:all` runs the unit tests (one process per file, all cores) and the browser test (two halves, each with its own throwaway server and browser) at the same time — about a minute instead of two and a half. `npm test` is unit tests only; `npm run e2e` is the parallel browser test; `npm run e2e:serial` runs it in one piece (`E2E_GROUP=a|b` runs one half).

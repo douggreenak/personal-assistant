@@ -56,3 +56,8 @@ Approving applies the stored action exactly once (a second call says it was alre
 ### `GET /healthz` → `{"ok":true}` (no auth)
 ### `POST /hooks/ticketing`
 Called by the ticket tracker's webhooks. No bearer token; authenticated by the `X-Tickets-Signature: sha256=<hmac>` header using `TICKETING_WEBHOOK_SECRET`. `401` on a bad signature.
+
+### Connect a service in one step
+`POST /connectors/auto` (full token) `{input, apiKey?}` → `202 {job}`. `input` is pasted API docs or an `https://` docs URL; `apiKey` is optional and is stored in `secrets.json`, never sent to the model.
+The server designs a read-only connector, saves it, dry-runs it against the real service and — if that fails — shows the model what the service actually returned so it can fix the manifest (up to 4 tries), then enables it. On failure nothing is left behind.
+`GET /connectors/auto/{id}` → `{job:{id,state,steps[],connectorId,secret,result}}` with `state` = `running | needs_key | done | failed`. `POST /connectors/auto/{id}/key` `{apiKey}` resumes a job that is `needs_key`.

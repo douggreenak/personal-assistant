@@ -20,7 +20,7 @@ function add(e, kids) {
   }
 }
 /** Per-page hooks for the keyboard layer: the page sets `page.newAction`; main.js resets it on every navigation. */
-export const page = { newAction: null };
+export const page = { newAction: null, guard: null };
 export const clear = (e) => { e.replaceChildren(); return e; };
 
 export function icon(name, cls = '') {
@@ -58,7 +58,7 @@ export async function guarded(fn, okMsg) {
 
 // ---- dialogs ----
 /** Opens an md-dialog; `build(close)` returns {content, actions}. Resolves when closed. */
-export function dialog({ title, content, actions = [], fullscreen = false, onClose }) {
+export function dialog({ title, content, actions = [], fullscreen = false, onClose, dismissable = false }) {
   const dlg = h('md-dialog', { class: fullscreen ? 'full' : '' },
     h('div', { slot: 'headline' }, title),
     h('div', { slot: 'content' }, content),
@@ -67,6 +67,9 @@ export function dialog({ title, content, actions = [], fullscreen = false, onClo
   dlg.addEventListener('keydown', (e) => {            // Ctrl/Cmd+Enter submits whatever the dialog's main button is
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { const b = [...dlg.querySelectorAll('[slot=actions] md-filled-button')].pop(); if (b && !b.disabled) { e.preventDefault(); b.click(); } }
   });
+  // A click on the dimmed area must not throw away what you typed; Esc and the Close/Cancel buttons still work.
+  let escAt = 0; dlg.addEventListener('keydown', (e) => { if (e.key === 'Escape') escAt = Date.now(); });
+  if (!dismissable) dlg.addEventListener('cancel', (e) => { if (Date.now() - escAt > 400) e.preventDefault(); });
   dlg.addEventListener('closed', () => { dlg.remove(); onClose?.(); });
   document.body.append(dlg); dlg.show();
   return { dlg, close };
@@ -95,3 +98,17 @@ export function menu(anchorBtn, entries) {
   return m;
 }
 export const debounce = (fn, ms = 250) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+
+/** "in 3 days", "yesterday", "5 hours ago" — the exact date goes in a tooltip next to it. */
+export function rel(iso) {
+  const ms = new Date(iso) - Date.now(), a = Math.abs(ms), f = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+  if (a < 6e4) return 'now';
+  if (a < 36e5) return f.format(Math.round(ms / 6e4), 'minute');
+  if (a < 864e5) return f.format(Math.round(ms / 36e5), 'hour');
+  if (a < 45 * 864e5) return f.format(Math.round(ms / 864e5), 'day');
+  if (a < 540 * 864e5) return f.format(Math.round(ms / (30.4 * 864e5)), 'month');
+  return f.format(Math.round(ms / (365 * 864e5)), 'year');
+}
+export function download(name, text, type) {
+  const a = h('a', { href: URL.createObjectURL(new Blob([text], { type })), download: name }); document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}

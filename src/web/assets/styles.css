@@ -206,3 +206,31 @@ kbd { font: 650 .8rem/1 var(--font); background: var(--md-sys-color-surface-cont
 .chord-hint kbd { background: color-mix(in srgb, var(--md-sys-color-inverse-on-surface) 20%, transparent); color: inherit; border: 0; margin-right: 6px; }
 .row[hidden], details[hidden], [data-q][hidden] { display: none; }
 @media (hover: none) { .chord-hint { display: none; } }
+
+/* ===== audit fixes & polish ===== */
+.grid > *, .card { min-width: 0; }
+.timeline > div, .timeline .t, .card .title-m, .card .title-l, .card .label, .s { overflow-wrap: anywhere; }
+.due { display: inline-flex; align-items: center; gap: 4px; }
+.due .ic { width: 16px; height: 16px; flex: none; }
+.due.tag .ic { width: 14px; height: 14px; }
+.cmds .cmd { cursor: pointer; grid-template-columns: auto 1fr auto; }
+.cmds .cmd.first { outline: 2px solid var(--md-sys-color-primary); outline-offset: -2px; }
+.cmds .cmd:focus-visible { outline: 3px solid var(--md-sys-color-primary); }
+.offline { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 95; display: flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 999px; background: var(--md-sys-color-error); color: var(--md-sys-color-on-error); font-weight: 650; box-shadow: 0 6px 24px #0004; }
+.page > md-outlined-text-field { display: block; }
+@media (max-width: 600px) {
+  .cols-3 { grid-template-columns: 1fr 1fr; }
+  .stat { min-height: 92px; padding: 14px 16px; }
+  .stat .num { font-size: 2rem; }
+  .row { gap: 10px; padding: 10px 12px; }
+  .row .lead { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } }
+
+.autolog { display: grid; gap: 8px; margin: 6px 0; }
+.astep { display: flex; gap: 10px; align-items: flex-start; overflow-wrap: anywhere; }
+.astep .dot { flex: none; width: 10px; height: 10px; margin-top: 7px; border-radius: 50%; background: var(--md-sys-color-primary); }
+.astep.now .dot { animation: pulse 1s ease-in-out infinite; }
+.astep.bad { color: var(--md-sys-color-error); } .astep.bad .dot { background: var(--md-sys-color-error); }
+.ok-box { display: flex; gap: 10px; align-items: center; padding: 14px 16px; border-radius: var(--r-m); background: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); font-weight: 650; }
+@keyframes pulse { 50% { opacity: .25; transform: scale(.7); } }

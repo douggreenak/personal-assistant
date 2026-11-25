@@ -45,3 +45,9 @@ Press `?` in the UI for the live list.
 | `Esc` | leave a text box, close a dialog |
 
 Shortcuts are ignored while you are typing in a field or a dialog is open (except `Ctrl K` and `Esc`).
+
+## Connectors: paste, connect, done
+**Add** opens one box: paste the API docs (or a link) and, if the service needs one, the key. **Connect** designs the connector, tests it against the real service, fixes what goes wrong using the service's actual response, and switches it on — you watch the steps live. If no key was given and one is needed, it asks right there. On failure the half-built connector is removed and the dialog keeps your text for another try. The old approve → set key → test → enable path still exists for connectors proposed from chat.
+
+## Other behaviour worth knowing
+Dialogs no longer close when you click outside them (Esc and Close still do). Items has sort, Overdue/Today/Next 7 days filters, quick-add, CSV/JSON export, and remembers your view. `Ctrl K` is also a command palette. Leaving Settings with unsaved changes asks first; a banner shows when the server is unreachable.

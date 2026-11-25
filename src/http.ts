@@ -14,6 +14,7 @@ import { ask } from './qa.ts';
 import { applyTicketingEvent, verifySignature } from './sync/ticketing.ts';
 import { ingestVoice } from './voice.ts';
 import { listConnectors, proposeConnector, testConnector, enableConnector } from './connectors.ts';
+import { startAutoConnect, continueWithKey, getJob, type AutoJob } from './autoconnect.ts';
 import { applyAction, type Action } from './actions.ts';
 import { search } from './qa.ts';
 import { indexPaths } from './index/indexer.ts';
@@ -36,6 +37,7 @@ async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> 
   try { const v = JSON.parse(b.toString('utf8')); if (v && typeof v === 'object' && !Array.isArray(v)) return v; } catch { /* below */ }
   throw new HttpError(400, 'Body must be a JSON object.');
 }
+const pub = (j: AutoJob) => ({ id: j.id, state: j.state, steps: j.steps, connectorId: j.connectorId, secret: j.secret, result: j.result });
 const send = (res: ServerResponse, status: number, body: unknown) => {
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
   res.end(JSON.stringify(body));
@@ -185,6 +187,12 @@ export function createHttp(ctx: Ctx, deps: HttpDeps): Server {
       const r = await applyAction(ctx, a, null, 'owner'); return send(res, 200, { summary: r.summary, item: r.item });
     }
     if (path === '/connectors/full' && method === 'GET') return send(res, 200, { connectors: connectorsFull(ctx) });
+    if (path === '/connectors/auto' && method === 'POST') { const b = await readJson(req); const j = startAutoConnect(ctx, String(b.input ?? ''), b.apiKey ? String(b.apiKey) : undefined); return send(res, 202, { job: pub(j) }); }
+    if ((m = /^\/connectors\/auto\/(\w+)(\/key)?$/.exec(path))) {
+      const j = getJob(m[1]); if (!j) throw new HttpError(404, 'unknown job');
+      if (m[2] && method === 'POST') { try { return send(res, 200, { job: pub(continueWithKey(ctx, m[1], String((await readJson(req)).apiKey ?? ''))) }); } catch (e) { throw new HttpError(400, (e as Error).message); } }
+      if (!m[2] && method === 'GET') return send(res, 200, { job: pub(j) });
+    }
     if (path === '/connectors/propose' && method === 'POST') return send(res, 200, { result: await proposeConnector(ctx, String((await readJson(req)).input ?? '')) });
     if ((m = /^\/connectors\/([\w-]+)\/(test|enable|disable)$/.exec(path)) && method === 'POST') {
       if (m[2] === 'test') return send(res, 200, { result: await testConnector(ctx, m[1]) });

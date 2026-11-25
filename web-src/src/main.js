@@ -5,10 +5,10 @@ import '@material/web/dialog/dialog.js'; import '@material/web/menu/menu.js'; im
 import '@material/web/select/outlined-select.js'; import '@material/web/select/select-option.js'; import '@material/web/chips/chip-set.js'; import '@material/web/chips/filter-chip.js'; import '@material/web/chips/assist-chip.js';
 import '@material/web/progress/linear-progress.js';
 import { api, hasToken, clearToken, login } from './api.js';
-import { h, icon, clear, state, spinner, dialog, toast, page } from './ui.js';
+import { h, icon, clear, state, spinner, dialog, toast, page, confirmDialog } from './ui.js';
 import { initShortcuts, showHelp } from './shortcuts.js';
 import { itemDialog } from './pages/items.js';
-import { applyTheme } from './theme.js';
+import { applyTheme, prefs, isDark } from './theme.js';
 import home from './pages/home.js'; import items from './pages/items.js'; import chat from './pages/chat.js'; import inbox from './pages/inbox.js';
 import approvals from './pages/approvals.js'; import connectors from './pages/connectors.js'; import system from './pages/system.js'; import settings from './pages/settings.js';
 
@@ -20,7 +20,8 @@ const PAGES = [
 ];
 const MOBILE = ['home', 'items', 'chat', 'approvals'];
 const root = document.getElementById('root');
-let cleanup = null, badges = {}, navEls = [];
+let cleanup = null, badges = {}, navEls = [], curLabel = 'Home', lastHash = location.hash, hiddenAt = 0;
+const setTitle = () => { const n = (badges.approvals || 0) + (badges.inbox || 0); document.title = (n ? `(${n}) ` : '') + curLabel + ' · Assistant'; };
 
 export const nav = (id) => { location.hash = '#/' + id; };
 export const counts = () => badges;
@@ -42,7 +43,7 @@ function showLogin() {
 
 async function refreshStatus() {
   try {
-    const s = await api('/status'); state.tz = s.tz; badges = { approvals: s.approvals, inbox: s.queue.failing, status: s };
+    const s = await api('/status'); state.tz = s.tz; badges = { approvals: s.approvals, inbox: s.queue.failing, status: s }; setTitle();
     navEls.forEach((d) => { const b = d.querySelector('.badge'); const n = badges[d.dataset.id] || 0; if (b) { b.textContent = n; b.hidden = !n; } });
   } catch { /* offline */ }
 }
@@ -56,19 +57,37 @@ function route() {
   const id = (location.hash.match(/^#\/(\w+)/) || [])[1] || 'home';
   const p = PAGES.find((x) => x.id === id) || PAGES[0];
   navEls.forEach((d) => d.toggleAttribute('aria-current', d.dataset.id === p.id)); navEls.forEach((d) => d.dataset.id === p.id ? d.setAttribute('aria-current', 'page') : d.removeAttribute('aria-current'));
-  cleanup?.(); cleanup = null; refreshStatus(); page.newAction = null;
+  cleanup?.(); cleanup = null; refreshStatus(); page.newAction = null; page.guard = null; curLabel = p.label === 'Connect' ? 'Connectors' : p.label; setTitle(); lastHash = location.hash;
   const view = document.getElementById('view'); clear(view).append(spinner());
   window.scrollTo(0, 0);
   Promise.resolve(p.fn(view, { nav, refreshStatus })).then((c) => { cleanup = typeof c === 'function' ? c : null; }).catch((e) => clear(view).append(h('div', { class: 'card' }, h('h2', {}, 'Something went wrong'), h('p', { class: 'muted' }, e.message))));
 }
 
 function searchDialog() {
-  const out = h('div', { class: 'list' }); const q = h('md-outlined-text-field', { label: 'Search messages, items and files', 'supporting-text': 'Keyword search over everything the assistant has seen' });
-  let t; q.addEventListener('input', () => { clearTimeout(t); t = setTimeout(async () => {
+  const go = (id) => () => { close(); nav(id); };
+  const COMMANDS = [
+    ...PAGES.map((p) => ({ label: 'Go to ' + (p.label === 'Connect' ? 'Connectors' : p.label), icon: p.icon, run: go(p.id) })),
+    { label: 'New item', icon: 'add', run: () => { close(); (page.newAction || (() => itemDialog(null, () => route())))(); } },
+    { label: isDark() ? 'Switch to light mode' : 'Switch to dark mode', icon: isDark() ? 'light_mode' : 'dark_mode', run: () => { close(); prefs.set('mode', isDark() ? 'light' : 'dark'); } },
+    { label: 'Keyboard shortcuts', icon: 'keyboard', run: () => { close(); setTimeout(showHelp, 250); } },
+    { label: 'Refresh this page', icon: 'refresh', run: () => { close(); route(); } },
+    { label: 'Sign out', icon: 'logout', run: () => { close(); clearToken(); showLogin(); } },
+  ];
+  const cmds = h('div', { class: 'list cmds' }), out = h('div', { class: 'list' });
+  const q = h('md-outlined-text-field', { label: 'Search messages, items and files', 'supporting-text': 'Or type a command — “settings”, “new”, “dark”… Enter runs the first one' });
+  let shown = [];
+  const drawCmds = () => {
+    const t = q.value.trim().toLowerCase();
+    shown = COMMANDS.filter((c) => !t || c.label.toLowerCase().includes(t)).slice(0, t ? 5 : 6);
+    clear(cmds).append(...shown.map((c, n) => h('div', { class: 'row static cmd' + (t && n === 0 ? ' first' : ''), tabindex: 0, role: 'button', onclick: c.run, onkeydown: (e) => e.key === 'Enter' && c.run() }, h('div', { class: 'lead k-task' }, icon(c.icon)), h('div', { class: 't' }, c.label), icon('arrow_forward'))));
+  };
+  drawCmds();
+  q.addEventListener('keydown', (e) => { if (e.key === 'Enter' && shown.length && q.value.trim()) { e.preventDefault(); shown[0].run(); } });
+  let t; q.addEventListener('input', () => { drawCmds(); clearTimeout(t); t = setTimeout(async () => {
     if (q.value.trim().length < 3) return clear(out);
-    try { const { hits } = await api('/search?q=' + encodeURIComponent(q.value)); clear(out).append(...(hits.length ? hits.map((x) => h('div', { class: 'row static' }, h('div', { class: 'lead k-task' }, icon(x.kind === 'item' ? 'checklist' : x.kind === 'doc' ? 'folder' : 'mail')), h('div', {}, h('div', { class: 't' }, x.title || x.kind), h('div', { class: 's' }, x.snippet.slice(0, 220))), h('span', { class: 'tag' }, x.kind))) : [h('div', { class: 'muted' }, 'No matches.')])); } catch (e) { toast(e.message, { error: true }); }
+    try { const { hits } = await api('/search?q=' + encodeURIComponent(q.value)); clear(out).append(...(hits.length ? hits.map((x) => h('div', { class: 'row static' }, h('div', { class: 'lead k-task' }, icon(x.kind === 'item' ? 'checklist' : x.kind === 'doc' ? 'folder' : 'mail')), h('div', {}, h('div', { class: 't' }, x.title || x.kind), h('div', { class: 's' }, x.snippet.slice(0, 220))), h('span', { class: 'tag' }, x.kind))) : [h('div', { class: 'muted' }, 'No matches in your messages, items or files.')])); } catch (e) { toast(e.message, { error: true }); }
   }, 300); });
-  const { close } = dialog({ title: 'Search', fullscreen: true, content: [q, out], actions: [h('md-text-button', { onclick: () => close() }, 'Close')] });
+  const { close } = dialog({ title: 'Search & commands', fullscreen: true, dismissable: true, content: [q, cmds, out], actions: [h('md-text-button', { onclick: () => close() }, 'Close')] });
   setTimeout(() => q.focus(), 100);
 }
 
@@ -85,7 +104,24 @@ async function start() {
   refreshStatus(); route();
 }
 initShortcuts({ nav, refresh: () => route(), openSearch: searchDialog, newDefault: () => itemDialog(null, () => route()) });
-window.addEventListener('hashchange', () => hasToken() && route());
+let reverting = false;
+window.addEventListener('hashchange', async () => {
+  if (!hasToken() || reverting) { reverting = false; return; }
+  if (page.guard?.() && !(await confirmDialog('Discard unsaved changes?', 'You have settings changes that are not saved yet.', 'Discard'))) { reverting = true; location.hash = lastHash; return; }
+  route();
+});
+window.addEventListener('beforeunload', (e) => { if (hasToken() && page.guard?.()) { e.preventDefault(); e.returnValue = ''; } });
+let banner;
+window.addEventListener('net', (e) => {
+  if (!e.detail && !banner) { banner = h('div', { class: 'offline', role: 'alert' }, icon('wifi_off'), 'Cannot reach the server — retrying…'); document.body.append(banner); }
+  if (e.detail && banner) { banner.remove(); banner = null; toast('Back online'); }
+});
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { hiddenAt = Date.now(); return; }
+  if (!hasToken()) return; refreshStatus();
+  const typing = document.activeElement && /^(INPUT|TEXTAREA|MD-)/.test(document.activeElement.tagName);
+  if (Date.now() - hiddenAt > 60000 && !page.guard?.() && !typing && !document.querySelector('md-dialog[open]') && !/^#\/(chat|settings)/.test(location.hash)) route();
+});
 window.addEventListener('auth-lost', () => { clearToken(); showLogin(); });
 setInterval(() => { if (hasToken() && !document.hidden) refreshStatus(); }, 20000);
 if (hasToken()) start().catch(showLogin); else showLogin();

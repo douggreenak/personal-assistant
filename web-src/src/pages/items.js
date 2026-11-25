@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { h, icon, clear, fmtDate, ago, toLocalInput, empty, dialog, confirmDialog, guarded, chip, menu, debounce, state, page } from '../ui.js';
+import { h, icon, clear, fmtDate, ago, toLocalInput, empty, dialog, confirmDialog, guarded, chip, menu, debounce, state, page, rel, download, toast } from '../ui.js';
 
 const KIND_ICON = { ticket: 'confirmation_number', reminder: 'alarm', task: 'checklist' };
 const KIND_LABEL = { ticket: 'Ticket', reminder: 'Reminder', task: 'Task' };
@@ -9,7 +9,7 @@ const stages = async () => (stagesCache ??= (await api('/stages')).stages);
 export function itemMeta(it) {
   const overdue = it.state === 'open' && it.dueAt && new Date(it.dueAt) < Date.now();
   return [chip(KIND_LABEL[it.kind]), it.stageLabel && chip(it.stageLabel, 'ok'), it.priority !== 'normal' && chip(it.priority, it.priority === 'urgent' || it.priority === 'high' ? 'bad' : ''),
-    it.dueAt && h('span', { class: overdue ? 'tag bad' : '' }, icon('schedule'), (overdue ? 'overdue · ' : 'due ') + fmtDate(it.dueAt)),
+    it.dueAt && h('span', { class: 'due' + (overdue ? ' tag bad' : ''), title: fmtDate(it.dueAt) }, icon('schedule'), (overdue ? 'overdue · ' : 'due ') + rel(it.dueAt) + ' · ' + fmtDate(it.dueAt, { month: 'short', day: 'numeric', ...(Math.abs(new Date(it.dueAt) - Date.now()) > 300 * 864e5 && { year: 'numeric' }), hour: 'numeric', minute: '2-digit' })),
     it.snoozeUntil && new Date(it.snoozeUntil) > Date.now() && h('span', { class: 'tag warn' }, icon('snooze'), 'until ' + fmtDate(it.snoozeUntil)),
     it.nagCount > 0 && it.state === 'open' && h('span', { class: 'tag warn' }, `nagged ${it.nagCount}×`),
     it.backend !== 'local' && chip(it.backend)];
@@ -77,18 +77,52 @@ export async function itemDialog(it, changed) {
   setTimeout(() => title.focus(), 120);
 }
 
+const SORTS = { due: 'Due date', newest: 'Newest', priority: 'Priority', title: 'A–Z' };
+const PRANK = { urgent: 0, high: 1, normal: 2, low: 3 };
+const sorters = {
+  due: (a, b) => (a.dueAt ? 0 : 1) - (b.dueAt ? 0 : 1) || (a.dueAt && b.dueAt ? new Date(a.dueAt) - new Date(b.dueAt) : 0) || new Date(b.createdAt) - new Date(a.createdAt),
+  newest: (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
+  priority: (a, b) => PRANK[a.priority] - PRANK[b.priority] || sorters.due(a, b),
+  title: (a, b) => a.title.localeCompare(b.title),
+};
+const day = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: state.tz }).format(new Date(d));
+const WHEN = { '': () => true, overdue: (i) => i.state === 'open' && i.dueAt && new Date(i.dueAt) < Date.now(), today: (i) => i.dueAt && day(i.dueAt) === day(Date.now()), week: (i) => i.dueAt && day(i.dueAt) >= day(Date.now()) && day(i.dueAt) <= day(Date.now() + 7 * 864e5) };
+const csvCell = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+
 export default async function items(view) {
-  let st = 'open', kind = '', q = '';
+  const saved = (() => { try { return JSON.parse(localStorage.getItem('items_view') || '{}'); } catch { return {}; } })();
+  let st = saved.st || 'open', kind = saved.kind ?? '', when = saved.when ?? '', sort = SORTS[saved.sort] ? saved.sort : 'due', q = '';
+  const remember = () => localStorage.setItem('items_view', JSON.stringify({ st, kind, when, sort }));
   const list = h('div', { class: 'list' });
-  const segs = (opts, cur, set) => { const box = h('div', { class: 'seg', role: 'group' }); const draw = () => clear(box).append(...opts.map(([v, l]) => h('button', { 'aria-pressed': String(v === cur), onclick: () => { cur = v; set(v); draw(); load(); } }, l))); draw(); return box; };
+  const segs = (opts, cur, set) => { const box = h('div', { class: 'seg', role: 'group' }); const draw = () => clear(box).append(...opts.map(([v, l]) => h('button', { 'aria-pressed': String(v === cur), onclick: () => { cur = v; set(v); remember(); draw(); load(); } }, l))); draw(); return box; };
   const search = h('md-outlined-text-field', { label: 'Filter', class: 'grow', 'data-primary': '', 'supporting-text': '' }, h('span', { slot: 'leading-icon' }, icon('search')));
   search.addEventListener('input', debounce(() => { q = search.value.toLowerCase(); draw(); }, 120));
   let data = [];
-  const draw = () => { const rows = data.filter((i) => !q || (i.title + ' ' + i.detail).toLowerCase().includes(q)); clear(list).append(...(rows.length ? rows.map((i) => itemRow(i, load)) : [empty('checklist', 'Nothing here', q ? 'No items match that filter.' : 'Create one with the + button, or tell the assistant in Chat.')])); };
+  const visible = () => data.filter((i) => (!q || (i.title + ' ' + i.detail).toLowerCase().includes(q)) && WHEN[when](i)).sort(sorters[sort]);
+  const draw = () => {
+    const rows = visible();
+    clear(list).append(...(rows.length ? rows.map((i) => itemRow(i, load)) : [empty('checklist', 'Nothing here', q || when ? 'No items match those filters.' : 'Nothing in this view yet. Press n to add something.')]));
+    search.setAttribute('supporting-text', data.length ? `${rows.length} of ${data.length}` : '');
+  };
   async function load() { const p = new URLSearchParams({ state: st, limit: 500 }); if (kind) p.set('kind', kind); data = (await guarded(() => api('/items?' + p)))?.items ?? []; draw(); }
+  const sortBtn = h('md-text-button', {}, icon('sort'), h('span', {}, 'Sort: ' + SORTS[sort]));
+  const sortMenu = menu(sortBtn, Object.entries(SORTS).map(([k, l]) => ({ label: l, onclick: () => { sort = k; remember(); sortBtn.lastChild.textContent = 'Sort: ' + l; draw(); } })));
+  const exportBtn = h('md-text-button', {}, icon('download'), h('span', {}, 'Export'));
+  const stamp = () => new Date().toISOString().slice(0, 10);
+  const exportMenu = menu(exportBtn, [
+    { label: 'CSV (these rows)', icon: 'download', onclick: () => { const r = visible(); download(`items-${stamp()}.csv`, ['kind,title,detail,state,priority,due,created'].concat(r.map((i) => [i.kind, i.title, i.detail, i.state, i.priority, i.dueAt, i.createdAt].map(csvCell).join(','))).join('\n'), 'text/csv'); toast(`Exported ${r.length} items`); } },
+    { label: 'JSON (these rows)', icon: 'download', onclick: () => { const r = visible(); download(`items-${stamp()}.json`, JSON.stringify(r, null, 2), 'application/json'); toast(`Exported ${r.length} items`); } }]);
+  const quick = h('md-outlined-text-field', { label: 'Quick add a task — type and press Enter', 'aria-label': 'Quick add' }, h('span', { slot: 'leading-icon' }, icon('add')));
+  quick.addEventListener('keydown', async (e) => {
+    if (e.key !== 'Enter' || !quick.value.trim()) return; e.preventDefault(); const title = quick.value.trim(); quick.value = '';
+    if (await guarded(() => api('/items', { method: 'POST', body: { kind: 'task', title } }), 'Added')) load();
+  });
   page.newAction = () => itemDialog(null, load);
   clear(view).append(h('div', { class: 'page-head' }, h('h1', { class: 'display' }, 'Items'), h('p', { class: 'muted title-m' }, 'Tickets, reminders and tasks in one place.')),
-    h('div', { class: 'toolbar' }, segs([['open', 'Open'], ['done', 'Done'], ['dropped', 'Dropped'], ['all', 'All']], st, (v) => (st = v)), segs([['', 'Everything'], ['ticket', 'Tickets'], ['reminder', 'Reminders'], ['task', 'Tasks']], kind, (v) => (kind = v)), search), list,
+    quick,
+    h('div', { class: 'toolbar' }, segs([['open', 'Open'], ['done', 'Done'], ['dropped', 'Dropped'], ['all', 'All']], st, (v) => (st = v)), segs([['', 'Everything'], ['ticket', 'Tickets'], ['reminder', 'Reminders'], ['task', 'Tasks']], kind, (v) => (kind = v)), search),
+    h('div', { class: 'toolbar' }, segs([['', 'Any time'], ['overdue', 'Overdue'], ['today', 'Today'], ['week', 'Next 7 days']], when, (v) => (when = v)), h('div', { class: 'grow' }), sortBtn, sortMenu, exportBtn, exportMenu),
+    list,
     h('div', { class: 'fab-slot' }, h('md-fab', { label: 'New', 'aria-label': 'New item', onclick: () => itemDialog(null, load) }, h('span', { slot: 'icon' }, icon('add')))));
   await load(); const t = setInterval(() => !document.hidden && !document.querySelector('md-dialog') && load(), 30000); return () => clearInterval(t);
 }

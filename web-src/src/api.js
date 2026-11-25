@@ -5,7 +5,10 @@ export const setToken = (t) => { token = t; localStorage.setItem('assistant_toke
 export const clearToken = () => { token = ''; localStorage.removeItem('assistant_token'); };
 
 export async function api(path, { method = 'GET', body, raw } = {}) {
-  const r = await fetch(path, { method, headers: { authorization: 'Bearer ' + token, ...(raw ? {} : { 'content-type': 'application/json' }) }, body: raw ?? (body === undefined ? undefined : JSON.stringify(body)) });
+  let r;
+  try { r = await fetch(path, { method, headers: { authorization: 'Bearer ' + token, ...(raw ? {} : { 'content-type': 'application/json' }) }, body: raw ?? (body === undefined ? undefined : JSON.stringify(body)) }); }
+  catch { window.dispatchEvent(new CustomEvent('net', { detail: false })); throw new Error('Cannot reach the server'); }
+  window.dispatchEvent(new CustomEvent('net', { detail: true }));
   const j = await r.json().catch(() => ({}));
   if (r.status === 401) { window.dispatchEvent(new Event('auth-lost')); throw new Error('Signed out'); }
   if (!r.ok) throw new Error(j.error || r.statusText);

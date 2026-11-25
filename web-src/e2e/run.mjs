@@ -18,14 +18,17 @@ let log = ''; srv.stdout.on('data', (d) => (log += d)); srv.stderr.on('data', (d
 for (let i = 0; i < 50; i++) { try { if ((await fetch(base + '/healthz')).ok) break; } catch { /* starting */ } await new Promise((r) => setTimeout(r, 200)); }
 
 const results = []; let current = '';
-const step = async (name, fn) => { current = name; try { await fn(); results.push([true, name]); console.log('  ✔', name); } catch (e) { results.push([false, name, e]); console.log('  ✖', name, '\n     ', String(e.message).split('\n').slice(0, 4).join('\n      ')); await page.screenshot({ path: join(dir, 'fail-' + results.length + '.png') }); } };
+// E2E_GROUP=a|b runs half of the steps (each half has its own server + browser), so the two halves can run side by side. Default: all.
+const GROUP = process.env.E2E_GROUP || 'all';
+const groupOf = (n) => /^(keyboard:|items: sort|command palette|unsaved settings|connection lost|dialogs ignore|connect wizard)/.test(n) ? 'b' : 'a';
+const step = async (name, fn) => { if (GROUP !== 'all' && !/^no JavaScript errors/.test(name) && groupOf(name) !== GROUP) return; current = name; try { await fn(); results.push([true, name]); console.log('  ✔', name); } catch (e) { results.push([false, name, e]); console.log('  ✖', name, '\n     ', String(e.message).split('\n').slice(0, 4).join('\n      ')); await page.screenshot({ path: join(dir, 'fail-' + results.length + '.png') }); } };
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--no-sandbox'] });
 const ctx = await browser.newContext({ viewport: { width: 1300, height: 900 } });
 const page = await ctx.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
-page.on('console', (m) => { if (m.type() === 'error' && !/status of (4\d\d)/.test(m.text())) errors.push('console: ' + m.text()); });
+page.on('console', (m) => { if (m.type() === 'error' && !/status of (4\d\d)|ERR_INTERNET_DISCONNECTED/.test(m.text())) errors.push('console: ' + m.text()); });
 page.on('dialog', (d) => d.dismiss());
 
 const setField = (label, value) => page.locator(`md-outlined-text-field[label="${label}"], md-outlined-select[label="${label}"]`).first().evaluate((el, v) => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }, value);
@@ -41,6 +44,7 @@ const db = () => new DatabaseSync(join(dir, 'assistant.db'));
 
 console.log('E2E against', base);
 try {
+  if (GROUP === 'b') { await page.goto(base + '/'); await setField('Password', PW); await btn('Sign in').click(); await heading(/Good (morning|afternoon|evening)|Still up/); }
   await step('login: wrong password is refused, right one signs in', async () => {
     await page.goto(base + '/'); await page.locator('md-outlined-text-field[label="Password"]').waitFor();
     await setField('Password', 'nope'); await btn('Sign in').click(); await page.locator('.err', { hasText: 'Wrong password' }).waitFor();
@@ -155,6 +159,7 @@ try {
     await setField('Ingest token', 'new-ingest-token-value-1234'); await btn('Save', page.locator('.savebar')).first().click(); await toastText(/Saved/);
     assert.ok(!(await page.locator('body').innerText()).includes('new-ingest-token-value-1234'));
     await group('General').click(); await setField('Time zone', 'Not/AZone'); await btn('Save', page.locator('.savebar')).first().click(); await toastText(/time zone/i);
+    await btn('Discard', page.locator('.savebar')).click(); await page.waitForTimeout(800);
   });
 
   await step('settings: theme mode and color apply instantly and persist', async () => {
@@ -263,6 +268,80 @@ try {
     await goto('inbox'); await page.locator('h1').click(); await press('n'); await dlg().waitFor(); assert.match(await dlg().innerText(), /Add to inbox/); await press('Escape'); await page.waitForTimeout(500);
     await goto('connectors'); await page.locator('h1').click(); await press('n'); await dlg().waitFor(); assert.match(await dlg().innerText(), /Add a connector/); await press('Escape'); await page.waitForTimeout(500);
     await goto('chat'); await page.locator('h1').click(); await press('n'); assert.equal(await active(), 'TEXTAREA');
+  });
+
+
+  await step('items: sort, time filters, quick add, relative dates, export, remembered view', async () => {
+    const T = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 16);
+    await api('POST', '/items', { kind: 'task', title: 'Zeta overdue', dueAt: T(-2), priority: 'low' });
+    await api('POST', '/items', { kind: 'task', title: 'Yankee soon', dueAt: T(3), priority: 'urgent' });
+    await goto('items'); await row('Zeta overdue').waitFor();
+    assert.match(await row('Zeta overdue').innerText(), /overdue · 2 days ago/); assert.match(await row('Yankee soon').innerText(), /due in 3 days/);
+    await page.getByRole('button', { name: /Overdue/ }).click(); await page.waitForTimeout(300); assert.equal(await row('Yankee soon').count(), 0); assert.ok(await row('Zeta overdue').count());
+    await page.getByRole('button', { name: 'Any time' }).click();
+    await page.locator('md-text-button', { hasText: 'Sort:' }).click(); await page.locator('md-menu-item:visible', { hasText: 'A–Z' }).click(); await page.waitForTimeout(300);
+    const titles = await page.locator('.row .t').allInnerTexts(); assert.deepEqual(titles, [...titles].sort((a, b) => a.localeCompare(b)));
+    await page.reload(); await page.waitForTimeout(900); assert.match(await page.locator('md-text-button', { hasText: 'Sort:' }).innerText(), /A–Z/);   // remembered
+    await page.locator('md-text-button', { hasText: 'Sort:' }).click(); await page.locator('md-menu-item:visible', { hasText: 'Due date' }).click();
+    await page.locator('md-outlined-text-field[label^="Quick add"]').click(); await page.keyboard.type('Quick added thing'); await page.keyboard.press('Enter'); await row('Quick added thing').waitFor();
+    await page.evaluate(() => { const o = URL.createObjectURL; URL.createObjectURL = (b) => { window.__blob = b; return o.call(URL, b); }; });
+    const [dl] = await Promise.all([page.waitForEvent('download'), (async () => { await page.locator('md-text-button', { hasText: 'Export' }).click(); await page.locator('md-menu-item:visible', { hasText: 'CSV' }).click(); })()]);
+    assert.match(dl.suggestedFilename(), /^items-\d{4}-\d\d-\d\d\.csv$/);
+    const csv = await page.evaluate(() => window.__blob.text()); assert.match(csv, /Quick added thing/); assert.match(csv, /^kind,title/);
+  });
+
+  await step('command palette: commands, Enter runs the first match; tab title shows counts', async () => {
+    await goto('home'); await page.locator('h1').click(); await press('Control+k'); await dlg().waitFor();
+    assert.match(await dlg().innerText(), /Go to Items/); await page.keyboard.type('sett'); await page.waitForTimeout(250); await page.keyboard.press('Enter'); await page.waitForTimeout(700);
+    await heading('Settings'); assert.equal(await dlg().count(), 0); assert.match(await page.title(), /Settings · Assistant/);
+    const d = db(); d.prepare("INSERT INTO approvals (created_at, kind, summary, reason, payload) VALUES (?, 'action', 'Title count', 'money', ?)").run(new Date().toISOString(), JSON.stringify({ action: { op: 'create', kind: 'task', title: 'Title count', confidence: 1, flags: ['money'], why: 'x' } })); d.close();
+    await goto('approvals'); await page.waitForTimeout(900); assert.match(await page.title(), /^\(\d+\) Approvals/);
+  });
+
+  await step('unsaved settings: leaving asks first; Cancel stays, Discard leaves', async () => {
+    await goto('settings'); await group('Notifications').click(); await setField('ntfy topic', 'unsaved-1'); await page.locator('.savebar').waitFor();
+    await page.locator('.rail .dest[data-id=items]').click(); await dlg().waitFor(); assert.match(await dlg().innerText(), /Discard unsaved changes/);
+    await btn('Cancel', dlg()).click(); await page.waitForTimeout(600); assert.match(page.url(), /#\/settings/); assert.ok(await page.locator('.savebar').count());
+    await page.locator('.rail .dest[data-id=items]').click(); await dlg().waitFor(); await btn('Discard', dlg()).click(); await heading('Items'); assert.match(page.url(), /#\/items/);
+  });
+
+  await step('connection lost: banner appears and clears when the server answers again; chat ArrowUp recalls', async () => {
+    await goto('home'); await ctx.setOffline(true); await page.getByRole('button', { name: 'Refresh' }).click(); await page.locator('.offline').waitFor();
+    await ctx.setOffline(false); await page.getByRole('button', { name: 'Refresh' }).click(); await page.locator('.offline').waitFor({ state: 'detached' });
+    await page.evaluate(() => localStorage.setItem('chat_history', JSON.stringify([{ role: 'me', text: 'previous message' }, { role: 'bot', text: 'ok' }])));
+    await goto('chat'); await page.locator('textarea[aria-label=Message]').focus(); await page.keyboard.press('ArrowUp');
+    assert.equal(await page.locator('textarea[aria-label=Message]').inputValue(), 'previous message');
+  });
+
+
+  await step('dialogs ignore clicks outside; proposed connectors can be approved right on their card', async () => {
+    await page.setViewportSize({ width: 1300, height: 900 });
+    await goto('connectors'); await page.locator('h1').click(); await press('n'); await dlg().waitFor();
+    await page.locator('md-outlined-text-field[label^="Paste the API docs"]').click(); await page.keyboard.type('draft text');
+    await page.mouse.click(6, 450); await page.waitForTimeout(500); assert.equal(await dlg().count(), 1, 'a click on the dim area must not close the dialog');
+    assert.equal(await page.locator('md-outlined-text-field[label^="Paste the API docs"]').evaluate((e) => e.value), 'draft text');
+    await press('Escape'); await page.waitForTimeout(600); assert.equal(await dlg().count(), 0, 'Esc still closes');
+    const man = { id: 'proposed-co', name: 'Proposed Co', description: 'x', baseUrl: 'https://api.proposed.example', auth: { type: 'bearer', secret: 'PROPOSED_KEY' }, poll: { path: '/v1/a', intervalMinutes: 15, bodyFields: ['title'], itemsPath: '', idField: 'id', params: {} } };
+    const d = db(); d.prepare("INSERT INTO connectors (id, manifest, status, created_at) VALUES ('proposed-co', ?, 'proposed', ?)").run(JSON.stringify(man), new Date().toISOString());
+    d.prepare("INSERT INTO approvals (created_at, kind, summary, reason, payload) VALUES (?, 'connector', 'Connect Proposed Co', 'new outside service', ?)").run(new Date().toISOString(), JSON.stringify({ id: 'proposed-co' })); d.close();
+    await page.reload(); await page.waitForTimeout(900); const card = page.locator('.card', { hasText: 'Proposed Co' }); await card.waitFor();
+    await btn('Approve', card).click(); await toastText(/Approved/); await page.waitForTimeout(600);
+    assert.ok(await btn('Set key', card).isVisible(), 'card moves on to the credential step');
+    assert.equal((await api('GET', '/connectors/full')).connectors.find((c) => c.id === 'proposed-co').status, 'approved');
+  });
+
+
+  await step('connect wizard: one Connect button, live progress, clean failure (model is stubbed out), nothing left behind', async () => {
+    await goto('home'); await goto('connectors'); await page.locator('h1').click(); await press('n'); await dlg().waitFor();
+    assert.equal(await page.locator('md-filled-button', { hasText: /Propose|Review/ }).count(), 0);
+    await btn('Connect', dlg()).click(); await page.waitForTimeout(300); assert.ok(await dlg().count(), 'empty paste does nothing');
+    await page.locator('md-outlined-text-field[label^="Paste the API docs"]').click(); await page.keyboard.type('Acme API: GET https://api.acme.example/orders returns a list of orders');
+    await btn('Connect', dlg()).click();
+    await dlg().locator('.autolog .astep').first().waitFor(); await dlg().locator('.err').waitFor({ timeout: 20000 });
+    assert.match(await dlg().innerText(), /Reading the pasted docs/); assert.match(await dlg().innerText(), /build a safe connector|claude exited/);
+    await btn('Edit and try again', dlg()).click(); await page.waitForTimeout(300);
+    assert.equal(await page.locator('md-outlined-text-field[label^="Paste the API docs"]').evaluate((e) => e.value), 'Acme API: GET https://api.acme.example/orders returns a list of orders', 'text is kept for the retry');
+    await press('Escape'); await page.waitForTimeout(500);
   });
 
   await step('no JavaScript errors were logged during the whole run', async () => { assert.deepEqual(errors, []); });

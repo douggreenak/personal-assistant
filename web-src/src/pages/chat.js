@@ -19,7 +19,7 @@ export default async function chat(view) {
     try { reply = ask ? (await api('/ask', { method: 'POST', body: { question: text } })).answer : (await api('/chat', { method: 'POST', body: { text } })).reply; } catch (e) { reply = 'Error: ' + e.message; }
     wait.remove(); bubble('bot', reply); hist.push({ role: 'bot', text: reply }); localStorage.setItem(KEY, JSON.stringify(hist.slice(-60))); sendBtn.disabled = false; ta.focus({ preventScroll: true });
   };
-  ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
+  ta.addEventListener('keydown', (e) => { if (e.key === 'ArrowUp' && !ta.value) { const last = [...hist].reverse().find((m) => m.role === 'me'); if (last) { e.preventDefault(); ta.value = last.text; ta.dispatchEvent(new Event('input')); } } if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
   const sendBtn = h('md-filled-icon-button', { 'aria-label': 'Send', onclick: () => send() }, icon('send'));
   const mode = h('div', { class: 'seg' }); const drawMode = () => clear(mode).append(...[[false, 'Capture / command'], [true, 'Ask a question']].map(([v, l]) => h('button', { 'aria-pressed': String(v === ask), onclick: () => { ask = v; drawMode(); } }, l))); drawMode();
   for (const m of hist) bubble(m.role, m.text);
