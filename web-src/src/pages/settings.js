@@ -31,7 +31,7 @@ export default async function settings(view) {
   const groups = [...new Set(defs.map((d) => d.group))];
   const cards = groups.map((g, i) => h('details', { class: 'card high', open: i === 0 }, h('summary', { class: 'title-m', style: 'display:flex;align-items:center;gap:10px' }, icon(GROUP_ICON[g] || 'tune'), g,
     g === 'Google' && h('span', { style: 'flex:1' })), h('div', { class: 'form', style: 'margin-top:14px' }, defs.filter((d) => d.group === g).map(control),
-    g === 'Google' && h('div', {}, h('div', { class: 'label', style: 'margin-bottom:6px' }, 'Chat service-account key'), h('input', { type: 'file', accept: '.json,application/json', onchange: async (e) => { const t = await e.target.files[0]?.text(); if (!t) return; const r = await guarded(() => api('/admin/service-account', { method: 'POST', raw: t }), 'Key uploaded — restart to apply'); if (r) route(); } })))));
+    g === 'Google' && h('div', {}, h('div', { class: 'label', style: 'margin-bottom:6px' }, 'Chat service-account key'), (() => { const inp = h('input', { type: 'file', accept: '.json,application/json', class: 'sr', onchange: async (e) => { const t = await e.target.files[0]?.text(); if (!t) return; const r = await guarded(() => api('/admin/service-account', { method: 'POST', raw: t }), 'Key uploaded — restart to apply'); if (r) route(); } }); return h('div', {}, inp, h('md-outlined-button', { onclick: () => inp.click() }, icon('upload'), 'Upload key file')); })()))));
 
   // appearance + security (browser-side and password)
   const seed = h('input', { type: 'color', value: prefs.seed, 'aria-label': 'Custom color', style: 'width:52px;height:52px;border:0;background:none;padding:0;cursor:pointer' });

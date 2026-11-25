@@ -11,7 +11,7 @@ export default async function home(view, { nav, refreshStatus }) {
     const now = Date.now();
     const urgent = items.filter((i) => i.dueAt && new Date(i.dueAt) < now || i.priority === 'urgent').slice(0, 5);
     const soon = items.filter((i) => i.dueAt && new Date(i.dueAt) >= now).slice(0, 5);
-    const tile = (cls, n, label, ic, to) => h('button', { class: 'card stat ' + cls, onclick: () => nav(to) }, h('div', { class: 'lbl' }, icon(ic), label), h('div', { class: 'num' }, n));
+    const tile = (cls, n, label, ic, to) => h('button', { class: 'card stat ' + cls + (cls === 's4' && !n ? ' zero' : ''), onclick: () => nav(to) }, h('div', { class: 'lbl' }, icon(ic), label), h('div', { class: 'num' }, n));
     const refresh = () => { refreshStatus(); return load(); };
     clear(view).append(
       h('div', { class: 'page-head' }, h('div', { class: 'label' }, fmtDate(new Date(), { weekday: 'long', month: 'long', day: 'numeric' })), h('h1', { class: 'display' }, greeting() + '.'),

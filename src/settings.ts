@@ -7,7 +7,7 @@ import { dirname } from 'node:path';
  */
 export interface SettingDef {
   key: string; label: string; group: string; type: 'text' | 'number' | 'bool' | 'secret' | 'list' | 'textarea';
-  help?: string; placeholder?: string;
+  help?: string; placeholder?: string; default?: string;
 }
 export const SETTINGS: SettingDef[] = [
   { key: 'TZ_NAME', label: 'Time zone', group: 'General', type: 'text', help: 'IANA name, e.g. America/Anchorage' },
@@ -32,7 +32,7 @@ export const SETTINGS: SettingDef[] = [
   { key: 'GOOGLE_CLIENT_SECRET', label: 'OAuth client secret', group: 'Google', type: 'secret' },
   { key: 'GOOGLE_REFRESH_TOKEN', label: 'OAuth refresh token', group: 'Google', type: 'secret', help: 'Create with `npm run google-auth` (see docs/google-setup.md).' },
   { key: 'GMAIL_ENABLED', label: 'Read Gmail', group: 'Google', type: 'bool' },
-  { key: 'GMAIL_SKIP_BULK', label: 'Skip bulk mail', group: 'Google', type: 'bool', help: 'Ignore newsletters and promotions. On unless set to off.' },
+  { key: 'GMAIL_SKIP_BULK', label: 'Skip bulk mail', group: 'Google', type: 'bool', default: '1', help: 'Ignore newsletters and promotions.' },
   { key: 'GOOGLE_SERVICE_ACCOUNT_FILE', label: 'Service account file', group: 'Google', type: 'text', placeholder: '/data/chat-service-account.json', help: 'Upload one on the Settings page, or enter a path inside the container.' },
   { key: 'CHAT_PUBSUB_SUBSCRIPTION', label: 'Chat Pub/Sub subscription', group: 'Google', type: 'text', placeholder: 'projects/YOUR_PROJECT/subscriptions/assistant-chat' },
   { key: 'CHAT_NOTIFY_SPACE', label: 'Chat notify space', group: 'Google', type: 'text' },
@@ -65,7 +65,7 @@ export function viewSettings(dataDir: string, env: NodeJS.ProcessEnv = process.e
   const o = readOverrides(dataDir);
   return SETTINGS.map((d) => {
     const raw = d.key in o ? o[d.key] : env[d.key] ?? '';
-    return { ...d, value: d.type === 'secret' ? '' : raw, isSet: raw !== '', overridden: d.key in o };
+    return { ...d, value: d.type === 'secret' ? '' : raw || d.default || '', isSet: raw !== '', overridden: d.key in o };
   });
 }
 /** null/undefined leaves a setting alone; '' (or __clear__) removes the override and falls back to the environment. */
