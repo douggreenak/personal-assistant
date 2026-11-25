@@ -58,3 +58,7 @@ Paste a remote MCP server's URL, its `mcpServers` JSON, or the `claude mcp add -
 
 ## Read and write connectors
 A connector can read (polled into the inbox), write (create an invoice, close a ticket…), or both. Writes you ask for in Chat or by voice show up in **Approvals** first. On a connector's card, open *Can do N write actions* and flip **no need to ask** for the ones you trust; deletes always ask, and anything that came from someone else's message can never trigger a write.
+
+### Live lookups
+
+Besides the scheduled read (saved so search works), a connector can have **lookups**: extra read-only GET endpoints (for MCP servers, tools marked read-only). When you ask a question in Chat, Home or Google Chat, the assistant first picks the lookups the question needs (e.g. “what's due this week” → the service's *upcoming* endpoint with today's date), reads them **right now**, and answers from that fresh data plus what it has stored; the answer ends with `Sources: … Live: <service › lookup>`. Lookups never change anything and need no approval; results are treated as untrusted data. A connector without explicit lookups still gets one: its regular feed, fetched live. In a feed's query, `{today}`, `{today-14}` and `{today+30}` become dates, so the feed covers a recent window.

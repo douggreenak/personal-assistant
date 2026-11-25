@@ -13,7 +13,7 @@ export default async function connectors(view, { refreshStatus }) {
   function card(c) {
     const m = c.manifest, needsKey = m.auth.type !== 'none';
     const steps = [['Proposed', true], ['Approved', c.status !== 'proposed'], ['Credential', !needsKey || c.secretSet], ['Tested', c.tested], ['Enabled', c.status === 'enabled']];
-    const caps = [m.mcp && chip('MCP', ''), m.poll && chip('reads', ''), m.actions?.length && !m.mcp && chip('writes', 'warn')];
+    const caps = [m.mcp && chip('MCP', ''), m.poll && chip('reads', ''), (m.reads?.length || (m.mcp && m.actions?.some((a) => a.readOnly))) && chip('live lookups', ''), m.actions?.length && !m.mcp && chip('writes', 'warn')];
     const tone = c.status === 'enabled' ? 'ok' : c.lastError ? 'bad' : 'warn';
     const btns = [];
     if (c.status === 'proposed') {

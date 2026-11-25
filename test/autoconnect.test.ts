@@ -354,3 +354,43 @@ test('nightly backup: once per local day after the hour, catches up when the app
   assert.deepEqual(listBackups(ctx).map((b) => b.name).sort(), ['nightly-2026-11-26.backup', 'nightly-2026-11-27.backup']);   // keep = 2
   ctx.cfg.backup.auto = false; at('2026-11-28T20:00:00Z'); assert.equal(await nightlyBackupTick(ctx), null);
 });
+
+import { ask } from '../src/qa.ts';
+import { expandDates, validateManifest } from '../src/connectors.ts';
+test('live lookups: a question reads the connected service right now (GET only, planned from the question), and says so', async () => {
+  setResolverForTests(async () => ['93.184.216.34']);
+  const m = { ...fixed, id: 'plan', name: 'Planner', poll: { path: '/old', intervalMinutes: 60, itemsPath: 'rows', idField: 'id', bodyFields: ['t'] },
+    reads: [{ id: 'upcoming', name: 'Upcoming', description: 'what is due soon', path: '/upcoming', params: [{ name: 'days', description: 'look-ahead days', in: 'query' }] },
+            { id: 'one', name: 'One order', description: 'a single order', path: '/orders/{id}', params: [{ name: 'id', description: 'order id', in: 'path', required: true }] }] };
+  const req: { system: string; prompt: string; images?: unknown }[] = [];
+  const ddir = mkdtempSync(join(tmpdir(), 'asst-')); writeFileSync(join(ddir, 'secrets.json'), JSON.stringify({ ACME_API_KEY: 'k-1234567' }));
+  const { ctx } = makeCtx((r: { system: string; prompt: string }) => { req.push(r); return /LIVE LOOKUPS/.test(r.system)
+    ? { calls: [{ key: 'plan.upcoming', params: { days: '14', bogus: 'x' } }, { key: 'plan.one', params: {} }, { key: 'nope.x' }] } : { answer: 'Chem quiz on Dec 3.', cited: [] }; }, { env: { ASSISTANT_DATA: ddir } });
+  ctx.db.prepare("INSERT INTO connectors (id, manifest, status, created_at) VALUES ('plan', ?, 'enabled', ?)").run(JSON.stringify(validateManifest(m)), new Date().toISOString());
+  const urls: string[] = []; const f = (async (u: URL, init: RequestInit) => { urls.push(`${init.method} ${u}`); return String(u).includes('/upcoming') ? json({ tasks: [{ title: 'Chem quiz', dueDate: '2026-12-03' }] }) : json({ error: 'nope' }, 404); }) as unknown as typeof fetch;
+  const out = await ask(ctx, 'what is due in the next two weeks?', [], f);
+  assert.match(out, /Chem quiz on Dec 3/); assert.match(out, /Live: Planner › Upcoming \(days=14\); Planner › One order \(failed\)/);
+  assert.deepEqual(urls, ['GET https://api.acme.example/v1/upcoming?days=14']);            // undeclared params dropped; the call missing its required id never went out; unknown keys ignored
+  assert.match(req[1].prompt, /<live source="Planner › Upcoming \(days=14\)">\n\{"tasks":\[\{"title":"Chem quiz"/); assert.match(req[1].prompt, /could not be read: missing "id"/);
+  // no connector with lookups → no planning call at all
+  const none = makeCtx([{ answer: 'x', cited: [] }]); await ask(none.ctx, 'anything?', [], f); assert.equal(none.llm.calls.length, 0);   // (nothing stored either, so no model call)
+});
+test('connectors: date templates in the feed query; lookups are validated (GET, path/query only)', () => {
+  assert.equal(expandDates('from={today-14}&to={today+30}&d={today}', new Date('2026-11-25T20:00:00Z'), 'America/Anchorage'), 'from=2026-11-11&to=2026-12-25&d=2026-11-25');
+  const base = { ...fixed, reads: [{ id: 'xx', name: 'X', description: '', path: '/x', params: [{ name: 'b', description: '', in: 'body' }] }] };
+  assert.throws(() => validateManifest(base), /must be in path or query/);
+  assert.throws(() => validateManifest({ ...fixed, reads: [{ id: 'xx', name: 'X', description: '', path: '/x/{id}', params: [] }] }), /has no path param/);
+  assert.equal(validateManifest({ ...fixed, reads: [{ id: 'xx', name: 'X', description: 'd', path: '/x', params: [] }] }).reads![0].method, 'GET');
+});
+
+test('live lookups: a big answer keeps every section visible (lists are trimmed evenly, not cut off at the end)', async () => {
+  const { runLiveRead } = await import('../src/lookups.ts');
+  setResolverForTests(async () => ['93.184.216.34']);
+  const ddir = mkdtempSync(join(tmpdir(), 'asst-')); writeFileSync(join(ddir, 'secrets.json'), JSON.stringify({ ACME_API_KEY: 'k-1234567' }));
+  const { ctx } = makeCtx([], { env: { ASSISTANT_DATA: ddir } });
+  const m = validateManifest({ ...fixed, id: 'big', reads: [{ id: 'soon', name: 'Soon', description: 'd', path: '/soon', params: [] }] });
+  ctx.db.prepare("INSERT INTO connectors (id, manifest, status, created_at) VALUES ('big', ?, 'enabled', ?)").run(JSON.stringify(m), new Date().toISOString());
+  const big = { overdue: Array.from({ length: 300 }, (_, i) => ({ id: i, title: 'old ' + i, description: 'x'.repeat(500) })), assignments: [{ title: 'THIS WEEK' }] };
+  const text = await runLiveRead(ctx, { key: 'big.soon', connector: 'big', name: 'Big', read: m.reads![0] }, {}, (async () => json(big)) as unknown as typeof fetch);
+  assert.ok(text.length <= 12100); assert.match(text, /THIS WEEK/); assert.match(text, /and \d+ more/);
+});

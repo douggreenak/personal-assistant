@@ -103,11 +103,11 @@ export function coerceArgs(a: ConnAction, args: Record<string, string>): Record<
   return out;
 }
 
-export async function mcpCallTool(s: McpSession, tool: string, args: Record<string, unknown>): Promise<string> {
+export async function mcpCallTool(s: McpSession, tool: string, args: Record<string, unknown>, max = 600): Promise<string> {
   const r = await s.call('tools/call', { name: tool, arguments: args }) as { content?: { type?: string; text?: string }[]; isError?: boolean; structuredContent?: unknown };
   const text = (r?.content ?? []).map((c) => (c.type === 'text' ? c.text ?? '' : `[${c.type ?? 'content'}]`)).join(' ').replace(/\s+/g, ' ').trim() || (r?.structuredContent ? JSON.stringify(r.structuredContent) : '');
   if (r?.isError) throw new Error(`the tool reported an error${text ? `: ${text.slice(0, 300)}` : ''}`);
-  return text.slice(0, 600);
+  return text.slice(0, max);
 }
 
 // ---- recognizing what the owner pasted ----
