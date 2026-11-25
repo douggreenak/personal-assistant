@@ -271,3 +271,15 @@ test('mcp detection: API docs that mention MCP or contain /sse stay API docs; cl
   assert.equal(parseMcpInput('claude mcp add --transport http acme https://x.com/api')?.explicit, true);
   assert.equal(parseMcpInput('{"mcpServers":{"a":{"url":"https://x.com/api"}}}')?.explicit, true);
 });
+
+test('autoconnect: a sloppy id/secret from the model is repaired; another kind of slip gets one retry', async () => {
+  setResolverForTests(async () => ['93.184.216.34']);
+  const sloppy = { ...fixed, id: 'Canopy_Planner', auth: { type: 'bearer', secret: 'canopy api-token' } };
+  const { ctx } = makeCtx([sloppy], { env: { ASSISTANT_DATA: mkdtempSync(join(tmpdir(), 'asst-')) } });
+  const j = await done(startAutoConnect(ctx, 'docs', 'k-1234567', (async () => json(orders)) as unknown as typeof fetch).id);
+  assert.equal(j.state, 'done', j.steps.join('\n')); assert.equal(listConnectors(ctx)[0].id, 'canopy-planner'); assert.equal(listConnectors(ctx)[0].manifest.auth.secret, 'CANOPY_API_TOKEN');
+  const broken = { ...fixed, poll: { ...fixed.poll, intervalMinutes: 1 } };
+  const { ctx: c2, llm } = makeCtx([broken, fixed], { env: { ASSISTANT_DATA: mkdtempSync(join(tmpdir(), 'asst-')) } });
+  const j2 = await done(startAutoConnect(c2, 'docs', 'k-1234567', (async () => json(orders)) as unknown as typeof fetch).id);
+  assert.equal(j2.state, 'done', j2.steps.join('\n')); assert.match(llm.calls[1].prompt, /previous manifest was rejected.*intervalMinutes/s);
+});

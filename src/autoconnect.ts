@@ -55,9 +55,20 @@ export function continueWithKey(ctx: Ctx, jobId: string, apiKey: string, fetchIm
   return job;
 }
 
+const slug = (v: unknown): string => String(v ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+
+/** Asks the model for a manifest. Small slips (an id like "Canopy_Planner") are repaired; any other validation error is shown to the model for one retry. */
 async function design(ctx: Ctx, docs: string): Promise<Manifest> {
-  const raw = await ctx.llm.json({ system: CONNECTOR_SYSTEM, prompt: `<docs>\n${docs.slice(0, 60000)}\n</docs>`, schema: MANIFEST_SCHEMA as unknown as Record<string, unknown> });
-  const m = validateManifest(raw); await assertPublicHttps(m.baseUrl); return m;
+  let problem = '';
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const raw = await ctx.llm.json({ system: CONNECTOR_SYSTEM, prompt: `<docs>\n${docs.slice(0, 60000)}\n</docs>${problem ? `\n\nYour previous manifest was rejected: ${problem}. Fix exactly that and answer again.` : ''}`, schema: MANIFEST_SCHEMA as unknown as Record<string, unknown> });
+    try {
+      if (raw && typeof raw === 'object') { const r = raw as { id?: unknown; name?: unknown }; r.id = slug(r.id) || slug(r.name) || 'service'; const au = (raw as { auth?: { secret?: unknown } }).auth; if (au && typeof au.secret === 'string') au.secret = au.secret.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^[^A-Z]+|_+$/g, ''); }
+      const m = validateManifest(raw);
+      await assertPublicHttps(m.baseUrl); return m;
+    } catch (e) { problem = (e as Error).message; if (attempt === 1 || !problem.startsWith('invalid manifest')) throw e; }
+  }
+  throw new Error(problem);
 }
 
 async function run(ctx: Ctx, job: AutoJob, input: string, apiKey: string | undefined, fetchImpl: typeof fetch): Promise<void> {
