@@ -159,3 +159,102 @@ test('write connectors: the model can ask — owner messages queue an approval (
     assert.ok(llm.calls.some((c) => /Connector actions/.test(c.prompt) && /create_invoice — Acme Billing/.test(c.prompt)));
   } finally { globalThis.fetch = realFetch; }
 });
+
+// ---- MCP ----
+type Rpc = { id?: number; method: string; params?: Record<string, unknown> };
+const TOOLS = [
+  { name: 'search_notes', description: 'Search notes', inputSchema: { type: 'object', properties: { query: { type: 'string', description: 'text' } }, required: ['query'] }, annotations: { readOnlyHint: true } },
+  { name: 'create_task', description: 'Create a task', inputSchema: { type: 'object', properties: { title: { type: 'string' }, priority: { type: 'integer' }, urgent: { type: 'boolean' } }, required: ['title'] }, annotations: { destructiveHint: false } },
+  { name: 'delete_task', description: 'Delete a task', inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } },
+];
+/** A fake remote MCP server. `sse` answers as an event stream; `need` is the Authorization header it demands (or '' for none). */
+function mcpServer(opts: { need?: string; sse?: boolean; seen?: Rpc[]; headers?: Record<string, string>[] } = {}) {
+  return (async (url: URL | string, init: RequestInit) => {
+    const h = init.headers as Record<string, string>; opts.headers?.push(h);
+    const q = new URL(String(url));
+    if (opts.need && h.authorization !== opts.need && q.searchParams.get('key') !== opts.need) return new Response('no', { status: 401 });
+    const msg = JSON.parse(String(init.body)) as Rpc; opts.seen?.push(msg);
+    if (msg.id === undefined) return new Response(null, { status: 202 });
+    const result = msg.method === 'initialize' ? { protocolVersion: '2025-03-26', capabilities: { tools: {} }, serverInfo: { name: 'Notes MCP' } }
+      : msg.method === 'tools/list' ? { tools: TOOLS }
+      : msg.method === 'tools/call' ? ((msg.params as { name: string }).name === 'create_task' ? { content: [{ type: 'text', text: 'created #7' }] } : { content: [{ type: 'text', text: 'boom' }], isError: true }) : {};
+    const body = JSON.stringify({ jsonrpc: '2.0', id: msg.id, result });
+    return opts.sse ? new Response(`event: message\ndata: ${body}\n\n`, { headers: { 'content-type': 'text/event-stream' } }) : new Response(body, { headers: { 'content-type': 'application/json', 'mcp-session-id': 's1' } });
+  }) as unknown as typeof fetch;
+}
+
+test('mcp: paste a bare server URL → lists tools, saves them as actions, no model used', async () => {
+  setResolverForTests(async () => ['93.184.216.34']);
+  const { ctx, llm } = makeCtx([], { env: { ASSISTANT_DATA: mkdtempSync(join(tmpdir(), 'asst-')) } });
+  const seen: Rpc[] = [];
+  const j = await done(startAutoConnect(ctx, 'https://notes.example.com/mcp', undefined, mcpServer({ seen, sse: true })).id);
+  assert.equal(j.state, 'done', j.steps.join('\n')); assert.equal(llm.calls.length, 0);
+  assert.deepEqual(seen.map((m) => m.method), ['initialize', 'notifications/initialized', 'tools/list']);
+  const c = listConnectors(ctx)[0]; assert.equal(c.status, 'enabled'); assert.equal(c.manifest.mcp!.url, 'https://notes.example.com/mcp');
+  const by = Object.fromEntries(c.manifest.actions!.map((a) => [a.id, a]));
+  assert.equal(by.search_notes.readOnly, true); assert.equal(by.search_notes.method, 'POST');
+  assert.equal(by.create_task.method, 'POST'); assert.equal(by.create_task.params.find((p) => p.name === 'priority')!.type, 'integer');
+  assert.equal(by.delete_task.method, 'DELETE');   // not marked non-destructive → treated as destructive: always asks
+});
+
+test('mcp: a server that wants a key pauses, then works once the key arrives (bearer)', async () => {
+  setResolverForTests(async () => ['93.184.216.34']);
+  const { ctx } = makeCtx([], { env: { ASSISTANT_DATA: mkdtempSync(join(tmpdir(), 'asst-')) } });
+  const f = mcpServer({ need: 'Bearer tok-123' });
+  const j = await done(startAutoConnect(ctx, 'https://notes.example.com/mcp', undefined, f).id);
+  assert.equal(j.state, 'needs_key'); assert.equal(listConnectors(ctx).length, 0);
+  continueWithKey(ctx, j.id, 'tok-123', f);
+  const d = await done(j.id); assert.equal(d.state, 'done', d.steps.join('\n'));
+  assert.equal(listConnectors(ctx)[0].manifest.auth.type, 'bearer');
+});
+
+test('mcp: pasted `mcpServers` JSON with a header key and a wrong key both behave', async () => {
+  setResolverForTests(async () => ['93.184.216.34']);
+  const paste = '{ "mcpServers": { "notes": { "url": "https://notes.example.com/mcp", "headers": { "X-Api-Key": "k9f3a7c2d81b4e6f" } } } }';
+  const { ctx, llm } = makeCtx([], { env: { ASSISTANT_DATA: mkdtempSync(join(tmpdir(), 'asst-')) } });
+  const headers: Record<string, string>[] = [];
+  const f = (async (u: URL, i: RequestInit) => ((i.headers as Record<string, string>)['X-Api-Key'] === 'k9f3a7c2d81b4e6f' ? mcpServer({ headers })(u, i) : new Response('no', { status: 401 }))) as unknown as typeof fetch;
+  const j = await done(startAutoConnect(ctx, paste, undefined, f).id);
+  assert.equal(j.state, 'done', j.steps.join('\n')); assert.equal(llm.calls.length, 0);
+  const m = listConnectors(ctx)[0].manifest; assert.deepEqual([m.auth.type, m.auth.header], ['header', 'X-Api-Key']);
+  const bad = makeCtx([], { env: { ASSISTANT_DATA: mkdtempSync(join(tmpdir(), 'asst-')) } });
+  const e = await done(startAutoConnect(bad.ctx, paste.replace('k9f3a7c2d81b4e6f', 'zzzzzzzz9999aaaa'), undefined, f).id);
+  assert.equal(e.state, 'failed'); assert.match(e.result!, /credentials|key/i); assert.equal(listConnectors(bad.ctx).length, 0);
+});
+
+test('mcp: `claude mcp add` command with a key in the query string; OAuth-only servers are explained', async () => {
+  setResolverForTests(async () => ['93.184.216.34']);
+  const { ctx } = makeCtx([], { env: { ASSISTANT_DATA: mkdtempSync(join(tmpdir(), 'asst-')) } });
+  const j = await done(startAutoConnect(ctx, 'claude mcp add --transport http notes "https://notes.example.com/mcp?key=a1b2c3d4e5f6g7h8"', undefined, mcpServer({ need: 'a1b2c3d4e5f6g7h8' })).id);
+  assert.equal(j.state, 'done', j.steps.join('\n'));
+  const m = listConnectors(ctx)[0].manifest; assert.deepEqual([m.auth.type, m.auth.param], ['query', 'key']); assert.ok(!JSON.stringify(m).includes('a1b2c3d4e5f6g7h8'));
+  const oauth = (async () => new Response('', { status: 401, headers: { 'www-authenticate': 'Bearer resource_metadata="https://x/.well-known"' } })) as unknown as typeof fetch;
+  const o = makeCtx([], { env: { ASSISTANT_DATA: mkdtempSync(join(tmpdir(), 'asst-')) } });
+  const jo = await done(startAutoConnect(o.ctx, '{"mcpServers":{"x":{"url":"https://oauth.example.com/mcp","headers":{"Authorization":"Bearer abcdef123456abcdef"}}}}', undefined, oauth).id);
+  assert.equal(jo.state, 'failed'); assert.match(jo.result!, /OAuth/);
+});
+
+test('mcp: a bare URL that is not an MCP server falls back to reading it as API docs', async () => {
+  setResolverForTests(async () => ['93.184.216.34']);
+  const { ctx, llm } = makeCtx([fixed], { env: { ASSISTANT_DATA: mkdtempSync(join(tmpdir(), 'asst-')) } });
+  const f = (async (u: URL | string, i: RequestInit) => (i?.method === 'POST' ? new Response('<html>nope</html>', { status: 405 }) : String(u).includes('/orders') ? json(orders) : new Response('<p>Acme docs</p>'))) as unknown as typeof fetch;
+  const j = await done(startAutoConnect(ctx, 'https://docs.acme.example/api', 'k-1', f).id);
+  assert.equal(j.state, 'done', j.steps.join('\n')); assert.equal(llm.calls.length, 1); assert.ok(j.steps.some((s) => /does not speak MCP/.test(s)));
+});
+
+test('mcp: tool calls convert types, join text, report tool errors, and stay behind approval', async () => {
+  setResolverForTests(async () => ['93.184.216.34']);
+  const { ctx } = makeCtx([], { env: { ASSISTANT_DATA: mkdtempSync(join(tmpdir(), 'asst-')) } });
+  const seen: Rpc[] = [];
+  const f = mcpServer({ seen });
+  await done(startAutoConnect(ctx, 'https://notes.example.com/mcp', undefined, f).id);
+  const { callConnectorAction, setAutoAllowed, testConnector } = await import('../src/connectors.ts');
+  const out = await callConnectorAction(ctx, 'mcp-notes', 'create_task', { title: 'Buy milk', priority: '2', urgent: 'yes' }, f);
+  assert.match(out, /created #7/);
+  const call = seen.find((m) => m.method === 'tools/call')!; assert.deepEqual(call.params, { name: 'create_task', arguments: { title: 'Buy milk', priority: 2, urgent: true } });
+  await assert.rejects(callConnectorAction(ctx, 'mcp-notes', 'delete_task', { id: '1' }, f), /tool reported an error: boom/);
+  await assert.rejects(callConnectorAction(ctx, 'mcp-notes', 'create_task', { title: 'x', priority: 'abc' }, f), /must be a number/);
+  assert.throws(() => setAutoAllowed(ctx, 'mcp-notes', 'delete_task', true), /always asks/);
+  setAutoAllowed(ctx, 'mcp-notes', 'create_task', true);
+  assert.match(await testConnector(ctx, 'mcp-notes', f), /3 tool/);
+});

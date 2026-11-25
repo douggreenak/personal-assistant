@@ -5,6 +5,7 @@ import type { Ctx } from './ctx.ts';
 import { nowIso } from './db.ts';
 import { createApproval, registerApprovalKind } from './approvals.ts';
 import { storeMessage } from './pipeline.ts';
+import { coerceArgs, mcpCallTool, mcpOpen, mcpTools, MAX_MCP_TOOLS } from './mcp.ts';
 
 /**
  * A connector is DATA, not code: a read-only description of one HTTPS GET endpoint to poll and how to turn each
@@ -19,10 +20,13 @@ export interface Manifest {
   poll?: { path: string; query?: Record<string, string>; intervalMinutes: number; itemsPath?: string; idField: string; titleField?: string; bodyFields: string[]; senderField?: string; timeField?: string };
   /** WRITE side: calls the assistant may ask for. Every call needs the owner's OK unless the owner switched that action to "no need to ask". */
   actions?: ConnAction[];
+  /** An MCP server (remote, Streamable HTTP). Its tools are the actions; each action carries `tool`. Built by the code, never by the model. */
+  mcp?: { url: string };
 }
 export interface ConnAction {
   id: string; name: string; description: string; method: 'POST' | 'PUT' | 'PATCH' | 'DELETE'; path: string;   // path may contain {param} placeholders
-  params: { name: string; description: string; in: 'path' | 'query' | 'body'; required?: boolean }[];
+  params: { name: string; description: string; in: 'path' | 'query' | 'body'; required?: boolean; type?: 'string' | 'number' | 'integer' | 'boolean' | 'json' }[];
+  tool?: string; readOnly?: boolean;   // MCP only
 }
 export const MANIFEST_SCHEMA = {
   type: 'object',
@@ -88,7 +92,8 @@ export function validateManifest(raw: unknown): Manifest {
   if (m.auth.type !== 'none' && !SECRET_RE.test(m.auth.secret ?? '')) fail('auth.secret must be UPPER_SNAKE_CASE');
   if (m.auth.type === 'query' && !/^[A-Za-z0-9_-]{1,50}$/.test(m.auth.param ?? '')) fail('auth.param');
   if (m.auth.type === 'header' && !/^[A-Za-z0-9-]{1,50}$/.test(m.auth.header ?? '')) fail('auth.header');
-  const p = m.poll;
+  const p = m.mcp ? undefined : m.poll;
+  if (m.mcp) { let mu: URL; try { mu = new URL(m.mcp.url); } catch { return fail('mcp.url'); } if (mu.protocol !== 'https:' || mu.search) fail('mcp.url must be a plain https URL'); }
   if (p) {
     if (typeof p.path !== 'string' || !p.path.startsWith('/')) fail('poll.path must start with /');
     if (!Number.isInteger(p.intervalMinutes) || p.intervalMinutes < 5) fail('poll.intervalMinutes must be >= 5');
@@ -96,21 +101,21 @@ export function validateManifest(raw: unknown): Manifest {
     if (!Array.isArray(p.bodyFields) || !p.bodyFields.length) fail('poll.bodyFields');
   }
   const actions: ConnAction[] = [];
-  for (const a of Array.isArray(m.actions) ? m.actions.slice(0, 20) : []) {
+  for (const a of Array.isArray(m.actions) ? m.actions.slice(0, m.mcp ? MAX_MCP_TOOLS : 20) : []) {
     if (!/^[a-z][a-z0-9_]{1,40}$/.test(a?.id ?? '')) fail(`action id "${a?.id}" must be lower_snake_case`);
     if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(a.method)) fail(`action ${a.id}: method`);
     if (typeof a.path !== 'string' || !a.path.startsWith('/') || /\s|\.\./.test(a.path)) fail(`action ${a.id}: path`);
     const params = (Array.isArray(a.params) ? a.params : []).slice(0, 20).map((q) => {
       if (!/^[A-Za-z0-9_.-]{1,60}$/.test(q?.name ?? '')) fail(`action ${a.id}: param name`);
       if (!['path', 'query', 'body'].includes(q.in)) fail(`action ${a.id}: param "${q.name}" location`);
-      return { name: q.name, description: String(q.description ?? '').slice(0, 200), in: q.in, required: !!q.required };
+      return { name: q.name, description: String(q.description ?? '').slice(0, 200), in: q.in, required: !!q.required, ...(m.mcp && q.type && { type: q.type }) };
     });
     const holes = [...a.path.matchAll(/\{([^}]+)\}/g)].map((x) => x[1]);
     for (const hname of holes) if (!params.some((q) => q.in === 'path' && q.name === hname)) fail(`action ${a.id}: {${hname}} has no path param`);
-    actions.push({ id: a.id, name: String(a.name ?? a.id).slice(0, 80), description: String(a.description ?? '').slice(0, 300), method: a.method, path: a.path, params });
+    actions.push({ id: a.id, name: String(a.name ?? a.id).slice(0, 80), description: String(a.description ?? '').slice(0, 300), method: a.method, path: a.path, params, ...(m.mcp && { tool: String(a.tool ?? a.id), readOnly: !!a.readOnly }) });
   }
   if (!p && !actions.length) fail('needs a poll (read) or at least one action (write)');
-  return { id: m.id, name: m.name.trim().slice(0, 80), description: String(m.description ?? '').slice(0, 500), baseUrl: base.origin + base.pathname.replace(/\/$/, ''), auth: m.auth, ...(p && { poll: { ...p, query: p.query ?? {} } }), ...(actions.length && { actions }) };
+  return { id: m.id, name: m.name.trim().slice(0, 80), description: String(m.description ?? '').slice(0, 500), baseUrl: base.origin + base.pathname.replace(/\/$/, ''), auth: m.auth, ...(m.mcp && { mcp: { url: m.mcp.url } }), ...(p && { poll: { ...p, query: p.query ?? {} } }), ...(actions.length && { actions }) };
 }
 
 export function getSecret(ctx: Ctx, name: string): string | undefined {
@@ -179,7 +184,8 @@ export async function loadDocs(input: string, fetchImpl: typeof fetch = fetch): 
 
 export const describeCaps = (m: Manifest): string => [
   m.poll && `reads: GET ${m.baseUrl}${m.poll.path} every ${m.poll.intervalMinutes} min (${m.poll.bodyFields.join(', ')})`,
-  m.actions?.length && `writes (each call asks you first): ${m.actions.map((a) => `${a.method} ${a.path}`).join(', ')}`].filter(Boolean).join(' · ');
+  m.mcp && `MCP server ${m.mcp.url}: ${m.actions?.length ?? 0} tool${m.actions?.length === 1 ? '' : 's'} (each call asks you first)`,
+  !m.mcp && m.actions?.length && `writes (each call asks you first): ${m.actions.map((a) => `${a.method} ${a.path}`).join(', ')}`].filter(Boolean).join(' · ');
 
 export async function proposeConnector(ctx: Ctx, input: string, fetchImpl: typeof fetch = fetch): Promise<string> {
   let docs: string;
@@ -209,6 +215,15 @@ registerApprovalKind('connector', async (ctx, a) => {
 export async function testConnector(ctx: Ctx, id: string, fetchImpl: typeof fetch = fetch): Promise<string> {
   const c = getConn(ctx, id); if (!c) return `No connector "${id}".`;
   if (c.status === 'proposed') return `Approve the proposal first (say "approvals").`;
+  if (c.manifest.mcp) {   // listing tools is harmless, so an MCP server can really be tested
+    try {
+      const { url, headers } = await mcpTarget(ctx, c.manifest, c.manifest.mcp.url);
+      const n = (await mcpTools(await mcpOpen(url, headers, fetchImpl))).length;
+      ctx.db.prepare('UPDATE connectors SET last_error = NULL WHERE id = ?').run(id);
+      ctx.db.prepare("INSERT INTO kv (key, value) VALUES (?, '1') ON CONFLICT(key) DO UPDATE SET value = '1'").run(`connector.tested.${id}`);
+      return `MCP server reachable — ${n} tool(s). Each call will ask you first. Say "enable connector ${id}" to turn it on.`;
+    } catch (e) { return `Test failed: ${(e as Error).message}`; }
+  }
   if (!c.manifest.poll) {   // write-only: a dry run would have to perform a write, which we never do just to test
     ctx.db.prepare("INSERT INTO kv (key, value) VALUES (?, '1') ON CONFLICT(key) DO UPDATE SET value = '1'").run(`connector.tested.${id}`);
     return `Write-only connector: nothing is called to test it. Each write will ask you first. Say "enable connector ${id}" to turn it on.`;
@@ -274,6 +289,11 @@ export async function callConnectorAction(ctx: Ctx, connectorId: string, actionI
   if (!c || !a) throw new Error(`Unknown connector action ${connectorId}.${actionId}`);
   if (c.status !== 'enabled') throw new Error(`Connector ${connectorId} is not enabled`);
   for (const p of a.params) if (p.required && !String(args[p.name] ?? '').trim()) throw new Error(`Missing required value "${p.name}"`);
+  if (c.manifest.mcp) {
+    const { url, headers } = await mcpTarget(ctx, c.manifest, c.manifest.mcp.url);
+    const out = await mcpCallTool(await mcpOpen(url, headers, fetchImpl), a.tool ?? a.id, coerceArgs(a, args));
+    return `${c.manifest.name}: ${a.name} done${out ? ` — ${out}` : ''}`;
+  }
   let path = a.path.replace(/\{([^}]+)\}/g, (_, n: string) => encodeURIComponent(String(args[n] ?? '')));
   if (/\/\.\.?(\/|$)/.test(path)) throw new Error('bad path');
   const u = await assertPublicHttps(c.manifest.baseUrl + path);
@@ -290,4 +310,11 @@ export async function callConnectorAction(ctx: Ctx, connectorId: string, actionI
   const text = (await res.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 300);
   if (!res.ok) throw new Error(`${c.manifest.name}: ${a.method} ${path} → HTTP ${res.status} ${text}`.trim());
   return `${c.manifest.name}: ${a.name} done (HTTP ${res.status})${text ? ` — ${text}` : ''}`;
+}
+
+/** URL (public https only) plus the headers that carry this connector's credential. */
+async function mcpTarget(ctx: Ctx, m: Manifest, rawUrl: string): Promise<{ url: URL; headers: Record<string, string> }> {
+  const url = await assertPublicHttps(rawUrl); const headers: Record<string, string> = {};
+  applyAuth(ctx, m, url, headers);
+  return { url, headers };
 }

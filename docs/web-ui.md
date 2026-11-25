@@ -52,5 +52,8 @@ Shortcuts are ignored while you are typing in a field or a dialog is open (excep
 ## Other behaviour worth knowing
 Dialogs no longer close when you click outside them (Esc and Close still do). Items has sort, Overdue/Today/Next 7 days filters, quick-add, CSV/JSON export, and remembers your view. `Ctrl K` is also a command palette. Leaving Settings with unsaved changes asks first; a banner shows when the server is unreachable.
 
+## MCP servers
+Paste a remote MCP server's URL, its `mcpServers` JSON, or the `claude mcp add --transport http …` line (key included) into the same box. No model is involved: the assistant connects over Streamable HTTP, lists the server's tools and saves them as actions (up to 40, read-only tools first). Bearer tokens, a named header (`X-Api-Key`) or a `?key=` in the URL are supported; servers that only offer OAuth sign-in, or that need a local process (`npx …`/stdio), cannot be used and the wizard says so. Tools marked read-only ask first; tools not marked read-only (and not explicitly non-destructive) are treated like deletes — they always ask and have no "no need to ask" switch. As with other write connectors, tools are only offered for your own messages (Chat/voice), never for outside senders. A bare URL that is not an MCP server is read as API docs instead.
+
 ## Read and write connectors
 A connector can read (polled into the inbox), write (create an invoice, close a ticket…), or both. Writes you ask for in Chat or by voice show up in **Approvals** first. On a connector's card, open *Can do N write actions* and flip **no need to ask** for the ones you trust; deletes always ask, and anything that came from someone else's message can never trigger a write.

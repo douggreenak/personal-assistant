@@ -13,7 +13,7 @@ export default async function connectors(view, { refreshStatus }) {
   function card(c) {
     const m = c.manifest, needsKey = m.auth.type !== 'none';
     const steps = [['Proposed', true], ['Approved', c.status !== 'proposed'], ['Credential', !needsKey || c.secretSet], ['Tested', c.tested], ['Enabled', c.status === 'enabled']];
-    const caps = [m.poll && chip('reads', ''), m.actions?.length && chip('writes', 'warn')];
+    const caps = [m.mcp && chip('MCP', ''), m.poll && chip('reads', ''), m.actions?.length && !m.mcp && chip('writes', 'warn')];
     const tone = c.status === 'enabled' ? 'ok' : c.lastError ? 'bad' : 'warn';
     const btns = [];
     if (c.status === 'proposed') {
@@ -29,10 +29,10 @@ export default async function connectors(view, { refreshStatus }) {
     }
     btns.push(h('md-icon-button', { 'aria-label': 'Delete', onclick: async () => { if (await confirmDialog('Delete connector?', `${m.name} will stop polling. Its past messages stay.`, 'Delete')) run(() => api('/connectors/' + c.id, { method: 'DELETE' }), 'Deleted'); } }, icon('delete')));
     return h('div', { class: 'card high' }, h('div', { style: 'display:flex;gap:14px;align-items:center' }, h('div', { class: 'lead k-task' }, icon('extension')), h('div', { style: 'flex:1;min-width:0' }, h('div', { class: 'title-m' }, m.name), h('div', { class: 'muted' }, m.description)), h('div', { style: 'display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end' }, caps, chip(c.status, tone))),
-      h('div', { class: 'mono muted', style: 'overflow-wrap:anywhere' }, m.poll ? `Reads: GET ${m.baseUrl}${m.poll.path} · every ${m.poll.intervalMinutes} min` : `Writes only · ${m.baseUrl}`),
-      m.actions?.length ? h('details', { class: 'acts-list' }, h('summary', {}, `Can do ${m.actions.length} write action${m.actions.length === 1 ? '' : 's'} — asks you first`),
+      h('div', { class: 'mono muted', style: 'overflow-wrap:anywhere' }, m.mcp ? `MCP server · ${m.mcp.url}` : m.poll ? `Reads: GET ${m.baseUrl}${m.poll.path} · every ${m.poll.intervalMinutes} min` : `Writes only · ${m.baseUrl}`),
+      m.actions?.length ? h('details', { class: 'acts-list' }, h('summary', {}, m.mcp ? `${m.actions.length} MCP tool${m.actions.length === 1 ? '' : 's'} — each call asks you first` : `Can do ${m.actions.length} write action${m.actions.length === 1 ? '' : 's'} — asks you first`),
         m.actions.map((a) => h('div', { class: 'actrow' },
-          h('div', {}, h('div', { class: 'title-s' }, a.name, ' ', h('span', { class: 'mono muted' }, `${a.method} ${a.path}`)), h('div', { class: 'muted s' }, a.description)),
+          h('div', {}, h('div', { class: 'title-s' }, a.name, ' ', h('span', { class: 'mono muted' }, a.tool ? (a.readOnly ? 'read-only' : a.method === 'DELETE' ? 'may change things' : 'tool') : `${a.method} ${a.path}`)), h('div', { class: 'muted s' }, a.description)),
           a.method === 'DELETE' ? h('span', { class: 'muted s' }, 'always asks') : h('label', { class: 's muted', style: 'display:flex;gap:8px;align-items:center' }, 'no need to ask',
             h('md-switch', { 'aria-label': 'Allow ' + a.name + ' without asking', selected: c.autoActions?.includes(a.id) || undefined, onchange: async (e) => {
               const allow = e.target.selected; const ok = await guarded(() => api(`/connectors/${c.id}/actions/${a.id}/auto`, { method: 'POST', body: { allow } }), allow ? `${a.name} will run without asking (only for things you tell me yourself)` : `${a.name} will ask first`); if (!ok) e.target.selected = !allow; } }))))) : null,
@@ -46,12 +46,12 @@ export default async function connectors(view, { refreshStatus }) {
   }
   async function load() {
     pending = Object.fromEntries(((await guarded(() => api('/approvals'))) ?? { approvals: [] }).approvals.filter((a) => a.kind === 'connector').map((a) => [a.payload.id, a.id])); const { connectors: cs } = (await guarded(() => api('/connectors/full'))) ?? { connectors: [] };
-    clear(list).append(...(cs.length ? cs.map(card) : [empty('extension', 'No connectors yet', 'Paste a service\'s docs, an example and its key, and I\'ll connect it for you.')])); }
+    clear(list).append(...(cs.length ? cs.map(card) : [empty('extension', 'No connectors yet', 'Paste a service\'s docs and key, or an MCP server\'s URL, and I\'ll connect it for you.')])); }
   function add() {
     const t = h('md-outlined-text-field', { label: 'Paste everything — docs, example requests, your key', type: 'textarea', rows: 8, 'data-primary': '' });
     const key = h('md-outlined-text-field', { label: 'API key (optional — I also find keys inside the paste)', type: 'password', autocomplete: 'off', 'supporting-text': 'Keys are stored on the server only; the model never sees them.' });
     const log = h('div', { class: 'autolog', 'aria-live': 'polite' }), tail = h('div', { class: 'form' });
-    const form = h('div', { class: 'form' }, h('p', { class: 'muted' }, 'Paste whatever the service gave you — docs, a curl example, the key, all in one go. I’ll pull the key out and keep it on the server, work out how the service logs in, build the connector (it can read, write, or both — every write asks you first), try it for real, fix whatever goes wrong, and switch it on.'), t, key);
+    const form = h('div', { class: 'form' }, h('p', { class: 'muted' }, 'Paste whatever the service gave you — docs, a curl example, the key, all in one go. For an MCP server, paste its URL (or its config / the claude mcp add line) and I’ll list its tools. I’ll pull the key out and keep it on the server, work out how the service logs in, build the connector (it can read, write, or both — every write asks you first), try it for real, fix whatever goes wrong, and switch it on.'), t, key);
     let poll, cur = null;
     const go = h('md-filled-button', { onclick: start }, icon('bolt'), 'Connect');
     const stopPoll = () => clearInterval(poll);

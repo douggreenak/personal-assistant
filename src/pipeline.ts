@@ -39,7 +39,7 @@ export async function processMessage(ctx: Ctx, msg: MessageRow): Promise<Process
   const candidates = ctx.items.candidates(`${msg.subject} ${msg.body}`, 25);
   const stages = ctx.ticketing ? (await ctx.ticketing.defaultPipeline().catch(() => null))?.stages ?? DEFAULT_STAGES : DEFAULT_STAGES;
   const writes: ReturnType<typeof connectorActionMap> = fromOwner ? connectorActionMap(ctx) : new Map();   // only the owner's own words can ask for a write
-  const connectorActions = [...writes].map(([k, v]) => `- ${k} — ${v.name}: ${v.action.description} (${v.action.method}; params: ${v.action.params.map((q) => `${q.name}${q.required ? '*' : ''}${q.description ? ` (${q.description})` : ''}`).join(', ') || 'none'})`);
+  const connectorActions = [...writes].map(([k, v]) => `- ${k} — ${v.name}: ${v.action.description} (${v.action.tool ? 'MCP tool' : v.action.method}; params: ${v.action.params.map((q) => `${q.name}${q.required ? '*' : ''}${q.description ? ` (${q.description})` : ''}`).join(', ') || 'none'})`);
   const prompt = buildExtractPrompt({ connectorActions, now: describeNow(ctx.now(), ctx.cfg.tz), source: msg.source, sender: msg.sender, subject: msg.subject, body: msg.body, fromOwner, candidates, stages });
 
   const raw = await ctx.llm.json({ system: EXTRACT_SYSTEM, prompt, schema: ACTIONS_SCHEMA as unknown as Record<string, unknown> });

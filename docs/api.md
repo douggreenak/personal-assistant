@@ -60,6 +60,8 @@ Called by the ticket tracker's webhooks. No bearer token; authenticated by the `
 ### Connect a service in one step
 `POST /connectors/auto` (full token) `{input, apiKey?}` → `202 {job}`. `input` is pasted API docs or an `https://` docs URL; `apiKey` is optional: keys inside `input` (labelled values, `Bearer …`, `?key=…`, well-known prefixes) are detected, stored in `secrets.json` and replaced by `<API_KEY_n>` before the model sees the text. Auth styles: bearer, header, basic, or `query` (key in a URL parameter).
 The server designs a read-only connector, saves it, dry-runs it against the real service and — if that fails — shows the model what the service actually returned so it can fix the manifest (up to 4 tries), then enables it. On failure nothing is left behind.
+`input` may also be an MCP server (URL, `mcpServers` JSON or a `claude mcp add` line): the connector is then built from the server's own `tools/list` (manifest has `mcp:{url}`; each action has `tool`), without calling the model.
+
 `GET /connectors/auto/{id}` → `{job:{id,state,steps[],connectorId,secret,result}}` with `state` = `running | needs_key | done | failed`. `POST /connectors/auto/{id}/key` `{apiKey}` resumes a job that is `needs_key`.
 
 ### Write connectors

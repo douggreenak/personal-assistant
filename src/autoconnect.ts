@@ -3,6 +3,7 @@ import { nowIso } from './db.ts';
 import { CONNECTOR_SYSTEM, FetchProblem, describeCaps, MANIFEST_SCHEMA, assertPublicHttps, fetchRecords, getConn, getSecret, loadDocs, toMessage, validateManifest, type Manifest } from './connectors.ts';
 import { deleteConnector, hasSecret, setSecret } from './admin.ts';
 import { extractKeys, hint } from './keyscan.ts';
+import { buildManifest, mcpIdFor, mcpOpen, mcpTools, McpError, MAX_MCP_TOOLS, parseMcpInput, toolsToActions, type McpCandidate } from './mcp.ts';
 
 /**
  * One-step connector setup: paste docs (and the key) → design → save → dry run → on failure show the model what the service
@@ -13,6 +14,8 @@ export interface AutoJob {
   id: string; state: 'running' | 'needs_key' | 'done' | 'failed'; steps: string[]; connectorId?: string; secret?: string; result?: string; startedAt: number;
 }
 const jobs = new Map<string, AutoJob>();
+/** An MCP server that answered 401 and is waiting for a key (not serialized to the browser). */
+const pendingMcp = new Map<string, McpCandidate>();
 const MAX_ATTEMPTS = 4;
 const REPAIR_SYSTEM = `${CONNECTOR_SYSTEM}
 You are now FIXING a manifest whose dry run failed. You get the docs, the current manifest, what went wrong, and a short sample of what the service actually returned
@@ -32,7 +35,14 @@ export function startAutoConnect(ctx: Ctx, input: string, apiKey: string | undef
 }
 
 export function continueWithKey(ctx: Ctx, jobId: string, apiKey: string, fetchImpl: typeof fetch = fetch): AutoJob {
-  const job = jobs.get(jobId); if (!job || job.state !== 'needs_key' || !job.connectorId || !job.secret) throw new Error('Nothing is waiting for a key.');
+  const job = jobs.get(jobId); const mcp = pendingMcp.get(jobId);
+  if (job && mcp && job.state === 'needs_key' && job.secret) {
+    const key = apiKey.trim(); if (!key) throw new Error('Enter the key.');
+    pendingMcp.delete(jobId); job.state = 'running'; note(job, 'Key received.');
+    void connectMcp(ctx, job, mcp, key, fetchImpl).catch((e) => { job.state = 'failed'; job.result = (e as Error).message; note(job, 'Stopped: ' + (e as Error).message); });
+    return job;
+  }
+  if (!job || job.state !== 'needs_key' || !job.connectorId || !job.secret) throw new Error('Nothing is waiting for a key.');
   const key = apiKey.trim(); if (!key) throw new Error('Enter the key.');
   setSecret(ctx, job.secret, key); job.state = 'running'; note(job, 'Key saved on the server.');
   void verifyAndEnable(ctx, job, job.connectorId, '', fetchImpl).catch((e) => { job.state = 'failed'; job.result = (e as Error).message; });
@@ -52,8 +62,16 @@ async function run(ctx: Ctx, job: AutoJob, input: string, apiKey: string | undef
   const scan = bare ? { clean: input, keys: [] as string[] } : extractKeys(input);
   const keys = [apiKey?.trim(), ...scan.keys].filter((k): k is string => !!k);
   if (scan.keys.length) note(job, `Found ${scan.keys.length === 1 ? 'a key' : scan.keys.length + ' keys'} in the paste (${scan.keys.map(hint).join(', ')}) — keeping ${scan.keys.length === 1 ? 'it' : 'them'} on the server, out of the model's sight.`);
+  // Is this an MCP server (URL, `mcpServers` JSON, `claude mcp add …`)? Then no model is needed: ask the server what it offers.
+  const mcpScan = extractKeys(input); const mcp = parseMcpInput(mcpScan.clean);
+  if (mcp) {
+    const mcpKey = [apiKey?.trim(), ...mcpScan.keys].find((k) => !!k);
+    note(job, 'This looks like an MCP server — connecting…');
+    try { await connectMcp(ctx, job, mcp, mcpKey, fetchImpl); return; }
+    catch (e) { if (!(e instanceof McpError) || e.auth || mcp.explicit || !bare) throw e; note(job, 'It does not speak MCP — reading it as API docs instead.'); }
+  }
   const docs = await loadDocs(scan.clean, fetchImpl);
-  note(job, 'Designing a read-only connector…');
+  note(job, 'Designing a connector…');
   let m: Manifest;
   try { m = await design(ctx, docs); } catch (e) { throw new Error(`I couldn't build a safe connector from that: ${(e as Error).message}`); }
   if (getConn(ctx, m.id)) throw new Error(`A connector named "${m.id}" already exists. Delete it first if you want to redo it.`);
@@ -114,5 +132,42 @@ async function verifyAndEnable(ctx: Ctx, job: AutoJob, id: string, docs: string,
   deleteConnector(ctx, id);
   job.state = 'failed';
   job.result = `I couldn't get it working: ${lastErr}. I removed the half-built connector so nothing is left behind — fix the cause (key, docs) and paste again.`;
+  note(job, job.result);
+}
+
+/** Connects to a remote MCP server, lists its tools, and saves them as actions (each call asks first). No model involved. */
+async function connectMcp(ctx: Ctx, job: AutoJob, c: McpCandidate, key: string | undefined, fetchImpl: typeof fetch): Promise<void> {
+  const id = mcpIdFor(c.url);
+  const secret = `${id.slice(4).toUpperCase().replace(/-/g, '_')}_MCP_KEY`;
+  const auth: Manifest['auth'] = c.queryParam ? { type: 'query', param: c.queryParam, secret } : c.authHeader && !/^authorization$/i.test(c.authHeader) ? { type: 'header', header: c.authHeader, secret } : key || c.hasKey ? { type: 'bearer', secret } : { type: 'none' };
+  const url = new URL(c.url); if (c.queryParam) url.searchParams.delete(c.queryParam);
+  if (getConn(ctx, id)) throw new Error(`A connector named "${id}" already exists. Delete it first if you want to redo it.`);
+  await assertPublicHttps(url.toString());
+  const headers: Record<string, string> = {}; const target = new URL(url);
+  if (auth.type !== 'none') {
+    const k = key ?? getSecret(ctx, secret);
+    if (!k) { job.state = 'needs_key'; job.secret = secret; pendingMcp.set(job.id, c); note(job, 'This server needs an API key or token.'); return; }
+    if (auth.type === 'bearer') headers.authorization = `Bearer ${k}`; else if (auth.type === 'header') headers[auth.header!] = k; else target.searchParams.set(auth.param!, k);
+    if (key) setSecret(ctx, secret, key);
+  }
+  let tools; let serverName = '';
+  try { const s = await mcpOpen(target, headers, fetchImpl); serverName = s.serverName; tools = await mcpTools(s); }
+  catch (e) {
+    if (e instanceof McpError && e.auth && auth.type === 'none') {   // it said no without a key: ask for one and try bearer
+      job.state = 'needs_key'; job.secret = secret; pendingMcp.set(job.id, { ...c, hasKey: true }); note(job, `The server wants a key (${(e as Error).message.slice(0, 120)}).`); return;
+    }
+    const msg = `I couldn't talk to that MCP server: ${(e as Error).message}`;
+    throw e instanceof McpError ? Object.assign(new McpError(msg), { auth: e.auth, notMcp: e.notMcp }) : new Error(msg);
+  }
+  note(job, `Connected${serverName ? ` to “${serverName}”` : ''} — it offers ${tools.length} tool${tools.length === 1 ? '' : 's'}.`);
+  const actions = toolsToActions(tools);
+  if (!actions.length) throw new Error('That MCP server has no tools I can use.');
+  if (tools.length > MAX_MCP_TOOLS) note(job, `Keeping the first ${MAX_MCP_TOOLS} (read-only tools first).`);
+  const m = validateManifest(buildManifest(id, serverName || id.slice(4), url, auth, actions));
+  ctx.db.prepare('INSERT INTO connectors (id, manifest, status, created_at) VALUES (?,?,?,?)').run(m.id, JSON.stringify(m), 'enabled', nowIso());
+  ctx.db.prepare("INSERT INTO kv (key, value) VALUES (?, '1') ON CONFLICT(key) DO UPDATE SET value = '1'").run(`connector.tested.${m.id}`);
+  job.connectorId = m.id;
+  const ro = actions.filter((a) => a.readOnly).length;
+  job.state = 'done'; job.result = `Connected “${m.name}” over MCP — ${actions.length} tool${actions.length === 1 ? '' : 's'}${ro ? ` (${ro} read-only)` : ''}. Every call asks you first; the assistant uses them only when you ask in Chat or by voice.`;
   note(job, job.result);
 }

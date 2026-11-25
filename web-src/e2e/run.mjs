@@ -362,6 +362,17 @@ try {
     assert.deepEqual((await api('GET', '/connectors/full')).connectors.find((c) => c.id === 'billing').autoActions, []);
   });
 
+  await step('MCP connectors: card shows the server and its tools; destructive tools always ask', async () => {
+    const man = { id: 'mcp-notes', name: 'Notes MCP', description: 'MCP server notes.example.com', baseUrl: 'https://notes.example.com', auth: { type: 'bearer', secret: 'NOTES_MCP_KEY' }, mcp: { url: 'https://notes.example.com/mcp' }, actions: [
+      { id: 'search_notes', name: 'search_notes', description: '(read-only) Search', method: 'POST', path: '/', tool: 'search_notes', readOnly: true, params: [{ name: 'query', description: 'text', in: 'body', required: true, type: 'string' }] },
+      { id: 'delete_note', name: 'delete_note', description: 'Delete', method: 'DELETE', path: '/', tool: 'delete_note', params: [{ name: 'id', description: 'id', in: 'body', required: true, type: 'string' }] }] };
+    const d = db(); d.prepare("INSERT INTO connectors (id, manifest, status, created_at) VALUES ('mcp-notes', ?, 'enabled', ?)").run(JSON.stringify(man), new Date().toISOString()); d.close();
+    await goto('home'); await goto('connectors'); const card = page.locator('.card', { hasText: 'Notes MCP' }); await card.waitFor();
+    assert.match(await card.innerText(), /MCP server · https:\/\/notes.example.com\/mcp/);
+    await card.locator('summary', { hasText: '2 MCP tools' }).click();
+    assert.match(await card.innerText(), /read-only/); assert.match(await card.innerText(), /always asks/);
+  });
+
   await step('no JavaScript errors were logged during the whole run', async () => { assert.deepEqual(errors, []); });
 } finally {
   await browser.close(); srv.kill();
