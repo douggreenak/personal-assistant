@@ -8,7 +8,7 @@ Built in Material 3 Expressive: a palette generated from one seed color (change 
 |---|---|
 | Home | what needs attention, coming up, recent activity, quick capture |
 | Items | create / edit / complete / drop / snooze / acknowledge tickets, reminders and tasks; set ticket stages; history |
-| Settings → Backup | download one file with everything (optionally without keys/passwords) and restore from such a file; a safety copy of the current data is saved before every restore |
+| Settings → Backup | a nightly automatic backup kept on the server (list, download, “Back up now”); download one file with everything (optionally without keys/passwords) and restore from such a file; a safety copy of the current data is saved before every restore |
 | Chat | the same assistant as Google Chat — capture, commands, questions. Messages and replies are Markdown (headings, lists, tables, code, links); attach, paste or drag in up to 5 pictures and the assistant reads them (screenshots, receipts, photos). The Home “Tell the assistant” box does the same |
 | Inbox | every message received and what happened to it; retry, skip, add one by hand |
 | Approvals | approve or reject what the assistant asked about (history too) |

@@ -338,3 +338,19 @@ test('backup: export then import restores everything (data, search, pictures, se
   // a backup without keys does not touch the keys on this machine
   writeFileSync(join(dir, 'secrets.json'), '{"K":"keep"}'); restoreBackup(ctx, createBackup(ctx, false).data); assert.equal(readFileSync(join(dir, 'secrets.json'), 'utf8'), '{"K":"keep"}');
 });
+
+import { nightlyBackupTick, listBackups, lastBackup } from '../src/backup.ts';
+test('nightly backup: once per local day after the hour, catches up when the app was off, keeps only N, can be switched off', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'asst-')); const { ctx } = makeCtx([], { env: { ASSISTANT_DATA: dir, TZ_NAME: 'America/Anchorage' } });
+  const at = (iso: string) => { ctx.now = () => new Date(iso); };
+  ctx.cfg.backup = { auto: true, hour: 2, keep: 2 };
+  at('2026-11-25T10:00:00Z');                                        // 01:00 in Anchorage — not yet
+  assert.equal(await nightlyBackupTick(ctx), null); assert.equal(listBackups(ctx).length, 0);
+  at('2026-11-25T11:30:00Z');                                        // 02:30 local
+  assert.equal(await nightlyBackupTick(ctx), 'nightly-2026-11-25.backup'); assert.equal(await nightlyBackupTick(ctx), null);   // only once that day
+  assert.equal(lastBackup(ctx)!.ok, true); assert.equal(readBackup(readFileSync(join(dir, 'backups', 'nightly-2026-11-25.backup'))).info.files[0], 'assistant.db');
+  at('2026-11-26T20:00:00Z'); assert.equal(await nightlyBackupTick(ctx), 'nightly-2026-11-26.backup');   // app was off at 2am: catches up when it runs
+  at('2026-11-27T20:00:00Z'); await nightlyBackupTick(ctx);
+  assert.deepEqual(listBackups(ctx).map((b) => b.name).sort(), ['nightly-2026-11-26.backup', 'nightly-2026-11-27.backup']);   // keep = 2
+  ctx.cfg.backup.auto = false; at('2026-11-28T20:00:00Z'); assert.equal(await nightlyBackupTick(ctx), null);
+});

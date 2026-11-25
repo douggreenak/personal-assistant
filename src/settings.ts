@@ -49,6 +49,10 @@ export const SETTINGS: SettingDef[] = [
   { key: 'GITHUB_REPO', label: 'GitHub repository', group: 'Mac app', type: 'text', placeholder: 'douggreenak/personal-assistant', help: 'Where Mac app releases are published (owner/name).' },
   { key: 'GITHUB_TOKEN', label: 'GitHub token', group: 'Mac app', type: 'secret', help: 'Only needed if the repository is private (read access to releases).' },
 
+  { key: 'BACKUP_AUTO', label: 'Nightly backup', group: 'Backup', type: 'bool', default: '1', help: 'Saves a full backup (including keys) into the data folder, backups/ — once a day.' },
+  { key: 'BACKUP_HOUR', label: 'Backup hour', group: 'Backup', type: 'number', placeholder: '2', help: 'Local hour (0–23). If the assistant was off then, it backs up as soon as it starts.' },
+  { key: 'BACKUP_KEEP', label: 'Nightly backups to keep', group: 'Backup', type: 'number', placeholder: '14', help: 'Older nightly files are deleted.' },
+
   { key: 'INGEST_TOKEN', label: 'Ingest token', group: 'Access', type: 'secret', help: 'Send-input-only token for the Mac agent and phone app.' },
 ];
 const BY_KEY = new Map(SETTINGS.map((s) => [s.key, s]));

@@ -243,6 +243,9 @@ try {
     const [dl] = await Promise.all([page.waitForEvent('download'), btn('Download backup').click()]);
     assert.match(dl.suggestedFilename(), /^assistant-backup-\d{4}-\d{2}-\d{2}\.backup$/);
     const path = join(dir, 'saved.backup'); writeFileSync(path, Buffer.from(await page.evaluate(async () => { const b = new Uint8Array(await window.savedBlob.arrayBuffer()); let t = ''; for (let i = 0; i < b.length; i += 8192) t += String.fromCharCode(...b.subarray(i, i + 8192)); return btoa(t); }), 'base64'));   // (the browser's own download folder may be unreachable)
+    assert.match(await page.locator('.card', { hasText: 'Saved on the server' }).innerText(), /Nightly backup is on/);
+    await btn('Back up now').click(); await page.locator('.row .t', { hasText: /^manual-.*\.backup$/ }).first().waitFor();
+    assert.ok((await call('GET', '/backup/list')).backups.some((b) => b.kind === 'manual'));
     await call('POST', '/items', { kind: 'task', title: 'Added after the backup' }); assert.ok((await titles()).includes('Added after the backup'));
     // a wrong file is refused with a plain message and changes nothing
     await page.locator('input[aria-label="Choose a backup file"]').setInputFiles({ name: 'x.backup', mimeType: 'application/octet-stream', buffer: Buffer.from('not a backup') });

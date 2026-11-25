@@ -17,6 +17,7 @@ import { nagTick } from './nag.ts';
 import { processNextReport } from './pipeline.ts';
 import { canopySync } from './sync/canopy.ts';
 import { runConnectors } from './connectors.ts';
+import { nightlyBackupTick } from './backup.ts';
 import { createHttp } from './http.ts';
 import type { Ctx } from './ctx.ts';
 
@@ -58,6 +59,7 @@ const wake = every('worker', 3000, async () => { while (await processNextReport(
 every('nag', 30_000, () => nagTick(ctx));
 every('approvals', 10_000, () => announcePending(ctx));
 every('connectors', 60_000, () => runConnectors(ctx));
+every('backup', 5 * 60_000, () => nightlyBackupTick(ctx), true);
 if (cfg.canopy) every('canopy', 15 * 60_000, () => canopySync(ctx));
 if (cfg.gmail.enabled && user) every('gmail', 60_000, () => pollGmail(ctx, user));
 if (cfg.chat.readUserSpaces && user) every('chat-read', 90_000, () => pollChatSpaces(ctx, user));

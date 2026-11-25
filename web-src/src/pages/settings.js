@@ -1,9 +1,9 @@
 import { api, clearToken, getToken } from '../api.js';
-import { h, icon, clear, chip, guarded, toast, dialog, confirmDialog, page } from '../ui.js';
+import { h, icon, clear, chip, guarded, toast, dialog, confirmDialog, page, fmtDate } from '../ui.js';
 import { PRESETS, prefs, applyTheme } from '../theme.js';
 import { restartServer } from './system.js';
 
-const GROUP_ICON = { General: 'tune', Brain: 'smart_toy', Ticketing: 'confirmation_number', Canopy: 'public', Google: 'mail', Notifications: 'notifications', 'Files & voice': 'folder', Access: 'key' };
+const GROUP_ICON = { General: 'tune', Brain: 'smart_toy', Ticketing: 'confirmation_number', Canopy: 'public', Google: 'mail', Notifications: 'notifications', 'Files & voice': 'folder', Access: 'key', Backup: 'inventory_2' };
 
 export default async function settings(view) {
   const { settings: defs } = await api('/settings');
@@ -74,9 +74,27 @@ export default async function settings(view) {
       h('p', { class: 'muted' }, 'A safety copy of the previous data was saved in the data folder (backups/). ' + (r.restartNeeded ? 'Restart so the restored settings take effect.' : '')), r.includesSecrets ? h('p', { class: 'muted' }, 'Keys and the web password came from the backup — sign in with the password it had.') : ''),
       actions: [h('md-text-button', { onclick: () => { close(); location.reload(); } }, 'Close'), r.restartNeeded ? h('md-filled-button', { onclick: () => { close(); restartServer(); } }, 'Restart now') : ''] });
   });
+  const saved = h('div', { class: 'list' }); const status = h('p', { class: 'muted' });
+  const kb = (n) => (n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB');
+  async function downloadSaved(name) {
+    try {
+      const r = await fetch('/backup/file/' + encodeURIComponent(name), { headers: { authorization: 'Bearer ' + getToken() } }); if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
+      const a = h('a', { href: URL.createObjectURL(await r.blob()), download: name }); document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    } catch (e) { toast('Download failed: ' + e.message, { error: true }); }
+  }
+  async function loadSaved() {
+    try {
+      const j = await api('/backup/list');
+      status.textContent = (j.auto ? `Nightly backup is on: every day after ${String(j.hour).padStart(2, '0')}:00, keeping the last ${j.keep}. ` : 'Nightly backup is off (turn it on in the Backup settings below). ')
+        + (j.last ? (j.last.ok ? `Last one: ${fmtDate(j.last.at)}.` : `The last attempt failed: ${j.last.error}`) : 'None made yet.');
+      clear(saved).append(...(j.backups.length ? j.backups.slice(0, 8).map((b) => h('div', { class: 'row static', style: 'grid-template-columns:1fr auto' }, h('div', {}, h('div', { class: 't' }, b.name), h('div', { class: 's' }, `${b.kind === 'before-restore' ? 'safety copy before a restore' : b.kind} · ${fmtDate(b.at)} · ${kb(b.size)}`)), h('md-text-button', { onclick: () => downloadSaved(b.name) }, icon('download'), 'Download'))) : [h('div', { class: 'muted' }, 'Nothing saved on the server yet.')]));
+    } catch { /* the page still works without the list */ }
+  }
   const backup = h('div', { class: 'card high' }, h('h2', {}, icon('inventory_2'), 'Backup'), h('p', { class: 'muted' }, 'One file with everything: messages, items, approvals, connectors, pictures and settings. Restore it here or on a new install.'),
     h('div', { class: 'field-row' }, h('div', {}, h('div', { class: 't' }, 'Include keys and passwords'), h('div', { class: 'help' }, 'API keys, the web password and the Google service account. Keep such a file private. Leave this off to share a copy safely; restoring it then keeps this machine’s own keys.')), keep),
-    h('div', { style: 'display:flex;gap:10px;flex-wrap:wrap;margin-top:10px' }, h('md-filled-tonal-button', { onclick: (e) => exportBackup(e.currentTarget) }, icon('download'), 'Download backup'), h('md-outlined-button', { onclick: () => pick.click() }, icon('upload'), 'Restore from a file…'), pick));
+    h('div', { style: 'display:flex;gap:10px;flex-wrap:wrap;margin-top:10px' }, h('md-filled-tonal-button', { onclick: (e) => exportBackup(e.currentTarget) }, icon('download'), 'Download backup'), h('md-outlined-button', { onclick: () => pick.click() }, icon('upload'), 'Restore from a file…'), h('md-outlined-button', { onclick: async () => { const r = await guarded(() => api('/backup/run', { method: 'POST' }), 'Saved on the server'); if (r) loadSaved(); } }, icon('inventory_2'), 'Back up now (on the server)'), pick),
+    h('h3', { class: 'label', style: 'margin-top:16px' }, 'Saved on the server'), status, saved);
+  loadSaved();
 
   clear(view).append(h('div', { class: 'page-head' }, h('h1', { class: 'display' }, 'Settings'), h('p', { class: 'muted title-m' }, 'Everything that used to live in the .env file. Changes apply after a restart.')),
     h('div', { class: 'grid cols-2' }, appearance, security), backup, filter, h('div', { class: 'grid' }, cards), bar);

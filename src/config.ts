@@ -11,7 +11,7 @@ export interface Config {
   ntfy: { url: string; topic: string } | null;
   gmail: { enabled: boolean; skipBulk: boolean };
   transcribeUrl: string | null;                          // OpenAI-compatible /v1/audio/transcriptions endpoint
-  indexPaths: string[]; driveFolderIds: string[];
+  indexPaths: string[]; driveFolderIds: string[]; backup: { auto: boolean; hour: number; keep: number };
   claude: { bin: string; model?: string; timeoutMs: number };
   autoApplyMinConfidence: number;                        // below this, updates/completions go to the approval queue
   ignoreSenders: RegExp[];
@@ -40,6 +40,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     gmail: { enabled: env.GMAIL_ENABLED === '1', skipBulk: env.GMAIL_SKIP_BULK !== '0' },
     transcribeUrl: env.TRANSCRIBE_URL ?? null,
     indexPaths: list(env.INDEX_PATHS), driveFolderIds: list(env.DRIVE_FOLDER_IDS),
+    backup: { auto: env.BACKUP_AUTO !== '0', hour: Math.min(23, Math.max(0, Math.trunc(Number(env.BACKUP_HOUR ?? 2)) || 0)), keep: Math.min(365, Math.max(1, Math.trunc(Number(env.BACKUP_KEEP ?? 14)) || 14)) },
     claude: { bin: env.CLAUDE_BIN ?? 'claude', model: env.CLAUDE_MODEL, timeoutMs: Number(env.CLAUDE_TIMEOUT_MS ?? 180000) },
     autoApplyMinConfidence: Number(env.AUTO_APPLY_MIN_CONFIDENCE ?? 0.6),
     github: { repo: env.GITHUB_REPO ?? 'douggreenak/personal-assistant', token: env.GITHUB_TOKEN ?? '' },

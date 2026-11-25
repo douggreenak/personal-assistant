@@ -8,7 +8,7 @@ import type { Ctx } from './ctx.ts';
 import { decide, listApprovals } from './approvals.ts';
 import { handleOwnerText } from './commands.ts';
 import { parseUploads, toLlmImages } from './images.ts';
-import { createBackup, restoreBackup } from './backup.ts';
+import { createBackup, restoreBackup, listBackups, backupPath, saveBackupFile, lastBackup } from './backup.ts';
 import { ingestMacRows, type MacRow } from './mac.ts';
 import { ack, parseSnooze, snooze } from './nag.ts';
 import { storeMessage } from './pipeline.ts';
@@ -225,6 +225,12 @@ export function createHttp(ctx: Ctx, deps: HttpDeps): Server {
       const { data, info } = createBackup(ctx, url.searchParams.get('secrets') !== '0');
       res.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': data.length, 'cache-control': 'no-store', 'content-disposition': `attachment; filename="assistant-backup-${info.createdAt.slice(0, 10)}.backup"`, 'x-backup-info': JSON.stringify(info) });
       return void res.end(data);
+    }
+    if (path === '/backup/list' && method === 'GET') return send(res, 200, { auto: ctx.cfg.backup.auto, hour: ctx.cfg.backup.hour, keep: ctx.cfg.backup.keep, last: lastBackup(ctx), backups: listBackups(ctx) });
+    if (path === '/backup/run' && method === 'POST') { const d = new Date(); return send(res, 200, { backup: saveBackupFile(ctx, 'manual', d.toISOString().replace(/[:.]/g, '-')) }); }
+    if ((m = /^\/backup\/file\/([\w.-]+)$/.exec(path)) && method === 'GET') {
+      const f = backupPath(ctx, m[1]); if (!f) throw new HttpError(404, 'No such backup.');
+      const data = readFileSync(f); res.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': data.length, 'cache-control': 'no-store', 'content-disposition': `attachment; filename="${m[1]}"` }); return void res.end(data);
     }
     if (path === '/backup/import' && method === 'POST') {
       const body = await readBody(req, BACKUP_LIMIT); if (!body.length) throw new HttpError(400, 'Empty file.');

@@ -4,7 +4,8 @@ import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import type { Ctx } from './ctx.ts';
-import { openDb } from './db.ts';
+import { openDb, kvGet, kvSet } from './db.ts';
+import { localParts } from './time.ts';
 
 /**
  * Backup = one gzip'd JSON file: the whole database (a consistent snapshot) plus the small files in the data folder
@@ -95,3 +96,44 @@ function pruneSafetyCopies(dir: string): void {
   const all = readdirSync(dir).filter((f) => f.startsWith('before-restore-')).map((f) => ({ f, t: statSync(join(dir, f)).mtimeMs })).sort((a, b) => b.t - a.t);
   for (const x of all.slice(5)) rmSync(join(dir, x.f), { force: true });
 }
+
+// ---- nightly / manual backups kept on the server ----
+const dirOf = (ctx: Ctx) => join(ctx.cfg.dataDir, 'backups');
+const pad = (n: number) => String(n).padStart(2, '0');
+export interface BackupFile { name: string; kind: 'nightly' | 'manual' | 'before-restore'; size: number; at: string }
+export const BACKUP_NAME = /^(nightly|manual|before-restore)-[\w.-]+\.backup$/;
+
+export function listBackups(ctx: Ctx): BackupFile[] {
+  const d = dirOf(ctx); if (!existsSync(d)) return [];
+  return readdirSync(d).filter((f) => BACKUP_NAME.test(f)).map((f) => { const st = statSync(join(d, f)); return { name: f, kind: f.startsWith('before-restore') ? 'before-restore' as const : f.startsWith('manual') ? 'manual' as const : 'nightly' as const, size: st.size, at: st.mtime.toISOString() }; }).sort((a, b) => b.at.localeCompare(a.at));
+}
+export const backupPath = (ctx: Ctx, name: string): string | null => (BACKUP_NAME.test(name) && existsSync(join(dirOf(ctx), name)) ? join(dirOf(ctx), name) : null);
+
+/** Writes a backup file into data/backups/ (with keys — it sits next to them anyway — readable by the owner only). */
+export function saveBackupFile(ctx: Ctx, kind: 'nightly' | 'manual', stamp: string): BackupFile {
+  mkdirSync(dirOf(ctx), { recursive: true });
+  const name = `${kind}-${stamp}.backup`; const path = join(dirOf(ctx), name);
+  writeAtomic(path, createBackup(ctx, true).data, true);
+  const st = statSync(path); return { name, kind, size: st.size, at: st.mtime.toISOString() };
+}
+
+/** Called every few minutes: makes today's nightly backup once the configured hour has passed, then trims old ones. */
+export async function nightlyBackupTick(ctx: Ctx): Promise<string | null> {
+  const { auto, hour, keep } = ctx.cfg.backup; if (!auto) return null;
+  const lp = localParts(ctx.now(), ctx.cfg.tz); if (lp.hour < hour) return null;
+  const day = `${lp.year}-${pad(lp.month)}-${pad(lp.day)}`;
+  if (existsSync(join(dirOf(ctx), `nightly-${day}.backup`))) return null;
+  try {
+    const f = saveBackupFile(ctx, 'nightly', day);
+    const old = listBackups(ctx).filter((b) => b.kind === 'nightly').sort((a, b) => b.name.localeCompare(a.name));
+    for (const b of old.slice(keep)) rmSync(join(dirOf(ctx), b.name), { force: true });
+    kvSet(ctx.db, 'backup.last', JSON.stringify({ at: new Date().toISOString(), ok: true, name: f.name, size: f.size }));
+    return f.name;
+  } catch (e) {
+    const msg = (e as Error).message.slice(0, 200);
+    kvSet(ctx.db, 'backup.last', JSON.stringify({ at: new Date().toISOString(), ok: false, error: msg }));
+    if (kvGet(ctx.db, 'backup.failnote') !== day) { kvSet(ctx.db, 'backup.failnote', day); await ctx.notify.send(`Nightly backup failed: ${msg}`).catch(() => {}); }
+    throw e;
+  }
+}
+export const lastBackup = (ctx: Ctx): { at: string; ok: boolean; name?: string; size?: number; error?: string } | null => { const v = kvGet(ctx.db, 'backup.last'); return v ? JSON.parse(v) : null; };
