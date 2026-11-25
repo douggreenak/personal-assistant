@@ -42,3 +42,7 @@ Mirror `src/backends/ticketing.ts` (a small `fetch` client taking an injectable 
 - Side effects go through `applyAction`, never directly from the model's output.
 - Keep secrets out of logs and out of prompts.
 - Update the docs when behaviour changes; the [configuration reference](configuration.md) and [API](api.md) are the contract.
+
+## Web UI tests
+- `npm test` includes `test/webui.test.ts`: static serving, password login, settings, inbox, items, connectors, admin endpoints (no model calls).
+- `npm run e2e` drives the real UI in Chromium against a throwaway assistant (temp data dir; the model binary is stubbed out). Needs `cd web-src && npm install` and a Chromium, e.g. `CHROMIUM=/usr/bin/chromium npm run e2e`.

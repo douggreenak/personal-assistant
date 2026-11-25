@@ -54,7 +54,7 @@ function route() {
   const id = (location.hash.match(/^#\/(\w+)/) || [])[1] || 'home';
   const p = PAGES.find((x) => x.id === id) || PAGES[0];
   navEls.forEach((d) => d.toggleAttribute('aria-current', d.dataset.id === p.id)); navEls.forEach((d) => d.dataset.id === p.id ? d.setAttribute('aria-current', 'page') : d.removeAttribute('aria-current'));
-  cleanup?.(); cleanup = null;
+  cleanup?.(); cleanup = null; refreshStatus();
   const view = document.getElementById('view'); clear(view).append(spinner());
   window.scrollTo(0, 0);
   Promise.resolve(p.fn(view, { nav, refreshStatus })).then((c) => { cleanup = typeof c === 'function' ? c : null; }).catch((e) => clear(view).append(h('div', { class: 'card' }, h('h2', {}, 'Something went wrong'), h('p', { class: 'muted' }, e.message))));

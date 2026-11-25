@@ -13,7 +13,8 @@
     "test": "node --test \"test/*.test.ts\"",
     "typecheck": "tsc --noEmit",
     "google-auth": "node scripts/google-auth.ts",
-    "secret": "node scripts/secret.ts"
+    "secret": "node scripts/secret.ts",
+    "e2e": "node web-src/e2e/run.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

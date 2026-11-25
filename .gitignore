@@ -1,7 +1,9 @@
-node_modules/
+claude-home/
 data/
-.env
 *.db
 *.db-*
-claude-home/
+.env
+node_modules/
 secrets.json
+ticketing-data/
+whisper-cache/

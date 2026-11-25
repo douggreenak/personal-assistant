@@ -3,11 +3,19 @@ import { storeMessage } from './pipeline.ts';
 
 /** Sends audio to an OpenAI-compatible transcription endpoint (e.g. a local faster-whisper server). */
 export async function transcribe(url: string, audio: Uint8Array, filename: string, fetchImpl: typeof fetch = fetch): Promise<string> {
-  const form = new FormData();
-  form.set('file', new Blob([audio as BlobPart]), filename);
-  form.set('model', process.env.TRANSCRIBE_MODEL ?? 'Systran/faster-whisper-small');
-  form.set('response_format', 'json');
-  const res = await fetchImpl(url, { method: 'POST', body: form, signal: AbortSignal.timeout(300000) });
+  const model = process.env.TRANSCRIBE_MODEL ?? 'Systran/faster-whisper-small';
+  const send = () => {
+    const form = new FormData();
+    form.set('file', new Blob([audio as BlobPart]), filename); form.set('model', model); form.set('response_format', 'json');
+    return fetchImpl(url, { method: 'POST', body: form, signal: AbortSignal.timeout(300000) });
+  };
+  let res = await send();
+  if (res.status === 404) {
+    // speaches only serves models that were downloaded first; do that once, automatically, then retry.
+    const dl = await fetchImpl(`${new URL(url).origin}/v1/models/${model}`, { method: 'POST', signal: AbortSignal.timeout(600000) });
+    if (!dl.ok) throw new Error(`transcription model "${model}" is not installed and could not be downloaded (HTTP ${dl.status})`);
+    res = await send();
+  }
   if (!res.ok) throw new Error(`transcription ${res.status}`);
   const j = await res.json() as { text?: string };
   return (j.text ?? '').trim();

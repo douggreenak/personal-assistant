@@ -20,6 +20,7 @@ Do the first four steps and you can already talk to it with `curl`; the rest add
 ## 1. Configure
 ```bash
 cd personal-assistant
+mkdir -p data claude-home ticketing-data whisper-cache   # create these yourself, or Docker makes them root-owned and the containers can't write to them
 cp .env.example .env
 chmod 600 .env
 openssl rand -hex 32        # → ASSISTANT_TOKEN

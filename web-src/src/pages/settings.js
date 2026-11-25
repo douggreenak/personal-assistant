@@ -25,7 +25,7 @@ export default async function settings(view) {
       f.addEventListener('input', () => touch(d.key, f.value));
       return h('div', {}, h('div', { style: 'display:flex;gap:8px;align-items:center' }, f, d.isSet && h('md-icon-button', { title: 'Clear', 'aria-label': 'Clear ' + d.label, onclick: () => { touch(d.key, '__clear__'); f.placeholder = 'will be cleared'; } }, icon('delete'))), hint);
     }
-    const f = h('md-outlined-text-field', { label: d.label, value: d.value, placeholder: d.placeholder || '', type: d.type === 'number' ? 'number' : 'text', 'supporting-text': d.overridden ? 'Changed here (overrides .env)' : '' });
+    const f = h('md-outlined-text-field', { label: d.label, value: d.value, placeholder: d.placeholder || '', type: d.type === 'number' ? 'number' : 'text', 'supporting-text': d.overridden ? 'Changed here (overrides .env)' : (!d.value && d.placeholder ? `Not set — default: ${d.placeholder}` : '') });
     f.addEventListener('input', () => touch(d.key, f.value)); return h('div', {}, f, hint);
   }
   const groups = [...new Set(defs.map((d) => d.group))];
