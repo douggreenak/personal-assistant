@@ -34,6 +34,7 @@ const goto = async (p) => { await page.goto(`${base}/#/${p}`); await page.waitFo
 const heading = (t) => page.locator('h1.display', { hasText: t }).waitFor({ timeout: 5000 });
 const toastText = (re) => page.locator('.toast', { hasText: re }).first().waitFor({ timeout: 5000 });
 const row = (text) => page.locator('.row', { hasText: text });
+const group = (name) => page.locator('summary', { hasText: new RegExp('^\\s*' + name + '\\s*$') });
 const mi = (t) => page.locator('md-menu-item:visible', { hasText: t }).first();
 const dlg = () => page.locator('md-dialog[open]');
 const db = () => new DatabaseSync(join(dir, 'assistant.db'));
@@ -143,17 +144,17 @@ try {
   });
 
   await step('settings: edit → unsaved bar → save persists; discard works; secrets are masked', async () => {
-    await goto('settings'); await page.locator('details', { hasText: 'Notifications' }).locator('summary').click();
+    await goto('settings'); await group('Notifications').click();
     await setField('ntfy topic', 'e2e-topic'); await page.locator('.savebar').waitFor(); assert.match(await page.locator('.savebar').innerText(), /1 unsaved/);
     await btn('Discard', page.locator('.savebar')).click(); await page.waitForTimeout(800); assert.equal(await page.locator('.savebar').count(), 0);
-    await page.locator('details', { hasText: 'Notifications' }).locator('summary').click(); await setField('ntfy topic', 'e2e-topic'); await setField('ntfy server URL', 'http://ntfy:80');
+    await group('Notifications').click(); await setField('ntfy topic', 'e2e-topic'); await setField('ntfy server URL', 'http://ntfy:80');
     await btn('Save', page.locator('.savebar')).first().click(); await toastText(/Saved/); await page.waitForTimeout(500);
     const saved = JSON.parse((await (await fetch(base + '/settings', { headers: { authorization: 'Bearer ' + 't'.repeat(32) } })).text())).settings.find((s) => s.key === 'NTFY_TOPIC'); assert.equal(saved.value, 'e2e-topic');
-    await page.reload(); await page.waitForTimeout(1000); await page.locator('details', { hasText: 'Notifications' }).locator('summary').click(); assert.equal(await page.locator('md-outlined-text-field[label="ntfy topic"]').evaluate((e) => e.value), 'e2e-topic');
-    await page.locator('details', { hasText: 'Access' }).locator('summary').click(); assert.match(await page.locator('md-outlined-text-field[label="Ingest token"]').evaluate((e) => e.placeholder), /set/);
+    await page.reload(); await page.waitForTimeout(1000); await group('Notifications').click(); assert.equal(await page.locator('md-outlined-text-field[label="ntfy topic"]').evaluate((e) => e.value), 'e2e-topic');
+    await group('Access').click(); assert.match(await page.locator('md-outlined-text-field[label="Ingest token"]').evaluate((e) => e.placeholder), /set/);
     await setField('Ingest token', 'new-ingest-token-value-1234'); await btn('Save', page.locator('.savebar')).first().click(); await toastText(/Saved/);
     assert.ok(!(await page.locator('body').innerText()).includes('new-ingest-token-value-1234'));
-    await page.locator('details', { hasText: 'General' }).locator('summary').click(); await setField('Time zone', 'Not/AZone'); await btn('Save', page.locator('.savebar')).first().click(); await toastText(/time zone/i);
+    await group('General').click(); await setField('Time zone', 'Not/AZone'); await btn('Save', page.locator('.savebar')).first().click(); await toastText(/time zone/i);
   });
 
   await step('settings: theme mode and color apply instantly and persist', async () => {
