@@ -5,6 +5,8 @@ import { decide, listApprovals } from './approvals.ts';
 import { ack, parseSnooze, shortId, snooze } from './nag.ts';
 import { processNextReport, storeMessage } from './pipeline.ts';
 import { ask } from './qa.ts';
+import type { Upload } from './images.ts';
+import { toLlmImages } from './images.ts';
 import { testConnector, enableConnector, listConnectors, proposeConnector } from './connectors.ts';
 
 const QUESTION = /^(what|when|who|where|how|which|why|show|list|find|did|do|does|is|are|any)\b|\?\s*$/i;
@@ -26,10 +28,14 @@ Commands: open · approvals · approve N / reject N · ack ID · snooze ID 1h ·
 Connectors: connector <docs text or URL> · test connector ID · enable connector ID`;
 
 /** Handles one line from the owner (chat or HTTP) and returns the reply text. */
-export async function handleOwnerText(ctx: Ctx, textIn: string, sourceId: string = randomUUID()): Promise<string> {
+export async function handleOwnerText(ctx: Ctx, textIn: string, sourceId: string = randomUUID(), images: Upload[] = []): Promise<string> {
   const text = textIn.trim();
-  if (!text) return HELP;
+  if (!text && !images.length) return HELP;
   let m: RegExpExecArray | null;
+  if (images.length) {   // pictures go to the model with the words: a question is answered, anything else is captured
+    if (text && QUESTION.test(text) && !/\b(remind me|remember to)\b/i.test(text)) return ask(ctx, text, toLlmImages(images));
+    return capture(ctx, text || '(picture only)', sourceId, images);
+  }
 
   if (/^(help|\?)$/i.test(text)) return HELP;
   if (/^(open|what'?s open\??|list|tasks|todo|what do i have\??)$/i.test(text)) return formatItems(ctx.items.list({ state: 'open' }), ctx.cfg.tz);
@@ -66,8 +72,11 @@ export async function handleOwnerText(ctx: Ctx, textIn: string, sourceId: string
   if ((m = /^connector:?\s+([\s\S]+)$/i.exec(text))) return proposeConnector(ctx, m[1]);
   if (QUESTION.test(text) && !/\b(remind me|remember to)\b/i.test(text)) return ask(ctx, text);
 
-  // Otherwise it's something to capture.
-  const id = storeMessage(ctx, { source: 'chat', sourceId, sender: 'me', body: text });
+  return capture(ctx, text, sourceId, []);
+}
+
+async function capture(ctx: Ctx, text: string, sourceId: string, images: Upload[]): Promise<string> {
+  const id = storeMessage(ctx, { source: 'chat', sourceId, sender: 'me', body: text, images });
   if (id === null) return 'I already have that one.';
   for (let i = 0; i < 10; i++) {                       // drain anything queued ahead of it, then this message
     const r = await processNextReport(ctx);

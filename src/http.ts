@@ -7,6 +7,8 @@ import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import type { Ctx } from './ctx.ts';
 import { decide, listApprovals } from './approvals.ts';
 import { handleOwnerText } from './commands.ts';
+import { parseUploads, toLlmImages } from './images.ts';
+import { createBackup, restoreBackup } from './backup.ts';
 import { ingestMacRows, type MacRow } from './mac.ts';
 import { ack, parseSnooze, snooze } from './nag.ts';
 import { storeMessage } from './pipeline.ts';
@@ -24,15 +26,15 @@ import { getLogs } from './logs.ts';
 import { latestMacRelease, openMacDownload, publicRelease } from './macapp.ts';
 
 class HttpError extends Error { status: number; constructor(status: number, m: string) { super(m); this.status = status; } }
-const JSON_LIMIT = 1024 * 1024, AUDIO_LIMIT = 60 * 1024 * 1024;
+const BACKUP_LIMIT = 400 * 1024 * 1024, IMAGE_BODY_LIMIT = 30 * 1024 * 1024, JSON_LIMIT = 1024 * 1024, AUDIO_LIMIT = 60 * 1024 * 1024;
 
 async function readBody(req: IncomingMessage, limit: number): Promise<Buffer> {
   const chunks: Buffer[] = []; let size = 0;
   for await (const c of req) { size += (c as Buffer).length; if (size > limit) throw new HttpError(413, 'Body too large.'); chunks.push(c as Buffer); }
   return Buffer.concat(chunks);
 }
-async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
-  const b = await readBody(req, JSON_LIMIT);
+async function readJson(req: IncomingMessage, limit = JSON_LIMIT): Promise<Record<string, unknown>> {
+  const b = await readBody(req, limit);
   if (!b.length) return {};
   try { const v = JSON.parse(b.toString('utf8')); if (v && typeof v === 'object' && !Array.isArray(v)) return v; } catch { /* below */ }
   throw new HttpError(400, 'Body must be a JSON object.');
@@ -219,11 +221,20 @@ export function createHttp(ctx: Ctx, deps: HttpDeps): Server {
       if (!ctx.cfg.indexPaths.length) throw new HttpError(400, 'No index paths configured.');
       return send(res, 200, await indexPaths(ctx.db, ctx.cfg.indexPaths));
     }
+    if (path === '/backup/export' && method === 'GET') {
+      const { data, info } = createBackup(ctx, url.searchParams.get('secrets') !== '0');
+      res.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': data.length, 'cache-control': 'no-store', 'content-disposition': `attachment; filename="assistant-backup-${info.createdAt.slice(0, 10)}.backup"`, 'x-backup-info': JSON.stringify(info) });
+      return void res.end(data);
+    }
+    if (path === '/backup/import' && method === 'POST') {
+      const body = await readBody(req, BACKUP_LIMIT); if (!body.length) throw new HttpError(400, 'Empty file.');
+      try { const r = restoreBackup(ctx, body); return send(res, 200, { ok: true, createdAt: r.info.createdAt, counts: r.info.counts, includesSecrets: r.info.includesSecrets, restartNeeded: r.restartNeeded, safetyCopy: r.safetyCopy }); } catch (e) { throw new HttpError(400, (e as Error).message); }
+    }
     if (path === '/admin/restart' && method === 'POST') {
       send(res, 200, { ok: true }); setTimeout(() => (deps.restart ?? (() => process.exit(0)))(), 400); return;
     }
-    if (path === '/chat' && method === 'POST') { const b = await readJson(req); return send(res, 200, { reply: await handleOwnerText(ctx, String(b.text ?? '')) }); }
-    if (path === '/ask' && method === 'POST') { const b = await readJson(req); return send(res, 200, { answer: await ask(ctx, String(b.question ?? '')) }); }
+    if (path === '/chat' && method === 'POST') { const b = await readJson(req, IMAGE_BODY_LIMIT); let images; try { images = parseUploads(b.images); } catch (e) { throw new HttpError(400, (e as Error).message); } return send(res, 200, { reply: await handleOwnerText(ctx, String(b.text ?? ''), undefined, images) }); }
+    if (path === '/ask' && method === 'POST') { const b = await readJson(req, IMAGE_BODY_LIMIT); let images; try { images = parseUploads(b.images); } catch (e) { throw new HttpError(400, (e as Error).message); } return send(res, 200, { answer: await ask(ctx, String(b.question ?? ''), toLlmImages(images)) }); }
 
     if (path === '/items' && method === 'GET') return send(res, 200, { items: ctx.items.list({ state: url.searchParams.get('state') ?? 'open', kind: url.searchParams.get('kind') ?? undefined, limit: Number(url.searchParams.get('limit') ?? 200) }) });
     if ((m = /^\/items\/([0-9a-f-]+)$/.exec(path)) && method === 'GET') {

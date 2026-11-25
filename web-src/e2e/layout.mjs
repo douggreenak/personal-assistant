@@ -60,7 +60,7 @@ const MEASURE = () => {
 };
 const AT_BOTTOM = () => {
   const out = []; const nav = document.querySelector('.bottom-nav'); const navTop = nav && getComputedStyle(nav).display !== 'none' ? nav.getBoundingClientRect().top : innerHeight;
-  const view = document.getElementById('view'); const last = [...view.querySelectorAll('*')].filter((e) => { const r = e.getBoundingClientRect(); return r.height > 0 && !e.closest('.fab-slot') && !e.closest('md-dialog') && !(e.closest('details:not([open])') && e.localName !== 'summary' && !e.closest('summary')); }).sort((a, b) => b.getBoundingClientRect().bottom - a.getBoundingClientRect().bottom)[0];
+  const view = document.getElementById('view'); const last = [...view.querySelectorAll('*')].filter((e) => { const r = e.getBoundingClientRect(); return r.height > 0 && !e.closest('.fab-slot') && !e.closest('.msgs') && !e.closest('md-dialog') && !(e.closest('details:not([open])') && e.localName !== 'summary' && !e.closest('summary')); }).sort((a, b) => b.getBoundingClientRect().bottom - a.getBoundingClientRect().bottom)[0];
   if (last && last.getBoundingClientRect().bottom > navTop + 1) out.push(`the end of the page is hidden under the bottom bar (content ends ${Math.round(last.getBoundingClientRect().bottom)}, bar starts ${Math.round(navTop)})`);
   const fab = document.querySelector('.fab-slot md-fab'); if (fab) { const r = fab.getBoundingClientRect(); if (r.bottom > navTop + 1 || r.top < 0 || r.right > innerWidth + 1) out.push(`the + button is off-screen or under the bar (${Math.round(r.top)}..${Math.round(r.bottom)})`); }
   return out;
@@ -90,6 +90,16 @@ async function runViewport([w, h], scheme) {
       const r = await page.evaluate(() => { const t = document.querySelector('.composer textarea').getBoundingClientRect(); const n = document.querySelector('.bottom-nav'); return { bottom: t.bottom, top: t.top, navTop: n && getComputedStyle(n).display !== 'none' ? n.getBoundingClientRect().top : innerHeight, h: innerHeight }; });
       if (h >= 640 && (r.bottom > r.navTop + 1 || r.top < 0)) problems.push(`[${tag}] chat: message box is not visible without scrolling (box ${Math.round(r.top)}..${Math.round(r.bottom)}, bar at ${Math.round(r.navTop)})`);
       await page.locator('.composer textarea').fill('line one\nline two\nline three\nline four'); await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight)); await page.waitForTimeout(100); bad('chat typing', await page.evaluate(AT_BOTTOM).then((x) => x.filter((m) => !/\+ button/.test(m)))); await page.locator('.composer textarea').fill('');
+      // wide Markdown (long code line, wide table, long URL) and five attached pictures must not break the layout
+      const wide = '# Heading\n\n```\n' + 'x'.repeat(200) + '\n```\n\n| ' + Array.from({ length: 12 }, (_, i) => 'column' + i).join(' | ') + ' |\n|' + '---|'.repeat(12) + '\n| ' + Array(12).fill('value').join(' | ') + ' |\n\nhttps://example.com/' + 'a'.repeat(150) + '\n\n- item';
+      await page.evaluate((t) => localStorage.setItem('chat_history', JSON.stringify([{ role: 'bot', text: t }, { role: 'me', text: 'look', thumbs: [] }])), wide); await open('chat');
+      await page.locator('input[type=file]').setInputFiles(Array.from({ length: 5 }, (_, i) => ({ name: `p${i}.png`, mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEUlEQVR4nGN4oKCAFTEMLQkAUmxIATH3sAAAAAAASUVORK5CYII=', 'base64') })));
+      await page.locator('.pics .pic').nth(4).waitFor(); await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight)); await page.waitForTimeout(150);
+      if (process.env.LAYOUT_SHOT) await page.screenshot({ path: `${process.env.LAYOUT_SHOT}/chat-${tag.replace(/\W+/g, '_')}.png`, fullPage: true });
+      bad('chat with Markdown and pictures', await page.evaluate(MEASURE)); bad('chat with Markdown and pictures (end)', await page.evaluate(AT_BOTTOM));
+      const r2 = await page.evaluate(() => { const t = document.querySelector('.composer textarea').getBoundingClientRect(); const n = document.querySelector('.bottom-nav'); return { bottom: t.bottom, navTop: n && getComputedStyle(n).display !== 'none' ? n.getBoundingClientRect().top : innerHeight }; });
+      if (h >= 640 && r2.bottom > r2.navTop + 1) problems.push(`[${tag}] chat with pictures: message box is hidden under the bottom bar`);
+      await page.evaluate(() => localStorage.removeItem('chat_history'));
     }
     await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight)); await page.waitForTimeout(150);
     bad(p + ' (scrolled to the end)', await page.evaluate(AT_BOTTOM)); bad(p + ' (scrolled)', await page.evaluate(MEASURE));
@@ -131,7 +141,7 @@ async function runViewport([w, h], scheme) {
 }
 
 // a few viewports at a time (each has its own browser context)
-const jobs = VIEWPORTS.flatMap((v) => ['light', 'dark'].map((s) => [v, s]));
+const jobs = VIEWPORTS.filter(([w, h]) => !process.env.LAYOUT_ONLY || process.env.LAYOUT_ONLY === `${w}x${h}`).flatMap((v) => ['light', 'dark'].map((s) => [v, s]));
 let next = 0; const CONC = Math.max(2, Math.min(6, Number(process.env.LAYOUT_WORKERS) || 4));
 const t0 = Date.now();
 await Promise.all(Array.from({ length: CONC }, async () => { while (next < jobs.length) { const [v, s] = jobs[next++]; try { await runViewport(v, s); } catch (e) { problems.push(`[${v.join('x')} ${s}] test crashed: ${String(e.message).split('\n')[0]}`); } } }));

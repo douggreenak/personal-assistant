@@ -1,10 +1,12 @@
 import { api } from '../api.js';
-import { h, icon, clear, ago, fmtDate, empty, chip, state, guarded, toast } from '../ui.js';
+import { h, icon, clear, ago, fmtDate, empty, chip, state, guarded, toast, pictureAttach } from '../ui.js';
+import { md } from '../markdown.js';
 import { itemRow } from './items.js';
 
 const greeting = () => { const hr = +new Intl.DateTimeFormat('en-US', { timeZone: state.tz, hour: 'numeric', hourCycle: 'h23' }).format(new Date()); return hr < 5 ? 'Still up?' : hr < 12 ? 'Good morning' : hr < 18 ? 'Good afternoon' : 'Good evening'; };
 
 export default async function home(view, { nav, refreshStatus }) {
+  let lastReply = '';   // the page re-draws on refresh; the assistant's last answer must survive that
   const load = async () => {
     const [s, { items }, { events }, { approvals }] = await Promise.all([api('/status'), api('/items?state=open'), api('/activity?limit=8'), api('/approvals')]);
     state.tz = s.tz;
@@ -26,9 +28,13 @@ export default async function home(view, { nav, refreshStatus }) {
       h('div', { class: 'grid cols-2' },
         h('div', { class: 'card' }, h('h2', {}, icon('history'), 'Recent activity'), events.length ? h('div', { class: 'timeline' }, events.map((e) => h('div', {}, h('div', { class: 't' }, `${e.type} · ${e.title}`), h('div', { class: 'muted' }, `${e.actor} · ${ago(e.at)}`)))) : h('div', { class: 'muted' }, 'No activity yet.')),
         h('div', { class: 'card' }, h('h2', {}, icon('chat'), 'Tell the assistant'), h('p', { class: 'muted' }, 'Type or paste anything — it becomes tickets, reminders and tasks.'),
-          (() => { const f = h('md-outlined-text-field', { label: 'What should I remember or track?', type: 'textarea', rows: 3, 'data-primary': '', 'supporting-text': 'Ctrl+Enter to send' }); f.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); b.click(); } }); const b = h('md-filled-button', { onclick: async () => {
-            if (!f.value.trim()) return; b.disabled = true; const r = await guarded(() => api('/chat', { method: 'POST', body: { text: f.value } })); b.disabled = false; if (r) { f.value = ''; toast(r.reply.slice(0, 200)); refresh(); } } }, icon('send'), 'Send');
-            return h('div', { class: 'form' }, f, h('div', {}, b)); })())));
+          (() => { const f = h('md-outlined-text-field', { label: 'What should I remember or track?', type: 'textarea', rows: 3, 'data-primary': '', 'supporting-text': 'Ctrl+Enter to send · Markdown, pasted or attached pictures welcome' }); f.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); b.click(); } });
+            const pics = pictureAttach(f, (m) => toast(m)); const out = h('div', { class: 'reply', hidden: !lastReply }, lastReply ? md(lastReply) : '');
+            const b = h('md-filled-button', { onclick: async () => {
+              const images = pics.images(); if (!f.value.trim() && !images.length) return; b.disabled = true;
+              const r = await guarded(() => api('/chat', { method: 'POST', body: { text: f.value, images: images.map(({ name, data }) => ({ name, data })) } })); b.disabled = false;
+              if (r) { f.value = ''; pics.clear(); lastReply = r.reply; out.replaceChildren(md(r.reply)); out.hidden = false; refresh(); } } }, icon('send'), 'Send');
+            return h('div', { class: 'form' }, f, pics.strip, h('div', { class: 'row-acts' }, b, pics.button, h('span', { class: 'grow' })), out, pics.input); })())));
   };
   await load();
   const t = setInterval(() => !document.hidden && !document.querySelector('md-dialog') && load().catch(() => {}), 30000);

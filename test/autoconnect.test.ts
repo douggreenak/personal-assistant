@@ -283,3 +283,58 @@ test('autoconnect: a sloppy id/secret from the model is repaired; another kind o
   const j2 = await done(startAutoConnect(c2, 'docs', 'k-1234567', (async () => json(orders)) as unknown as typeof fetch).id);
   assert.equal(j2.state, 'done', j2.steps.join('\n')); assert.match(llm.calls[1].prompt, /previous manifest was rejected.*intervalMinutes/s);
 });
+
+import { parseUploads, sniffImage } from '../src/images.ts';
+import { handleOwnerText } from '../src/commands.ts';
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==', 'base64');
+test('pictures: only real images are accepted (type from the bytes), limits enforced', () => {
+  assert.equal(sniffImage(PNG), 'image/png');
+  const ok = parseUploads([{ name: 'a b/../c.png', data: 'data:image/png;base64,' + PNG.toString('base64') }]); assert.equal(ok[0].mediaType, 'image/png'); assert.ok(!/[/]/.test(ok[0].name));
+  assert.throws(() => parseUploads([{ name: 'x.png', data: Buffer.from('<html>not an image</html>').toString('base64') }]), /not a PNG/);
+  assert.throws(() => parseUploads(Array(6).fill({ data: PNG.toString('base64') })), /At most 5/);
+  assert.throws(() => parseUploads([{ data: '!!!' }]), /not valid/);
+  assert.deepEqual(parseUploads(undefined), []);
+});
+test('pictures: a captured message keeps its pictures and the model receives them; a question about a picture is answered with it', async () => {
+  const { ctx, llm } = makeCtx([{ actions: [] }, { answer: 'A red dot.', cited: [] }]);
+  const up = parseUploads([{ name: 'dot.png', data: PNG.toString('base64') }]);
+  const r = await handleOwnerText(ctx, 'here is my receipt', 'src-1', up);
+  assert.ok(r);
+  assert.equal(llm.calls[0].images?.length, 1); assert.equal(llm.calls[0].images![0].mediaType, 'image/png'); assert.match(llm.calls[0].prompt, /1 image\(s\)/);
+  assert.equal(ctx.db.prepare('SELECT COUNT(*) n FROM attachments').get()!.n, 1);
+  assert.match(await handleOwnerText(ctx, 'what is in this picture?', 'src-2', up), /A red dot/);
+  assert.equal(llm.calls[1].images?.length, 1); assert.match(llm.calls[1].prompt, /image\(s\) are attached/);
+  assert.equal(ctx.db.prepare('SELECT COUNT(*) n FROM attachments').get()!.n, 1);     // asking does not store anything
+  const none = makeCtx([{ actions: [] }]); await handleOwnerText(none.ctx, 'plain note', 'src-3'); assert.equal(none.llm.calls[0].images?.length ?? 0, 0);
+});
+
+import { createBackup, readBackup, restoreBackup } from '../src/backup.ts';
+import { writeFileSync, readFileSync, existsSync } from 'node:fs';
+test('backup: export then import restores everything (data, search, pictures, settings, keys); bad files change nothing; keys can be left out', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'asst-')); const { ctx } = makeCtx([], { env: { ASSISTANT_DATA: dir } });
+  const up = parseUploads([{ name: 'dot.png', data: PNG.toString('base64') }]);
+  const { storeMessage } = await import('../src/pipeline.ts');
+  const id = storeMessage(ctx, { source: 'chat', sourceId: 's1', sender: 'me', body: 'zebra crossing memo', images: up })!;
+  ctx.items.create({ kind: 'task', title: 'Buy oat milk' } as never);
+  writeFileSync(join(dir, 'settings.json'), '{"TZ_NAME":"America/Denver"}'); writeFileSync(join(dir, 'secrets.json'), '{"K":"v"}');
+  const full = createBackup(ctx, true); assert.ok(full.info.includesSecrets && full.info.files.includes('secrets.json')); assert.equal(full.info.counts.messages, 1); assert.equal(full.info.counts.attachments, 1);
+  assert.ok(!createBackup(ctx, false).info.files.includes('secrets.json'));
+  // wreck the live data, then restore
+  ctx.db.exec('DELETE FROM attachments; DELETE FROM items; DELETE FROM search; DELETE FROM messages'); writeFileSync(join(dir, 'settings.json'), '{}'); writeFileSync(join(dir, 'secrets.json'), '{}');
+  ctx.db.prepare("INSERT INTO messages (source, source_id, body, received_at) VALUES ('x','x','junk','2026-01-01')").run();
+  const r = restoreBackup(ctx, full.data);
+  assert.equal(r.restartNeeded, true); assert.ok(existsSync(r.safetyCopy)); assert.equal(readBackup(readFileSync(r.safetyCopy)).info.files.includes('assistant.db'), true);
+  assert.equal(ctx.db.prepare('SELECT COUNT(*) n FROM messages').get()!.n, 1); assert.equal(ctx.db.prepare('SELECT body FROM messages').get()!.body, 'zebra crossing memo');
+  assert.equal(ctx.db.prepare('SELECT COUNT(*) n FROM attachments').get()!.n, 1); assert.equal(ctx.items.list({ state: 'open' })[0].title, 'Buy oat milk');
+  assert.equal(ctx.db.prepare("SELECT COUNT(*) n FROM search WHERE search MATCH 'zebra'").get()!.n, 1);
+  assert.equal(readFileSync(join(dir, 'settings.json'), 'utf8'), '{"TZ_NAME":"America/Denver"}'); assert.equal(readFileSync(join(dir, 'secrets.json'), 'utf8'), '{"K":"v"}');
+  assert.ok(id > 0);
+  // new rows keep counting up after a restore, and garbage is refused without changing anything
+  assert.ok(Number(ctx.db.prepare("INSERT INTO messages (source, source_id, body, received_at) VALUES ('y','y','after','2026-01-02')").run().lastInsertRowid) > 1);
+  assert.throws(() => restoreBackup(ctx, Buffer.from('hello')), /not a backup file/);
+  const { gzipSync } = await import('node:zlib');
+  assert.throws(() => restoreBackup(ctx, gzipSync(Buffer.from('{"format":"personal-assistant-backup","version":1,"files":{"assistant.db":"aGk="}}'))), /damaged/);
+  assert.equal(ctx.db.prepare('SELECT COUNT(*) n FROM messages').get()!.n, 2);
+  // a backup without keys does not touch the keys on this machine
+  writeFileSync(join(dir, 'secrets.json'), '{"K":"keep"}'); restoreBackup(ctx, createBackup(ctx, false).data); assert.equal(readFileSync(join(dir, 'secrets.json'), 'utf8'), '{"K":"keep"}');
+});

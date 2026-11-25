@@ -2,7 +2,7 @@
 import { build } from 'esbuild';
 import { readFileSync, writeFileSync, mkdirSync, copyFileSync, rmSync } from 'node:fs';
 
-const ICONS = ['home', 'checklist', 'chat', 'inbox', 'task_alt', 'extension', 'monitor_heart', 'settings', 'add', 'close', 'check', 'schedule', 'delete', 'edit',
+const ICONS = ['attach_file', 'image', 'home', 'checklist', 'chat', 'inbox', 'task_alt', 'extension', 'monitor_heart', 'settings', 'add', 'close', 'check', 'schedule', 'delete', 'edit',
   'send', 'refresh', 'search', 'history', 'warning', 'error', 'restart_alt', 'logout', 'key', 'upload', 'dark_mode', 'light_mode', 'palette', 'bolt', 'notifications',
   'confirmation_number', 'alarm', 'more_horiz', 'menu', 'keyboard_arrow_down', 'sync', 'play_arrow', 'block', 'link', 'cloud_done', 'cloud_off', 'mail', 'folder',
   'snooze', 'done_all', 'undo', 'mic', 'bug_report', 'terminal', 'tune', 'lock_reset', 'contrast', 'arrow_forward', 'chevron_right', 'info', 'help', 'person', 'flag', 'event',

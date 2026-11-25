@@ -1,4 +1,4 @@
-import { api, clearToken } from '../api.js';
+import { api, clearToken, getToken } from '../api.js';
 import { h, icon, clear, chip, guarded, toast, dialog, confirmDialog, page } from '../ui.js';
 import { PRESETS, prefs, applyTheme } from '../theme.js';
 import { restartServer } from './system.js';
@@ -52,8 +52,34 @@ export default async function settings(view) {
   const security = h('div', { class: 'card high' }, h('h2', {}, icon('lock_reset'), 'Security'), h('p', { class: 'muted' }, 'The web password only protects this page. Scripts and devices use the access tokens in the Access section.'),
     h('div', { style: 'display:flex;gap:10px;flex-wrap:wrap' }, h('md-filled-tonal-button', { onclick: pwDialog }, icon('key'), 'Change password'), h('md-outlined-button', { onclick: () => { clearToken(); location.reload(); } }, icon('logout'), 'Sign out')));
 
+  const keep = h('md-switch', { selected: true, 'aria-label': 'Include keys and passwords' });
+  async function exportBackup(btn) {
+    btn.disabled = true;
+    try {
+      const r = await fetch('/backup/export?secrets=' + (keep.selected ? '1' : '0'), { headers: { authorization: 'Bearer ' + getToken() } });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
+      const blob = await r.blob(); const name = /filename="([^"]+)"/.exec(r.headers.get('content-disposition') || '')?.[1] || 'assistant.backup';
+      const a = h('a', { href: URL.createObjectURL(blob), download: name }); document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+      toast('Backup downloaded: ' + name);
+    } catch (e) { toast('Backup failed: ' + e.message, { error: true }); } finally { btn.disabled = false; }
+  }
+  const pick = h('input', { type: 'file', accept: '.backup,application/octet-stream', hidden: true, 'aria-label': 'Choose a backup file' });
+  pick.addEventListener('change', async () => {
+    const f = pick.files[0]; pick.value = ''; if (!f) return;
+    if (!(await confirmDialog('Replace everything with this backup?', `“${f.name}” (${(f.size / 1048576).toFixed(1)} MB) will replace ALL current messages, items, approvals, connectors, pictures and settings. A safety copy of what is here now is saved first.`, 'Restore'))) return;
+    const r = await guarded(() => api('/backup/import', { method: 'POST', raw: f }));
+    if (!r) return;
+    const c = r.counts || {};
+    const { close } = dialog({ title: 'Backup restored', content: h('div', { class: 'form' }, h('p', {}, `From ${r.createdAt ? new Date(r.createdAt).toLocaleString() : 'the file'}: ${c.items ?? 0} items, ${c.messages ?? 0} messages, ${c.connectors ?? 0} connectors, ${c.approvals ?? 0} approvals, ${c.attachments ?? 0} pictures.`),
+      h('p', { class: 'muted' }, 'A safety copy of the previous data was saved in the data folder (backups/). ' + (r.restartNeeded ? 'Restart so the restored settings take effect.' : '')), r.includesSecrets ? h('p', { class: 'muted' }, 'Keys and the web password came from the backup — sign in with the password it had.') : ''),
+      actions: [h('md-text-button', { onclick: () => { close(); location.reload(); } }, 'Close'), r.restartNeeded ? h('md-filled-button', { onclick: () => { close(); restartServer(); } }, 'Restart now') : ''] });
+  });
+  const backup = h('div', { class: 'card high' }, h('h2', {}, icon('inventory_2'), 'Backup'), h('p', { class: 'muted' }, 'One file with everything: messages, items, approvals, connectors, pictures and settings. Restore it here or on a new install.'),
+    h('div', { class: 'field-row' }, h('div', {}, h('div', { class: 't' }, 'Include keys and passwords'), h('div', { class: 'help' }, 'API keys, the web password and the Google service account. Keep such a file private. Leave this off to share a copy safely; restoring it then keeps this machine’s own keys.')), keep),
+    h('div', { style: 'display:flex;gap:10px;flex-wrap:wrap;margin-top:10px' }, h('md-filled-tonal-button', { onclick: (e) => exportBackup(e.currentTarget) }, icon('download'), 'Download backup'), h('md-outlined-button', { onclick: () => pick.click() }, icon('upload'), 'Restore from a file…'), pick));
+
   clear(view).append(h('div', { class: 'page-head' }, h('h1', { class: 'display' }, 'Settings'), h('p', { class: 'muted title-m' }, 'Everything that used to live in the .env file. Changes apply after a restart.')),
-    h('div', { class: 'grid cols-2' }, appearance, security), filter, h('div', { class: 'grid' }, cards), bar);
+    h('div', { class: 'grid cols-2' }, appearance, security), backup, filter, h('div', { class: 'grid' }, cards), bar);
   const groupOf = new Map(cards.map((c) => [c, [...c.querySelectorAll('[data-q]')]]));
   filter.addEventListener('input', () => {
     const q = filter.value.trim().toLowerCase();

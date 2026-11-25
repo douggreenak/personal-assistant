@@ -12,6 +12,8 @@ Handle one line exactly as if typed in Google Chat (commands, questions, or some
 curl -H "authorization: Bearer $T" -H 'content-type: application/json' -d '{"text":"remind me to call Sam tomorrow 9am"}' $BASE/chat
 # {"reply":"✅ Reminder: call Sam (due 2026-11-26 18:00Z)"}
 ```
+**Pictures.** `/chat` (`{text, images}`) and `/ask` (`{question, images}`) accept up to 5 pictures: `images: [{name, data}]` with `data` = base64 (or a `data:` URL) of a PNG, JPEG, GIF or WebP, each ≤ 5 MB; the type is taken from the file's bytes. The model sees them with the text: a question is answered using them, anything else is captured with the pictures saved alongside the message (table `attachments`). These two routes take bodies up to 30 MB; every other JSON route stays at 1 MB.
+
 ### `POST /ingest/message` → `202 {"queued": true|false}`
 Add a message for background processing. Idempotent on `(source, sourceId)`; `queued:false` means already known.
 | field | |
@@ -49,7 +51,7 @@ Acknowledge (stops nagging; completes a reminder).
 Approving applies the stored action exactly once (a second call says it was already decided).
 
 ## Questions
-### `POST /ask` body `{"question":"…"}` → `{"answer":"… Sources: [1] file …"}`
+### `POST /ask` body `{"question":"…", "images"?: […]}` → `{"answer":"… Sources: [1] file …"}`
 
 ## Other
 ### `GET /connectors` → `{"connectors":[{id,status,name,lastError}]}`
@@ -68,3 +70,9 @@ The server designs a read-only connector, saves it, dry-runs it against the real
 A manifest may have `actions` (writes) as well as `poll` (read); either may be missing, not both. `actions[]`: `{id, name, description, method: POST|PUT|PATCH|DELETE, path: "/x/{id}", params: [{name, description, in: path|query|body, required?}]}`.
 The model can request one with an action `{op:"connector_call", connectorId, actionId, args}`, but only from the owner's own messages (chat/voice) — messages from other people never see write actions. Every call goes to Approvals unless the owner switched that action to *no need to ask*; DELETE always asks, and money/outbound-flagged calls always ask.
 `POST /connectors/{id}/actions/{action}/auto` `{allow: boolean}` sets that switch. `GET /connectors/full` lists the allowed ones in `autoActions`. A write-only connector is never called to "test" it.
+
+## Backup
+
+`GET /backup/export[?secrets=0]` (full token) → the backup file (`application/octet-stream`, gzip'd JSON; `Content-Disposition` names it `assistant-backup-YYYY-MM-DD.backup`). It holds a consistent snapshot of the database plus `settings.json` and — unless `secrets=0` — `secrets.json`, `web-password.json` and the Google service account. Treat a file with secrets like a password.
+
+`POST /backup/import` (full token, raw file as the body, up to 400 MB) → `{ok, createdAt, counts, includesSecrets, restartNeeded, safetyCopy}`. Replaces all data with the backup in one transaction (nothing changes if it fails) after saving a safety copy of the current data to `data/backups/before-restore-*.backup` (the newest 5 are kept). A backup made without secrets leaves this machine's keys alone. `400` with a plain message for a file that is not a backup or comes from a newer version.

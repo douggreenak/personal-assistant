@@ -8,7 +8,7 @@ import { describeNow } from './time.ts';
 import { createApproval } from './approvals.ts';
 import { DEFAULT_STAGES } from './stages.ts';
 
-export interface InboundMessage { source: string; sourceId: string; sender?: string; subject?: string; body: string; receivedAt?: string; fromOwner?: boolean }
+export interface InboundMessage { source: string; sourceId: string; sender?: string; subject?: string; body: string; receivedAt?: string; fromOwner?: boolean; images?: { name: string; mediaType: string; data: Buffer }[] }
 export interface MessageRow { id: number; source: string; sourceId: string; sender: string; subject: string; body: string; receivedAt: string; attempts: number }
 
 /** Stores a message once (idempotent on source+sourceId) and indexes it for search. Returns null if already known. */
@@ -19,6 +19,7 @@ export function storeMessage(ctx: Ctx, m: InboundMessage): number | null {
     .run(m.source, m.sourceId, m.sender ?? '', m.subject ?? '', body, m.receivedAt ?? nowIso());
   if (r.changes === 0) return null;
   const id = Number(r.lastInsertRowid);
+  for (const im of m.images ?? []) ctx.db.prepare('INSERT INTO attachments (message_id, name, media_type, data) VALUES (?,?,?,?)').run(id, im.name.slice(0, 120), im.mediaType, im.data);
   ctx.db.prepare("INSERT INTO search (kind, ref, title, body) VALUES ('message', ?, ?, ?)").run(String(id), `${m.sender ?? ''} ${m.subject ?? ''}`.trim(), body.slice(0, 20000));
   return id;
 }
@@ -40,9 +41,10 @@ export async function processMessage(ctx: Ctx, msg: MessageRow): Promise<Process
   const stages = ctx.ticketing ? (await ctx.ticketing.defaultPipeline().catch(() => null))?.stages ?? DEFAULT_STAGES : DEFAULT_STAGES;
   const writes: ReturnType<typeof connectorActionMap> = fromOwner ? connectorActionMap(ctx) : new Map();   // only the owner's own words can ask for a write
   const connectorActions = [...writes].map(([k, v]) => `- ${k} — ${v.name}: ${v.action.description} (${v.action.tool ? 'MCP tool' : v.action.method}; params: ${v.action.params.map((q) => `${q.name}${q.required ? '*' : ''}${q.description ? ` (${q.description})` : ''}`).join(', ') || 'none'})`);
-  const prompt = buildExtractPrompt({ connectorActions, now: describeNow(ctx.now(), ctx.cfg.tz), source: msg.source, sender: msg.sender, subject: msg.subject, body: msg.body, fromOwner, candidates, stages });
+  const images = (ctx.db.prepare('SELECT media_type, data FROM attachments WHERE message_id = ? ORDER BY id LIMIT 5').all(msg.id) as { media_type: string; data: Uint8Array }[]).map((r) => ({ mediaType: r.media_type, data: Buffer.from(r.data).toString('base64') }));
+  const prompt = buildExtractPrompt({ imageCount: images.length, connectorActions, now: describeNow(ctx.now(), ctx.cfg.tz), source: msg.source, sender: msg.sender, subject: msg.subject, body: msg.body, fromOwner, candidates, stages });
 
-  const raw = await ctx.llm.json({ system: EXTRACT_SYSTEM, prompt, schema: ACTIONS_SCHEMA as unknown as Record<string, unknown> });
+  const raw = await ctx.llm.json({ system: EXTRACT_SYSTEM, prompt, images, schema: ACTIONS_SCHEMA as unknown as Record<string, unknown> });
   const { actions, rejected } = parseActions(raw, new Set(candidates.map((c) => c.id)), writes);
   report.rejected = rejected;
 

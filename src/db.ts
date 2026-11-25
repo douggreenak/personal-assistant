@@ -70,6 +70,13 @@ CREATE VIRTUAL TABLE search USING fts5(kind UNINDEXED, ref UNINDEXED, title, bod
 CREATE TABLE docs (path TEXT PRIMARY KEY, mtime TEXT NOT NULL, chunks INTEGER NOT NULL);
 CREATE TABLE doc_rows (path TEXT NOT NULL, fts_rowid INTEGER NOT NULL);
 CREATE INDEX doc_rows_path ON doc_rows(path);
+`, `
+CREATE TABLE attachments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+  name TEXT NOT NULL DEFAULT '', media_type TEXT NOT NULL, data BLOB NOT NULL
+);
+CREATE INDEX attachments_msg ON attachments(message_id);
 `];
 
 export function openDb(path: string): Db {

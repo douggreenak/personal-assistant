@@ -3,7 +3,7 @@
 //   usage: CHROMIUM=/usr/bin/chromium node web-src/e2e/run.mjs
 import { chromium } from 'playwright-core';
 import { spawn } from 'node:child_process';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -22,7 +22,7 @@ const results = []; let current = '';
 const GROUP = process.env.E2E_GROUP || 'all';
 const groupOf = (n) => /^(keyboard:|items: sort|command palette|unsaved settings|connection lost)/.test(n) ? 'b'
   : /^(settings: (edit|theme)|system:|connectors:|mobile:|chat page|connect wizard|dialogs ignore|write connectors)/.test(n) ? 'c' : 'a';
-const step = async (name, fn) => { if (GROUP !== 'all' && !/^no JavaScript errors/.test(name) && groupOf(name) !== GROUP) return; current = name; try { await fn(); results.push([true, name]); console.log('  ✔', name); } catch (e) { results.push([false, name, e]); console.log('  ✖', name, '\n     ', String(e.message).split('\n').slice(0, 4).join('\n      ')); await page.screenshot({ path: join(dir, 'fail-' + results.length + '.png') }); } };
+const step = async (name, fn) => { if (GROUP !== 'all' && !/^no JavaScript errors/.test(name) && groupOf(name) !== GROUP) return; current = name; try { await fn(); results.push([true, name]); console.log('  ✔', name); } catch (e) { results.push([false, name, e]); console.log('  ✖', name, '\n     ', String(e.message).split('\n').slice(0, 4).join('\n      ')); if (errors.length) console.log('      page errors:', errors.slice(-3).join(' | ').slice(0, 400)); await page.screenshot({ path: join(dir, 'fail-' + results.length + '.png') }); } };
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--no-sandbox'] });
 const ctx = await browser.newContext({ viewport: { width: 1300, height: 900 } });
@@ -205,6 +205,53 @@ try {
   await step('chat page: renders, suggestions present (no message is sent)', async () => {
     await page.setViewportSize({ width: 1300, height: 900 }); await goto('chat'); assert.ok((await page.locator('md-assist-chip').count()) >= 2); await page.locator('.seg button', { hasText: 'Ask a question' }).click();
     assert.equal(await page.locator('.seg button[aria-pressed=true]').innerText(), 'Ask a question');
+  });
+
+  await step('chat page: markdown renders safely; pictures attach, preview, send and show (the reply is canned — no AI)', async () => {
+    const evil = '# Title\n\n**bold** and *it* and `code`\n\n- one\n- two\n\n1. a\n2. b\n\n```\nlet x = 1 < 2;\n```\n\n| h1 | h2 |\n|---|---|\n| c1 | c2 |\n\n[ok](https://example.com) [bad](javascript:alert(1)) ![img](https://evil.example/x.png)\n\n<script>window.pwned=1</script><img src=x onerror="window.pwned=1">';
+    await page.evaluate((t) => localStorage.setItem('chat_history', JSON.stringify([{ role: 'bot', text: t }])), evil);
+    await goto('chat'); await page.reload(); await page.waitForTimeout(700);
+    const b = page.locator('.bubble.bot .md').first(); await b.waitFor();
+    assert.equal(await b.locator('h3').innerText(), 'Title'); assert.equal(await b.locator('strong').first().innerText(), 'bold'); assert.equal(await b.locator('em').first().innerText(), 'it');
+    assert.equal(await b.locator('ul li').count(), 2); assert.equal(await b.locator('ol li').count(), 2); assert.match(await b.locator('pre code').innerText(), /let x = 1 < 2;/); assert.equal(await b.locator('table td').count(), 2);
+    assert.equal(await b.locator('a[href^="https://example.com"]').count(), 1); assert.equal(await b.locator('a[href^="javascript"]').count(), 0); assert.equal(await b.locator('img, script').count(), 0);   // no external image, no script, no javascript: link
+    assert.match(await b.innerText(), /<script>window\.pwned=1<\/script>/);          // shown as text
+    assert.ok(!(await page.evaluate(() => window.pwned)), 'injected HTML ran');
+    // attach a picture: preview chip, remove, attach again, send
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEUlEQVR4nGN4oKCAFTEMLQkAUmxIATH3sAAAAAAASUVORK5CYII=', 'base64');
+    const input = page.locator('input[type=file]'); await input.setInputFiles({ name: 'shot.png', mimeType: 'image/png', buffer: png });
+    await page.locator('.pics .pic img').waitFor(); await page.locator('.pic button').click(); assert.equal(await page.locator('.pics .pic').count(), 0);
+    await input.setInputFiles({ name: 'shot.png', mimeType: 'image/png', buffer: png }); await page.locator('.pics .pic img').waitFor();
+    await input.setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('hi') }); await toastText(/not a PNG/);
+    let sent; await page.route('**/chat', async (r) => { sent = JSON.parse(r.request().postData()); await r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ reply: 'Saw **one** picture\n\n- noted' }) }); });
+    await page.locator('textarea[aria-label=Message]').fill('look at *this*'); await page.locator('.composer md-filled-icon-button').click();
+    await page.locator('.bubble.bot strong', { hasText: 'one' }).waitFor();
+    assert.equal(sent.text, 'look at *this*'); assert.equal(sent.images.length, 1); assert.ok(['PNG', '\xff\xd8\xff'].some((m) => Buffer.from(sent.images[0].data, 'base64').toString('latin1').includes(m)), 'real image bytes');
+    assert.equal(await page.locator('.bubble.me .bubble-pics img').count(), 1); assert.equal(await page.locator('.bubble.me em', { hasText: 'this' }).count(), 1); assert.equal(await page.locator('.pics .pic').count(), 0);   // composer is cleared
+    await page.unroute('**/chat');
+    // pasting a picture also attaches it
+    await page.evaluate(async () => { const ta = document.querySelector('textarea[aria-label=Message]'); const bytes = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEUlEQVR4nGN4oKCAFTEMLQkAUmxIATH3sAAAAAAASUVORK5CYII='), (c) => c.charCodeAt(0)); const blob = new Blob([bytes], { type: 'image/png' }); const dt = new DataTransfer(); dt.items.add(new File([blob], 'p.png', { type: 'image/png' })); ta.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true })); });
+    await page.locator('.pics .pic img').waitFor();
+  });
+
+  await step('settings: backup downloads, and restoring it brings back the saved state (and undoes later changes)', async () => {
+    const T = 't'.repeat(32); const call = (m, p, b) => fetch(base + p, { method: m, headers: { authorization: 'Bearer ' + T, 'content-type': 'application/json' }, body: b && JSON.stringify(b) }).then((r) => r.json());
+    const titles = async () => (await call('GET', '/items?state=open')).items.map((i) => i.title);
+    await call('POST', '/items', { kind: 'task', title: 'Backup keeper' }); assert.ok((await titles()).includes('Backup keeper'));
+    await goto('settings'); await page.locator('h2', { hasText: 'Backup' }).waitFor();
+    await page.evaluate(() => { const o = URL.createObjectURL.bind(URL); URL.createObjectURL = (b) => { window.savedBlob = b; return o(b); }; });
+    const [dl] = await Promise.all([page.waitForEvent('download'), btn('Download backup').click()]);
+    assert.match(dl.suggestedFilename(), /^assistant-backup-\d{4}-\d{2}-\d{2}\.backup$/);
+    const path = join(dir, 'saved.backup'); writeFileSync(path, Buffer.from(await page.evaluate(async () => { const b = new Uint8Array(await window.savedBlob.arrayBuffer()); let t = ''; for (let i = 0; i < b.length; i += 8192) t += String.fromCharCode(...b.subarray(i, i + 8192)); return btoa(t); }), 'base64'));   // (the browser's own download folder may be unreachable)
+    await call('POST', '/items', { kind: 'task', title: 'Added after the backup' }); assert.ok((await titles()).includes('Added after the backup'));
+    // a wrong file is refused with a plain message and changes nothing
+    await page.locator('input[aria-label="Choose a backup file"]').setInputFiles({ name: 'x.backup', mimeType: 'application/octet-stream', buffer: Buffer.from('not a backup') });
+    await btn('Restore', page.locator('md-dialog[open]')).click(); await toastText(/not a backup file/); assert.ok((await titles()).includes('Added after the backup'));
+    await page.locator('input[aria-label="Choose a backup file"]').setInputFiles({ name: 'saved.backup', mimeType: 'application/octet-stream', buffer: readFileSync(path) });
+    await btn('Restore', page.locator('md-dialog[open]')).click();
+    await page.locator('md-dialog[open]', { hasText: 'Backup restored' }).waitFor();
+    const after = await titles(); assert.ok(after.includes('Backup keeper')); assert.ok(!after.includes('Added after the backup'));
+    await page.locator('md-dialog[open] md-text-button', { hasText: 'Close' }).click(); await page.waitForTimeout(800);
   });
 
 
