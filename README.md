@@ -37,7 +37,7 @@ Start with **[Getting started](docs/getting-started.md)**. Everything is in [`do
 | [Architecture](docs/architecture.md) | how it works inside, data model, module map |
 | [Google setup](docs/google-setup.md) · [Mac agent](docs/mac-agent.md) · [iPhone & Watch](docs/ios-watch.md) | connect each source |
 | [Canopy](docs/canopy.md) · [Ticketing](docs/ticketing.md) · [Connectors](docs/connectors.md) | integrations |
-| [HTTP API](docs/api.md) | script against it |
+| [Web UI](docs/web-ui.md) · [HTTP API](docs/api.md) | manage it from a browser · script against it |
 | [Security & privacy](docs/security.md) | threat model, what leaves your server |
 | [Operations](docs/operations.md) · [Development](docs/development.md) | run it, change it |
 

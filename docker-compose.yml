@@ -22,7 +22,7 @@ services:
     environment:
       TICKETS_TOKEN: ${TICKETS_TOKEN:?set TICKETS_TOKEN in .env}
     volumes: ["./ticketing-data:/data"]
-    ports: ["${BIND_ADDR:-127.0.0.1}:8080:8080"]
+    ports: ["${BIND_ADDR:-127.0.0.1}:${TICKETING_PORT:-8080}:8080"]
   whisper:                                       # OpenAI-compatible speech-to-text, CPU, local. Verify the image name when you first pull it.
     image: ghcr.io/speaches-ai/speaches:latest-cpu
     restart: unless-stopped

@@ -2,6 +2,9 @@
 
 Base URL `http://<server>:8090`. Every endpoint except `/healthz` and `/hooks/ticketing` needs `Authorization: Bearer $ASSISTANT_TOKEN`. The three `/ingest/*` endpoints also accept `INGEST_TOKEN`, which is valid for nothing else. Bodies are JSON unless stated. Errors are `{ "error": "…" }` with the status below. JSON bodies are limited to 1 MB; audio to 60 MB.
 
+## Web UI
+`GET /` serves a small web UI (no auth for the page itself; it asks for `ASSISTANT_TOKEN` and calls the endpoints below).
+
 ## Capture
 ### `POST /chat`
 Handle one line exactly as if typed in Google Chat (commands, questions, or something to capture).

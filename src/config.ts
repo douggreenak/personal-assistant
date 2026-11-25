@@ -1,6 +1,6 @@
 /** All configuration comes from environment variables; see .env.example. */
 export interface Config {
-  port: number; host: string; token: string; ingestToken: string; dbPath: string; dataDir: string; tz: string;
+  port: number; host: string; token: string; ingestToken: string; webPassword: string; dbPath: string; dataDir: string; tz: string;
   quietHours: { start: number; end: number };           // local hours; nagging is held inside [start, end)
   nagMinutes: number[];                                  // gaps between nags: 0th = after first notice, last repeats
   ticketing: { url: string; token: string } | null;
@@ -23,7 +23,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const dataDir = env.ASSISTANT_DATA ?? './data';
   const [qs, qe] = (env.QUIET_HOURS ?? '22-7').split('-').map(Number);
   return {
-    port: Number(env.PORT ?? 8090), host: env.HOST ?? '0.0.0.0', token: env.ASSISTANT_TOKEN ?? '', ingestToken: env.INGEST_TOKEN ?? '',
+    port: Number(env.PORT ?? 8090), host: env.HOST ?? '0.0.0.0', token: env.ASSISTANT_TOKEN ?? '', ingestToken: env.INGEST_TOKEN ?? '', webPassword: env.WEB_PASSWORD ?? '',
     dbPath: env.ASSISTANT_DB ?? `${dataDir}/assistant.db`, dataDir, tz: env.TZ_NAME ?? 'America/Anchorage',
     quietHours: { start: qs, end: qe },
     nagMinutes: list(env.NAG_MINUTES ?? '15,15,30,60').map(Number),

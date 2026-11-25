@@ -12,7 +12,7 @@
 | [Canopy integration](canopy.md) | send school work to Canopy and get grade/due alerts back |
 | [Ticketing integration](ticketing.md) | how the standalone ticket app plugs in |
 | [Connectors](connectors.md) | add a new outside service by pasting its docs |
-| [HTTP API](api.md) | script against the assistant |
+| [Web UI](web-ui.md) · [HTTP API](api.md) | script against the assistant |
 | [Security & privacy](security.md) | what is trusted, what leaves your server, and how prompt-injection is contained |
 | [Operations](operations.md) | backups, upgrades, logs, troubleshooting |
 | [Development](development.md) | run the tests, add a source, extend the actions |
