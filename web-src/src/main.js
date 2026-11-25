@@ -5,7 +5,9 @@ import '@material/web/dialog/dialog.js'; import '@material/web/menu/menu.js'; im
 import '@material/web/select/outlined-select.js'; import '@material/web/select/select-option.js'; import '@material/web/chips/chip-set.js'; import '@material/web/chips/filter-chip.js'; import '@material/web/chips/assist-chip.js';
 import '@material/web/progress/linear-progress.js';
 import { api, hasToken, clearToken, login } from './api.js';
-import { h, icon, clear, state, spinner, dialog, toast } from './ui.js';
+import { h, icon, clear, state, spinner, dialog, toast, page } from './ui.js';
+import { initShortcuts, showHelp } from './shortcuts.js';
+import { itemDialog } from './pages/items.js';
 import { applyTheme } from './theme.js';
 import home from './pages/home.js'; import items from './pages/items.js'; import chat from './pages/chat.js'; import inbox from './pages/inbox.js';
 import approvals from './pages/approvals.js'; import connectors from './pages/connectors.js'; import system from './pages/system.js'; import settings from './pages/settings.js';
@@ -54,7 +56,7 @@ function route() {
   const id = (location.hash.match(/^#\/(\w+)/) || [])[1] || 'home';
   const p = PAGES.find((x) => x.id === id) || PAGES[0];
   navEls.forEach((d) => d.toggleAttribute('aria-current', d.dataset.id === p.id)); navEls.forEach((d) => d.dataset.id === p.id ? d.setAttribute('aria-current', 'page') : d.removeAttribute('aria-current'));
-  cleanup?.(); cleanup = null; refreshStatus();
+  cleanup?.(); cleanup = null; refreshStatus(); page.newAction = null;
   const view = document.getElementById('view'); clear(view).append(spinner());
   window.scrollTo(0, 0);
   Promise.resolve(p.fn(view, { nav, refreshStatus })).then((c) => { cleanup = typeof c === 'function' ? c : null; }).catch((e) => clear(view).append(h('div', { class: 'card' }, h('h2', {}, 'Something went wrong'), h('p', { class: 'muted' }, e.message))));
@@ -77,11 +79,12 @@ async function start() {
   const more = h('md-menu', { anchor: 'moreBtn', positioning: 'popover' }, PAGES.filter((p) => !MOBILE.includes(p.id)).map((p) => h('md-menu-item', { onclick: () => nav(p.id) }, h('div', { slot: 'headline' }, p.label), h('span', { slot: 'start' }, icon(p.icon)))));
   const moreBtn = h('button', { class: 'dest', id: 'moreBtn', onclick: () => { more.open = !more.open; } }, h('span', { class: 'pill' }, icon('more_horiz')), h('span', {}, 'More'));
   const bottom = h('nav', { class: 'bottom-nav', 'aria-label': 'Main' }, PAGES.filter((p) => MOBILE.includes(p.id)).map((p) => destination(p)), moreBtn, more);
-  const top = h('div', { class: 'topbar' }, h('div', { class: 'grow' }), h('md-icon-button', { 'aria-label': 'Search', onclick: searchDialog }, icon('search')), h('md-icon-button', { 'aria-label': 'Refresh', onclick: () => route() }, icon('refresh')),
+  const top = h('div', { class: 'topbar' }, h('div', { class: 'grow' }), h('md-icon-button', { 'aria-label': 'Search', onclick: searchDialog }, icon('search')), h('md-icon-button', { 'aria-label': 'Keyboard shortcuts', title: 'Keyboard shortcuts (?)', onclick: showHelp }, icon('keyboard')), h('md-icon-button', { 'aria-label': 'Refresh', onclick: () => route() }, icon('refresh')),
     h('md-icon-button', { 'aria-label': 'Sign out', onclick: () => { clearToken(); showLogin(); } }, icon('logout')));
   clear(root).append(h('div', { id: 'app' }, rail, h('main', {}, top, h('div', { id: 'view', class: 'page' })), bottom));
   refreshStatus(); route();
 }
+initShortcuts({ nav, refresh: () => route(), openSearch: searchDialog, newDefault: () => itemDialog(null, () => route()) });
 window.addEventListener('hashchange', () => hasToken() && route());
 window.addEventListener('auth-lost', () => { clearToken(); showLogin(); });
 setInterval(() => { if (hasToken() && !document.hidden) refreshStatus(); }, 20000);

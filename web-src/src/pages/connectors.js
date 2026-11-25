@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { h, icon, clear, ago, empty, chip, dialog, confirmDialog, guarded, spinner, toast } from '../ui.js';
+import { h, icon, clear, ago, empty, chip, dialog, confirmDialog, guarded, spinner, toast, page } from '../ui.js';
 
 export default async function connectors(view, { refreshStatus }) {
   const list = h('div', { class: 'grid cols-2' });
@@ -36,6 +36,7 @@ export default async function connectors(view, { refreshStatus }) {
       if (r) { out.append(h('p', { style: 'white-space:pre-wrap;overflow-wrap:anywhere' }, r.result)); load(); refreshStatus(); } } }, icon('bolt'), 'Propose connector');
     const { close } = dialog({ title: 'Add a connector', fullscreen: true, content: [h('p', { class: 'muted' }, 'It can only read: one HTTPS GET endpoint, polled on a schedule. You approve the design, add the credential yourself, dry-run it, then enable it.'), t, out], actions: [h('md-text-button', { onclick: () => close() }, 'Close'), go] });
   }
+  page.newAction = add;
   clear(view).append(h('div', { class: 'page-head' }, h('h1', { class: 'display' }, 'Connectors'), h('p', { class: 'muted title-m' }, 'Teach the assistant to read other services, safely.')), list, h('div', { class: 'fab-slot' }, h('md-fab', { label: 'Add', 'aria-label': 'Add connector', onclick: add }, h('span', { slot: 'icon' }, icon('add')))));
   await load();
 }

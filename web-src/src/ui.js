@@ -19,6 +19,8 @@ function add(e, kids) {
     e.append(c.nodeType ? c : document.createTextNode(String(c)));
   }
 }
+/** Per-page hooks for the keyboard layer: the page sets `page.newAction`; main.js resets it on every navigation. */
+export const page = { newAction: null };
 export const clear = (e) => { e.replaceChildren(); return e; };
 
 export function icon(name, cls = '') {
@@ -62,6 +64,9 @@ export function dialog({ title, content, actions = [], fullscreen = false, onClo
     h('div', { slot: 'content' }, content),
     h('div', { slot: 'actions' }, actions));
   const close = () => dlg.close();
+  dlg.addEventListener('keydown', (e) => {            // Ctrl/Cmd+Enter submits whatever the dialog's main button is
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { const b = [...dlg.querySelectorAll('[slot=actions] md-filled-button')].pop(); if (b && !b.disabled) { e.preventDefault(); b.click(); } }
+  });
   dlg.addEventListener('closed', () => { dlg.remove(); onClose?.(); });
   document.body.append(dlg); dlg.show();
   return { dlg, close };

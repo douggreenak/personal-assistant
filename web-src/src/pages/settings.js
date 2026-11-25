@@ -17,7 +17,8 @@ export default async function settings(view) {
   async function save() { const ok = await guarded(() => api('/settings', { method: 'PUT', body: { values: Object.fromEntries(dirty) } }), 'Saved — restart to apply'); if (ok) { dirty.clear(); drawBar(); } return !!ok; }
   const route = () => settings(view);
 
-  function control(d) {
+  function control(d) { const el = control0(d); el.dataset.q = `${d.label} ${d.key} ${d.help || ''} ${d.group}`.toLowerCase(); return el; }
+  function control0(d) {
     const hint = d.help ? h('div', { class: 'help' }, d.help) : null;
     if (d.type === 'bool') { const sw = h('md-switch', { selected: d.value === '1' || d.value === 'true' }); sw.addEventListener('change', () => touch(d.key, sw.selected ? '1' : '0')); return h('div', {}, h('div', { class: 'field-row' }, h('div', {}, h('div', { class: 't' }, d.label), hint), sw)); }
     if (d.type === 'secret') {
@@ -28,6 +29,7 @@ export default async function settings(view) {
     const f = h('md-outlined-text-field', { label: d.label, value: d.value, placeholder: d.placeholder || '', type: d.type === 'number' ? 'number' : 'text', 'supporting-text': d.overridden ? 'Changed here (overrides .env)' : (!d.value && d.placeholder ? `Not set — default: ${d.placeholder}` : '') });
     f.addEventListener('input', () => touch(d.key, f.value)); return h('div', {}, f, hint);
   }
+  const filter = h('md-outlined-text-field', { label: 'Filter settings', 'data-primary': '' }, h('span', { slot: 'leading-icon' }, icon('search')));
   const groups = [...new Set(defs.map((d) => d.group))];
   const cards = groups.map((g, i) => h('details', { class: 'card high', open: i === 0 }, h('summary', { class: 'title-m', style: 'display:flex;align-items:center;gap:10px' }, icon(GROUP_ICON[g] || 'tune'), g,
     g === 'Google' && h('span', { style: 'flex:1' })), h('div', { class: 'form', style: 'margin-top:14px' }, defs.filter((d) => d.group === g).map(control),
@@ -50,5 +52,13 @@ export default async function settings(view) {
     h('div', { style: 'display:flex;gap:10px;flex-wrap:wrap' }, h('md-filled-tonal-button', { onclick: pwDialog }, icon('key'), 'Change password'), h('md-outlined-button', { onclick: () => { clearToken(); location.reload(); } }, icon('logout'), 'Sign out')));
 
   clear(view).append(h('div', { class: 'page-head' }, h('h1', { class: 'display' }, 'Settings'), h('p', { class: 'muted title-m' }, 'Everything that used to live in the .env file. Changes apply after a restart.')),
-    h('div', { class: 'grid cols-2' }, appearance, security), h('div', { class: 'grid', style: 'margin-top:16px' }, cards), bar);
+    h('div', { class: 'grid cols-2' }, appearance, security), filter, h('div', { class: 'grid' }, cards), bar);
+  const groupOf = new Map(cards.map((c) => [c, [...c.querySelectorAll('[data-q]')]]));
+  filter.addEventListener('input', () => {
+    const q = filter.value.trim().toLowerCase();
+    for (const [card, fields] of groupOf) {
+      let any = false; for (const f of fields) { const hit = !q || f.dataset.q.includes(q); f.hidden = !hit; any ||= hit; }
+      card.hidden = !!q && !any; if (q && any) card.open = true;
+    }
+  });
 }

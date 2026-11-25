@@ -199,6 +199,71 @@ try {
     assert.equal(await page.locator('.seg button[aria-pressed=true]').innerText(), 'Ask a question');
   });
 
+
+  const api = (method, path, body) => fetch(base + path, { method, headers: { authorization: 'Bearer ' + 't'.repeat(32), 'content-type': 'application/json' }, body: body && JSON.stringify(body) }).then((r) => r.json());
+  const active = () => page.evaluate(() => { const a = document.activeElement; return a ? (a.getAttribute('label') || a.tagName) : ''; });
+  const press = async (k) => { await page.keyboard.press(k); await page.waitForTimeout(250); };
+
+  await step('keyboard: "/" always lands in the text box of the current page', async () => {
+    await page.setViewportSize({ width: 1300, height: 900 });
+    for (const [pg, expect] of [['home', 'What should I remember or track?'], ['items', 'Filter'], ['inbox', 'Search messages'], ['settings', 'Filter settings'], ['system', 'Filter the server log']]) {
+      await goto(pg); await page.locator('body').click({ position: { x: 700, y: 5 } }); await press('/'); assert.equal(await active(), expect, pg);
+      await page.keyboard.type('a/b'); const v = await page.locator(`md-outlined-text-field[label="${expect}"]`).evaluate((e) => e.value); assert.equal(v, 'a/b', pg + ': typing "/" inside a box must type it');
+      await press('Escape'); assert.notEqual(await active(), expect, pg + ': Esc leaves the box');
+    }
+    await goto('chat'); await page.locator('h1').click(); await press('/'); assert.equal(await active(), 'TEXTAREA');
+    for (const pg of ['approvals', 'connectors']) { await goto(pg); await page.locator('h1').click(); await press('/'); await dlg().waitFor(); assert.match(await dlg().innerText(), /Search/); await press('Escape'); await page.waitForTimeout(400); }
+  });
+
+  await step('keyboard: g-chords and number keys navigate; the hint appears', async () => {
+    await goto('home'); await page.locator('h1').click();
+    await press('g'); assert.ok(await page.locator('.chord-hint').isVisible()); await press('i'); await heading('Items');
+    for (const [k, h] of [['h', /Good|Still/], ['c', 'Chat'], ['b', 'Inbox'], ['a', 'Approvals'], ['o', 'Connectors'], ['y', 'System'], ['s', 'Settings']]) { await page.locator('h1').first().click(); await press('g'); await press(k); await heading(h); }
+    for (const [k, h] of [['2', 'Items'], ['3', 'Chat'], ['8', 'Settings'], ['1', /Good|Still/]]) { await page.locator('h1').first().click(); await press(k); await heading(h); }
+    await page.locator('h1').first().click(); await press('g'); await press('z'); assert.equal(await page.locator('.chord-hint').count(), 0);          // unknown second key cancels
+  });
+
+  await step('keyboard: ? shows the list, Esc closes it; Ctrl+K searches from inside a text box', async () => {
+    await goto('items'); await page.locator('h1').click(); await press('?'); await dlg().waitFor(); assert.match(await dlg().innerText(), /Keyboard shortcuts/); assert.match(await dlg().innerText(), /Jump to the text box/); await press('Escape'); await page.waitForTimeout(500);
+    assert.equal(await dlg().count(), 0);
+    await press('/'); await press('Control+k'); await dlg().waitFor(); assert.match(await dlg().innerText(), /Search/); await press('Escape'); await page.waitForTimeout(500);
+    await page.getByRole('button', { name: 'Keyboard shortcuts' }).click(); await dlg().waitFor(); await press('Escape');
+  });
+
+  await step('keyboard: n creates, Ctrl+Enter submits, j/k select, x completes, e edits, Delete drops (with confirm)', async () => {
+    for (const t of ['Alpha task', 'Bravo task', 'Charlie task']) await api('POST', '/items', { kind: 'task', title: t });
+    await goto('items'); await page.locator('h1').click(); await press('n'); await dlg().waitFor();
+    await setField('Title', 'Delta task'); await page.locator('md-outlined-text-field[label="Title"]').focus(); await page.keyboard.press('Control+Enter'); await row('Delta task').waitFor(); await page.waitForTimeout(800);
+    assert.equal(await dlg().count(), 0);
+    await page.locator('h1').click(); await press('j'); assert.ok((await page.locator(".row.sel").count()) === 1);
+    const first = await page.locator('.row.sel .t').innerText(); await press('j'); const second = await page.locator('.row.sel .t').innerText(); assert.notEqual(first, second); await press('k'); assert.equal(await page.locator('.row.sel .t').innerText(), first);
+    await press('j'); await press('x'); await toastText(/Done/); await page.waitForTimeout(900); assert.equal(await row(second).count(), 0);
+    await page.locator('h1').click(); await press('j'); await press('e'); await dlg().waitFor(); assert.match(await dlg().innerText(), /Edit item/); await press('Escape'); await page.waitForTimeout(500);
+    await press('j'); await press('Enter'); await dlg().waitFor(); await press('Escape'); await page.waitForTimeout(500);
+    await press('Delete'); await dlg().waitFor(); assert.match(await dlg().innerText(), /Drop this item/); await btn('Cancel', dlg()).click(); await page.waitForTimeout(500);
+    const n = await page.locator('.row').count(); await press('Delete'); await dlg().waitFor(); await btn('Drop', dlg()).click(); await toastText(/Dropped/); await page.waitForTimeout(900); assert.equal(await page.locator('.row').count(), n - 1);
+    await press('Escape'); assert.equal(await page.locator('.row.sel').count(), 0);
+  });
+
+  await step('keyboard: shortcuts on Inbox and Approvals; settings filter narrows the groups', async () => {
+    const d = db(); d.prepare("INSERT INTO approvals (created_at, kind, summary, reason, payload) VALUES (?, 'action', ?, 'money', ?)").run(new Date().toISOString(), 'Create task: Keyboard approve', JSON.stringify({ action: { op: 'create', kind: 'task', title: 'Keyboard approve', confidence: 1, flags: ['money'], why: 'x' } }));
+    d.prepare("INSERT INTO approvals (created_at, kind, summary, reason, payload) VALUES (?, 'action', ?, 'money', ?)").run(new Date().toISOString(), 'Create task: Keyboard reject', JSON.stringify({ action: { op: 'create', kind: 'task', title: 'Keyboard reject', confidence: 1, flags: ['money'], why: 'x' } })); d.close();
+    await goto('approvals'); await page.locator('.card', { hasText: 'Keyboard approve' }).waitFor(); await page.locator('h1').click();
+    await press('j'); await press('x'); await toastText(/Approved/); await page.waitForTimeout(900); assert.equal(await page.locator('.card', { hasText: 'Keyboard approve' }).count(), 0);
+    await press('j'); await press('Delete'); await toastText(/Rejected/); await page.waitForTimeout(900); assert.equal(await page.locator('.card.high').count(), 0);
+    await goto('settings'); await page.locator('h1').click(); await press('/'); await page.keyboard.type('ntfy'); await page.waitForTimeout(400);
+    const vis = await page.locator('details:visible').count(); assert.equal(vis, 1); assert.ok(await page.locator('md-outlined-text-field[label="ntfy topic"]').isVisible()); assert.ok(!(await page.locator('md-outlined-text-field[label="Time zone"]').isVisible()));
+    await page.keyboard.press('Control+a'); await page.keyboard.type('zzzz-nothing'); await page.waitForTimeout(400); assert.equal(await page.locator('details:visible').count(), 0);
+  });
+
+  await step('keyboard: t toggles the theme, r refreshes, n opens the page-specific "new"', async () => {
+    await goto('home'); await page.locator('h1').click(); const before = await page.evaluate(() => document.documentElement.dataset.theme); await press('t'); assert.notEqual(await page.evaluate(() => document.documentElement.dataset.theme), before); await press('t');
+    await press('r'); await page.locator('.page-head').waitFor();
+    await goto('inbox'); await page.locator('h1').click(); await press('n'); await dlg().waitFor(); assert.match(await dlg().innerText(), /Add to inbox/); await press('Escape'); await page.waitForTimeout(500);
+    await goto('connectors'); await page.locator('h1').click(); await press('n'); await dlg().waitFor(); assert.match(await dlg().innerText(), /Add a connector/); await press('Escape'); await page.waitForTimeout(500);
+    await goto('chat'); await page.locator('h1').click(); await press('n'); assert.equal(await active(), 'TEXTAREA');
+  });
+
   await step('no JavaScript errors were logged during the whole run', async () => { assert.deepEqual(errors, []); });
 } finally {
   await browser.close(); srv.kill();

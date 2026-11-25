@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { h, icon, clear, spinner } from '../ui.js';
+import { h, icon, clear, spinner, page } from '../ui.js';
 
 const KEY = 'chat_history';
 const load = () => { try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch { return []; } };
@@ -9,7 +9,7 @@ export default async function chat(view) {
   let hist = load(); let ask = false;
   const msgs = h('div', { class: 'msgs' });
   const bubble = (role, text) => { const b = h('div', { class: 'bubble ' + role }, text); msgs.append(b); msgs.scrollTop = msgs.scrollHeight; return b; };
-  const ta = h('textarea', { rows: 1, placeholder: 'Tell me something, or ask a question…', 'aria-label': 'Message' });
+  const ta = h('textarea', { 'data-primary': '', rows: 1, placeholder: 'Tell me something, or ask a question…', 'aria-label': 'Message' });
   ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 160) + 'px'; });
   const send = async (text) => {
     text = (text ?? ta.value).trim(); if (!text) return;
@@ -27,5 +27,6 @@ export default async function chat(view) {
   clear(view).append(h('div', { class: 'page-head' }, h('h1', { class: 'display' }, 'Chat'), h('p', { class: 'muted title-m' }, 'The same assistant you reach from Google Chat.')),
     h('div', { class: 'toolbar' }, mode, h('div', { class: 'grow' }), h('md-text-button', { onclick: () => { hist = []; localStorage.removeItem(KEY); clear(msgs); bubble('bot', 'Cleared.'); } }, 'Clear')),
     h('div', { class: 'chat' }, msgs, h('div', {}, h('div', { class: 'suggest' }, SUGGEST.map((s) => h('md-assist-chip', { label: s, onclick: () => send(s) }))), h('div', { class: 'composer' }, ta, sendBtn))));
+  page.newAction = () => ta.focus();
   setTimeout(() => ta.focus({ preventScroll: true }), 100);
 }

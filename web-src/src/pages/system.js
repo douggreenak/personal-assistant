@@ -12,12 +12,14 @@ export async function restartServer() {
 
 export default async function system(view, { refreshStatus }) {
   const body = h('div', { class: 'grid' });
-  let level = 'all';
+  let level = 'all', q = '';
+  const filter = h('md-outlined-text-field', { label: 'Filter the server log', 'data-primary': '', class: 'grow' }, h('span', { slot: 'leading-icon' }, icon('search')));
+  let drawLogsNow = () => {}; filter.addEventListener('input', () => { q = filter.value.toLowerCase(); drawLogsNow(); });
   async function load() {
     const [s, integ, logs, act] = await Promise.all([api('/status'), api('/status/integrations'), api('/logs?limit=250'), api('/activity?limit=25')]);
     const stat = (label, v, ic) => h('div', { class: 'card flat' }, h('div', { class: 'label' }, label), h('div', { class: 'title-l' }, v));
     const logBox = h('div', { class: 'logs mono' });
-    const drawLogs = () => { clear(logBox).append(...logs.lines.filter((l) => level === 'all' || l.level === 'error').map((l) => h('div', { class: l.level === 'error' ? 'e' : '' }, h('span', { class: 'at' }, fmtDate(l.at, { timeStyle: 'medium' }) + '  '), l.text))); logBox.scrollTop = logBox.scrollHeight; };
+    const drawLogs = () => { clear(logBox).append(...logs.lines.filter((l) => (level === 'all' || l.level === 'error') && (!q || l.text.toLowerCase().includes(q))).map((l) => h('div', { class: l.level === 'error' ? 'e' : '' }, h('span', { class: 'at' }, fmtDate(l.at, { timeStyle: 'medium' }) + '  '), l.text))); logBox.scrollTop = logBox.scrollHeight; };
     const levels = h('div', { class: 'seg' }); const drawLevels = () => clear(levels).append(...[['all', 'All'], ['error', 'Errors']].map(([v, l]) => h('button', { 'aria-pressed': String(v === level), onclick: () => { level = v; drawLevels(); drawLogs(); } }, l))); drawLevels();
     clear(body).append(
       h('div', { class: 'grid cols-3' }, stat('Version', 'v' + s.version), stat('Uptime', dur(s.uptimeSec)), stat('Brain', s.model), stat('Time zone', s.tz), stat('Messages processed', `${s.queue.total - s.queue.pending - s.queue.failing} of ${s.queue.total}`), stat('Indexed files', s.indexedFiles)),
@@ -29,9 +31,9 @@ export default async function system(view, { refreshStatus }) {
       h('div', { class: 'card' }, h('h2', {}, icon('tune'), 'Maintenance'), h('div', { style: 'display:flex;gap:10px;flex-wrap:wrap' },
         h('md-filled-tonal-button', { onclick: async () => { const r = await guarded(() => api('/admin/reindex', { method: 'POST' })); if (r) toast(`Indexed ${r.indexed} file(s), skipped ${r.skipped}`); load(); } }, icon('folder'), 'Re-index files'),
         h('md-outlined-button', { onclick: restartServer }, icon('restart_alt'), 'Restart assistant'))));
-    drawLogs();
+    drawLogs(); drawLogsNow = drawLogs;
   }
-  clear(view).append(h('div', { class: 'page-head' }, h('h1', { class: 'display' }, 'System'), h('p', { class: 'muted title-m' }, 'Health, logs and maintenance.')), body);
+  clear(view).append(h('div', { class: 'page-head' }, h('h1', { class: 'display' }, 'System'), h('p', { class: 'muted title-m' }, 'Health, logs and maintenance.')), h('div', { class: 'toolbar' }, filter), body);
   clear(body).append(spinner()); await load();
   const t = setInterval(() => !document.hidden && load().catch(() => {}), 20000); return () => clearInterval(t);
 }

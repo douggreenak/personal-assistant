@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { h, icon, clear, fmtDate, ago, toLocalInput, empty, dialog, confirmDialog, guarded, chip, menu, debounce, state } from '../ui.js';
+import { h, icon, clear, fmtDate, ago, toLocalInput, empty, dialog, confirmDialog, guarded, chip, menu, debounce, state, page } from '../ui.js';
 
 const KIND_ICON = { ticket: 'confirmation_number', reminder: 'alarm', task: 'checklist' };
 const KIND_LABEL = { ticket: 'Ticket', reminder: 'Reminder', task: 'Task' };
@@ -29,6 +29,11 @@ export function itemRow(it, changed) {
     h('div', { class: 'lead k-' + it.kind }, icon(KIND_ICON[it.kind])),
     h('div', {}, h('div', { class: 't' }, it.title), h('div', { class: 's' }, itemMeta(it))),
     h('div', { class: 'acts' }, it.state === 'open' && h('md-filled-tonal-icon-button', { 'aria-label': 'Mark done', title: 'Mark done', onclick: () => act(() => api(`/items/${it.id}/complete`, { method: 'POST' }), 'Done'), }, icon('check')), more, menu(more, entries)));
+  const drop = async () => { if (await confirmDialog('Drop this item?', it.title, 'Drop')) act(() => api(`/items/${it.id}/drop`, { method: 'POST' }), 'Dropped'); };
+  row.dataset.sel = '';
+  row._keys = { Enter: () => itemDialog(it, changed), e: () => itemDialog(it, changed), h: () => historyDialog(it),
+    ...(it.state === 'open' && { x: () => act(() => api(`/items/${it.id}/complete`, { method: 'POST' }), 'Done'), Delete: drop, Backspace: drop,
+      ...(it.kind === 'reminder' && { s: () => act(() => api(`/items/${it.id}/snooze`, { method: 'POST', body: { for: '2h' } }), 'Snoozed 2h') }) }) };
   return row;
 }
 
@@ -76,11 +81,12 @@ export default async function items(view) {
   let st = 'open', kind = '', q = '';
   const list = h('div', { class: 'list' });
   const segs = (opts, cur, set) => { const box = h('div', { class: 'seg', role: 'group' }); const draw = () => clear(box).append(...opts.map(([v, l]) => h('button', { 'aria-pressed': String(v === cur), onclick: () => { cur = v; set(v); draw(); load(); } }, l))); draw(); return box; };
-  const search = h('md-outlined-text-field', { label: 'Filter', class: 'grow', 'supporting-text': '' }, h('span', { slot: 'leading-icon' }, icon('search')));
+  const search = h('md-outlined-text-field', { label: 'Filter', class: 'grow', 'data-primary': '', 'supporting-text': '' }, h('span', { slot: 'leading-icon' }, icon('search')));
   search.addEventListener('input', debounce(() => { q = search.value.toLowerCase(); draw(); }, 120));
   let data = [];
   const draw = () => { const rows = data.filter((i) => !q || (i.title + ' ' + i.detail).toLowerCase().includes(q)); clear(list).append(...(rows.length ? rows.map((i) => itemRow(i, load)) : [empty('checklist', 'Nothing here', q ? 'No items match that filter.' : 'Create one with the + button, or tell the assistant in Chat.')])); };
   async function load() { const p = new URLSearchParams({ state: st, limit: 500 }); if (kind) p.set('kind', kind); data = (await guarded(() => api('/items?' + p)))?.items ?? []; draw(); }
+  page.newAction = () => itemDialog(null, load);
   clear(view).append(h('div', { class: 'page-head' }, h('h1', { class: 'display' }, 'Items'), h('p', { class: 'muted title-m' }, 'Tickets, reminders and tasks in one place.')),
     h('div', { class: 'toolbar' }, segs([['open', 'Open'], ['done', 'Done'], ['dropped', 'Dropped'], ['all', 'All']], st, (v) => (st = v)), segs([['', 'Everything'], ['ticket', 'Tickets'], ['reminder', 'Reminders'], ['task', 'Tasks']], kind, (v) => (kind = v)), search), list,
     h('div', { class: 'fab-slot' }, h('md-fab', { label: 'New', 'aria-label': 'New item', onclick: () => itemDialog(null, load) }, h('span', { slot: 'icon' }, icon('add')))));

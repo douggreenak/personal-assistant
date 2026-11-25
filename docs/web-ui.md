@@ -23,3 +23,25 @@ The built UI is committed in `src/web/assets/`, so the server still has no runti
 cd web-src && npm install && npm run build   # writes ../src/web/assets, then rebuild the image: docker compose up -d --build
 ```
 It uses [Material Web](https://github.com/material-components/material-web) components, `@material/material-color-utilities` for the palette, Roboto Flex and Material Symbols (inlined as SVG).
+
+## Keyboard shortcuts
+Press `?` in the UI for the live list.
+
+| Keys | Action |
+|---|---|
+| `/` | jump to the text box on the current page (Home: quick capture, Items/Inbox: filter, Chat: message, Settings: filter, System: log filter); opens search where there is none |
+| `Ctrl/Cmd K` | search everything, even from inside a text box |
+| `g` then `h` `i` `c` `b` `a` `o` `y` `s` | Home, Items, Chat, Inbox, Approvals, Connectors, System, Settings |
+| `1`–`8` | the same pages by position |
+| `n` | new item / inbox message / connector (depending on the page) |
+| `j` `k` | select next / previous row; `Esc` clears |
+| `Enter` `e` `h` | open / edit / history of the selected item |
+| `x` | done (item), approve (approval), skip (message) |
+| `s` | snooze the selected reminder 2 hours |
+| `Delete` | drop (item, with confirmation), reject (approval) |
+| `Shift R` | process the selected message again |
+| `r` `t` | refresh, toggle light/dark |
+| `Ctrl/Cmd Enter` | submit a dialog or the quick-capture box |
+| `Esc` | leave a text box, close a dialog |
+
+Shortcuts are ignored while you are typing in a field or a dialog is open (except `Ctrl K` and `Esc`).
