@@ -52,7 +52,7 @@ export async function decide(ctx: Ctx, id: number, approve: boolean, by = 'owner
   try {
     if (a.kind === 'action') {
       const res = await applyAction(ctx, a.payload.action as Action, a.messageId, 'owner-approved');
-      return `Done: ${res.summary}`;
+      return `Approved — ${res.summary}`;
     }
     const hook = kindHooks.get(a.kind);
     return hook ? await hook(ctx, a) : `Approved #${id}.`;

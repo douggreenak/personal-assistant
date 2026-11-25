@@ -21,10 +21,15 @@ Rules:
   use op "complete" (finished), "stage" (ticket progress; stageId must be one of the listed stages), or "update" (changed due date/details),
   with itemId copied exactly from the open-items list. If it could match several items or you are guessing, add flag "uncertain".
 - "drop" only when the message clearly says the item is no longer needed.
-- flags: "money" if it involves paying, spending, invoices owed, purchases, refunds, or financial commitments;
-  "others_deadline" if it sets, changes or accepts a deadline/commitment that concerns another person;
-  "outbound" if it would require contacting someone on the owner's behalf; "uncertain" per above.
-  A plain reminder for the owner to call someone about an invoice IS "money".
+- flags describe the CONSEQUENCE OF THE ACTION, not the topic. Creating a ticket, reminder or task for the owner is harmless even when it is
+  ABOUT money, a purchase, an invoice or another person ("order cables", "call Sam about the invoice", "pay the electric bill") — do NOT flag those.
+  Flag only when the action itself would settle or commit something:
+  "money": completing/closing/updating an item because a payment, purchase, refund or quote acceptance happened or is being agreed to
+  ("I paid the invoice", "approve the $4,000 quote"), or any action that records or commits spending;
+  "others_deadline": the action sets, moves or accepts a deadline or commitment that belongs to another person, or promises something to them;
+  "outbound": the action would require contacting someone on the owner's behalf;
+  "uncertain": you are guessing which open item an update/complete/stage/drop refers to.
+  When in doubt about a plain create, leave the flags empty.
 - confidence 0..1: how sure you are this action is correct and wanted.
 - Messages that are marketing, receipts with nothing to do, small talk, or things the owner is not responsible for: return {"actions": []}.
 - Messages the owner SENT (from the owner) are commitments or notes-to-self; messages from others are requests of the owner.

@@ -63,22 +63,36 @@ export async function processMessage(ctx: Ctx, msg: MessageRow): Promise<Process
   return report;
 }
 
-/** Worker step: process the oldest pending message. Returns its report, or null when the queue is empty. */
+const LEASE_MS = 5 * 60_000;   // longer than the LLM timeout; a crashed worker's claim expires after this
+
+/** Atomically claims the oldest due message so concurrent workers (chat handler, background loop, a second process) never double-process. */
+function claimNext(ctx: Ctx): MessageRow | null {
+  const now = ctx.now().toISOString();
+  for (let i = 0; i < 5; i++) {
+    const row = ctx.db.prepare('SELECT * FROM messages WHERE processed_at IS NULL AND attempts < 5 AND (retry_at IS NULL OR retry_at <= ?) ORDER BY id LIMIT 1').get(now) as Record<string, unknown> | undefined;
+    if (!row) return null;
+    const won = ctx.db.prepare('UPDATE messages SET attempts = attempts + 1, retry_at = ? WHERE id = ? AND processed_at IS NULL AND (retry_at IS NULL OR retry_at <= ?)')
+      .run(new Date(ctx.now().getTime() + LEASE_MS).toISOString(), row.id as number, now);
+    if (won.changes === 1) return { ...rowToMsg(row), attempts: (row.attempts as number) + 1 };
+  }
+  return null;
+}
+
+/** Worker step: process the oldest pending message. Returns its report, or null when nothing is due. */
 export async function processNextReport(ctx: Ctx): Promise<{ msg: MessageRow; report: ProcessReport } | null> {
-  const row = ctx.db.prepare('SELECT * FROM messages WHERE processed_at IS NULL AND attempts < 5 ORDER BY id LIMIT 1').get() as Record<string, unknown> | undefined;
-  if (!row) return null;
-  const msg = rowToMsg(row);
-  ctx.db.prepare('UPDATE messages SET attempts = attempts + 1 WHERE id = ?').run(msg.id);
+  const msg = claimNext(ctx);
+  if (!msg) return null;
   try {
     const report = await processMessage(ctx, msg);
-    ctx.db.prepare('UPDATE messages SET processed_at = ?, error = NULL WHERE id = ?').run(nowIso(), msg.id);
+    ctx.db.prepare('UPDATE messages SET processed_at = ?, retry_at = NULL, error = NULL WHERE id = ?').run(nowIso(), msg.id);
     // Chat replies carry their own summary; everything else is announced here.
     if (msg.source !== 'chat') await announce(ctx, msg, report);
     return { msg, report };
   } catch (e) {
     const err = (e as Error).message.slice(0, 300);
-    ctx.db.prepare('UPDATE messages SET error = ? WHERE id = ?').run(err, msg.id);
-    if (msg.attempts + 1 >= 5) await ctx.notify.send(`⚠️ Couldn't process a ${msg.source} message after 5 tries: ${err}`);
+    const backoff = Math.min(30 * 2 ** (msg.attempts - 1), 600) * 1000;     // 30s, 60s, 2m, 4m, 8m
+    ctx.db.prepare('UPDATE messages SET error = ?, retry_at = ? WHERE id = ?').run(err, new Date(ctx.now().getTime() + backoff).toISOString(), msg.id);
+    if (msg.attempts >= 5) await ctx.notify.send(`⚠️ Couldn't process a ${msg.source} message after 5 tries: ${err}`);
     return { msg, report: { applied: [], queued: [], rejected: [], skipped: `error: ${err}` } };
   }
 }

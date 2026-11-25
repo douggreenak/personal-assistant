@@ -15,6 +15,7 @@ CREATE TABLE messages (
   received_at TEXT NOT NULL,
   processed_at TEXT,
   attempts INTEGER NOT NULL DEFAULT 0,
+  retry_at TEXT,                     -- lease while being processed, then backoff after a failure
   error TEXT,
   UNIQUE(source, source_id)
 );

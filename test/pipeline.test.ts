@@ -110,10 +110,15 @@ test('prompt-injection style output is neutralised: unknown ids and bad ops are 
 });
 
 test('duplicate messages are ignored; LLM failure retries then reports', async () => {
+  let now = new Date('2026-11-25T12:00:00Z');
   const { ctx, notify } = makeCtx(() => { throw new Error('boom'); });
+  ctx.now = () => now;
   assert.ok(storeMessage(ctx, { source: 'gmail', sourceId: 'g1', sender: 'a@b.c', body: 'hello' }));
   assert.equal(storeMessage(ctx, { source: 'gmail', sourceId: 'g1', sender: 'a@b.c', body: 'hello' }), null);
-  for (let i = 0; i < 5; i++) await processNext(ctx);
+  assert.equal(await processNext(ctx), true);
+  assert.equal(await processNext(ctx), false);                         // backing off, not hammering the model
+  for (let i = 0; i < 4; i++) { now = new Date(now.getTime() + 11 * 60000); assert.equal(await processNext(ctx), true); }
+  now = new Date(now.getTime() + 11 * 60000);
   assert.equal(await processNext(ctx), false);
   assert.ok(notify.sent.some((n) => /after 5 tries/.test(n.text)));
 });
@@ -123,4 +128,15 @@ test('automated senders are skipped without calling the model', async () => {
   storeMessage(ctx, { source: 'gmail', sourceId: 'n1', sender: 'noreply@shop.com', body: 'Your order shipped' });
   await processNext(ctx);
   assert.equal(llm.calls.length, 0);
+});
+
+test('concurrent workers never process the same message twice', async () => {
+  let calls = 0;
+  const { ctx } = makeCtx(async () => { calls++; await new Promise((r) => setTimeout(r, 30)); return { actions: [act({ op: 'create', kind: 'task', title: 'only once' })] }; });
+  storeMessage(ctx, { source: 'chat', sourceId: 'c1', sender: 'me', body: 'do one thing' });
+  const { processNextReport } = await import('../src/pipeline.ts');
+  const results = await Promise.all([processNextReport(ctx), processNextReport(ctx), processNextReport(ctx)]);
+  assert.equal(results.filter(Boolean).length, 1);
+  assert.equal(calls, 1);
+  assert.equal(ctx.items.list().length, 1);
 });
