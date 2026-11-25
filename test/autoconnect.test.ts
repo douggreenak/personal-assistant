@@ -123,8 +123,10 @@ test('write connectors: the call is built safely (path escaping, body, auth, no 
   const j = await done(startAutoConnect(ctx, 'docs', 'sekret-9999', (async () => json(orders)) as unknown as typeof fetch).id); assert.equal(j.state, 'done');
   let req: { url: string; init: RequestInit } | undefined;
   const f = (async (u: URL, init: RequestInit) => { req = { url: String(u), init }; return json({ id: 'inv_1' }, 201); }) as unknown as typeof fetch;
+  ctx.db.prepare("UPDATE connectors SET last_run_at = ? WHERE id = 'acme'").run(new Date().toISOString());
   const out = await callConnectorAction(ctx, 'acme', 'create_invoice', { customer: 'a/b c', amount: '40', memo: 'hi', draft: '1', ignored: 'x' }, f);
   assert.match(out, /Create invoice done \(HTTP 201\)/);
+  assert.equal(ctx.db.prepare('SELECT last_run_at v FROM connectors WHERE id = ?').get('acme')!.v, '1970-01-01T00:00:00.000Z');   // a write makes the next check re-read at once
   assert.equal(req!.url, 'https://api.acme.example/v1/customers/a%2Fb%20c/invoices?draft=1');
   assert.deepEqual(JSON.parse(String(req!.init.body)), { amount: '40', memo: 'hi' }); assert.equal(req!.init.method, 'POST'); assert.equal(req!.init.redirect, 'manual');
   assert.equal((req!.init.headers as Record<string, string>).authorization, 'Bearer sekret-9999');

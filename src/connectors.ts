@@ -283,6 +283,11 @@ export function connectorActionMap(ctx: Ctx): Map<string, { connector: string; n
   return out;
 }
 
+/** After something was sent to the service, its data has changed: make the next minute's check re-read it instead of waiting out the interval. */
+function refreshAfterWrite(ctx: Ctx, c: ConnRow): void {
+  if (c.manifest.poll && c.lastRunAt) ctx.db.prepare('UPDATE connectors SET last_run_at = ? WHERE id = ?').run('1970-01-01T00:00:00.000Z', c.id);
+}
+
 /** Performs one approved write. Public HTTPS only, the connector's own credential, no redirects, bounded time and size. */
 export async function callConnectorAction(ctx: Ctx, connectorId: string, actionId: string, args: Record<string, string>, fetchImpl: typeof fetch = fetch): Promise<string> {
   const c = getConn(ctx, connectorId); const a = c?.manifest.actions?.find((x) => x.id === actionId);
@@ -292,6 +297,7 @@ export async function callConnectorAction(ctx: Ctx, connectorId: string, actionI
   if (c.manifest.mcp) {
     const { url, headers } = await mcpTarget(ctx, c.manifest, c.manifest.mcp.url);
     const out = await mcpCallTool(await mcpOpen(url, headers, fetchImpl), a.tool ?? a.id, coerceArgs(a, args));
+    refreshAfterWrite(ctx, c);
     return `${c.manifest.name}: ${a.name} done${out ? ` — ${out}` : ''}`;
   }
   let path = a.path.replace(/\{([^}]+)\}/g, (_, n: string) => encodeURIComponent(String(args[n] ?? '')));
@@ -309,6 +315,7 @@ export async function callConnectorAction(ctx: Ctx, connectorId: string, actionI
   const res = await fetchImpl(u, { method: a.method, headers, body: hasBody ? JSON.stringify(body) : undefined, redirect: 'manual', signal: AbortSignal.timeout(20000) });
   const text = (await res.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 300);
   if (!res.ok) throw new Error(`${c.manifest.name}: ${a.method} ${path} → HTTP ${res.status} ${text}`.trim());
+  refreshAfterWrite(ctx, c);
   return `${c.manifest.name}: ${a.name} done (HTTP ${res.status})${text ? ` — ${text}` : ''}`;
 }
 
