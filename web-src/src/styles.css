@@ -45,11 +45,12 @@ h1, h2, h3, p { margin: 0; }
 @keyframes pop { from { transform: scale(0); } }
 
 main { min-width: 0; padding: 0 var(--pad) 120px; max-width: 1280px; width: 100%; margin: 0 auto; }
-.topbar { display: flex; align-items: center; gap: 8px; padding: 16px 0 8px; position: sticky; top: 0; z-index: 1; background: linear-gradient(var(--md-sys-color-surface) 70%, transparent); }
+.topbar { display: flex; align-items: center; gap: 8px; padding: 16px 0 8px; position: sticky; top: 0; z-index: 12; background: var(--md-sys-color-surface); box-shadow: 0 8px 8px -6px var(--md-sys-color-surface); }
 .topbar .grow { flex: 1; }
 .page-head { padding: 12px 0 8px; display: grid; gap: 6px; }
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
-.page { display: grid; gap: 16px; align-content: start; }
+.page { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-content: start; }
+.page > *, .toolbar > * { min-width: 0; }
 .page-head { margin-bottom: 0; }
 .page > * { animation: rise .35s var(--smooth) backwards; }
 
@@ -70,7 +71,8 @@ main { min-width: 0; padding: 0 var(--pad) 120px; max-width: 1280px; width: 100%
 .card { background: var(--md-sys-color-surface-container); border-radius: var(--r-l); padding: 20px 22px; display: grid; gap: 12px; align-content: start; min-width: 0; }
 .card.high { background: var(--md-sys-color-surface-container-high); }
 .card.flat { background: var(--md-sys-color-surface-container-low); }
-.card h2 { font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+.card h2 { font-size: 1.1rem; font-weight: 700; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.grid > *, .card { min-width: 0; } .card p, .card .muted { overflow-wrap: anywhere; }
 .card h2 .grow { flex: 1; }
 
 /* stat tiles with deliberately mismatched, expressive corners */
@@ -111,8 +113,8 @@ main { min-width: 0; padding: 0 var(--pad) 120px; max-width: 1280px; width: 100%
 
 .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .toolbar .grow { flex: 1; min-width: 200px; }
-.seg { display: inline-flex; background: var(--md-sys-color-surface-container-high); border-radius: var(--r-full); padding: 4px; gap: 2px; }
-.seg button { border: 0; background: none; color: var(--md-sys-color-on-surface-variant); font: 650 .9rem var(--font); padding: 8px 16px; border-radius: var(--r-full); cursor: pointer; transition: all .35s var(--spring); }
+.seg { display: inline-flex; max-width: 100%; overflow-x: auto; scrollbar-width: none; flex-wrap: nowrap; background: var(--md-sys-color-surface-container-high); border-radius: var(--r-full); padding: 4px; gap: 2px; }
+.seg button { white-space: nowrap; flex: none; border: 0; background: none; color: var(--md-sys-color-on-surface-variant); font: 650 .9rem var(--font); padding: 8px 16px; border-radius: var(--r-full); cursor: pointer; transition: all .35s var(--spring); }
 .seg button:hover { color: var(--md-sys-color-on-surface); }
 .seg button[aria-pressed=true] { background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); }
 .seg button:active { border-radius: 10px; }
@@ -224,7 +226,17 @@ kbd { font: 650 .8rem/1 var(--font); background: var(--md-sys-color-surface-cont
   .stat .num { font-size: 2rem; }
   .row { gap: 10px; padding: 10px 12px; }
   .row .lead { display: none; }
+  .topbar { padding: 8px 0 4px; }
+  .actrow { flex-wrap: wrap; }
+  .actrow > label, .actrow > span { margin-left: auto; }
 }
+/* phone layout: chat must fit between the header and the bottom nav; content may never end up under the nav; one scroll at a time */
+@media (max-width: 839px) {
+  .chat { height: calc(100dvh - 400px); min-height: 220px; }
+  main { padding-bottom: calc(150px + env(safe-area-inset-bottom)); }
+  .bottom-nav { padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
+}
+html:has(md-dialog[open]) { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } }
 
 .autolog { display: grid; gap: 8px; margin: 6px 0; }
@@ -238,3 +250,6 @@ kbd { font: 650 .8rem/1 var(--font); background: var(--md-sys-color-surface-cont
 .acts-list { margin-top: 4px; } .acts-list summary { cursor: pointer; font-weight: 650; }
 .actrow { display: flex; gap: 14px; align-items: center; justify-content: space-between; padding: 10px 0; border-top: 1px solid var(--md-sys-color-outline-variant); }
 .actrow > div { min-width: 0; overflow-wrap: anywhere; }
+
+/* the hidden attribute must always win over component display rules (display:grid/flex would otherwise keep "hidden" things on screen) */
+[hidden] { display: none !important; }

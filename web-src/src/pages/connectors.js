@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { h, icon, clear, ago, empty, chip, dialog, confirmDialog, guarded, spinner, toast, page } from '../ui.js';
+import { h, icon, clear, ago, empty, chip, dialog, confirmDialog, guarded, spinner, toast, page, fab } from '../ui.js';
 
 export default async function connectors(view, { refreshStatus }) {
   const list = h('div', { class: 'grid cols-2' });
@@ -28,7 +28,7 @@ export default async function connectors(view, { refreshStatus }) {
         : h('md-filled-button', { onclick: async () => { const r = await run(() => api(`/connectors/${c.id}/enable`, { method: 'POST' })); if (r) toast(r.result.slice(0, 160)); } }, 'Enable'));
     }
     btns.push(h('md-icon-button', { 'aria-label': 'Delete', onclick: async () => { if (await confirmDialog('Delete connector?', `${m.name} will stop polling. Its past messages stay.`, 'Delete')) run(() => api('/connectors/' + c.id, { method: 'DELETE' }), 'Deleted'); } }, icon('delete')));
-    return h('div', { class: 'card high' }, h('div', { style: 'display:flex;gap:14px;align-items:center' }, h('div', { class: 'lead k-task' }, icon('extension')), h('div', { style: 'flex:1;min-width:0' }, h('div', { class: 'title-m' }, m.name), h('div', { class: 'muted' }, m.description)), h('div', { style: 'display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end' }, caps, chip(c.status, tone))),
+    return h('div', { class: 'card high' }, h('div', { style: 'display:flex;gap:10px 14px;align-items:center;flex-wrap:wrap' }, h('div', { class: 'lead k-task' }, icon('extension')), h('div', { style: 'flex:1 1 180px;min-width:0;overflow-wrap:anywhere' }, h('div', { class: 'title-m' }, m.name), h('div', { class: 'muted' }, m.description)), h('div', { style: 'display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;margin-left:auto' }, caps, chip(c.status, tone))),
       h('div', { class: 'mono muted', style: 'overflow-wrap:anywhere' }, m.mcp ? `MCP server · ${m.mcp.url}` : m.poll ? `Reads: GET ${m.baseUrl}${m.poll.path} · every ${m.poll.intervalMinutes} min` : `Writes only · ${m.baseUrl}`),
       m.actions?.length ? h('details', { class: 'acts-list' }, h('summary', {}, m.mcp ? `${m.actions.length} MCP tool${m.actions.length === 1 ? '' : 's'} — each call asks you first` : `Can do ${m.actions.length} write action${m.actions.length === 1 ? '' : 's'} — asks you first`),
         m.actions.map((a) => h('div', { class: 'actrow' },
@@ -77,6 +77,6 @@ export default async function connectors(view, { refreshStatus }) {
     const { close } = dialog({ title: 'Add a connector', fullscreen: true, onClose: stopPoll, content: [form, log, tail], actions: [h('md-text-button', { onclick: () => close() }, 'Close'), go] });
   }
   page.newAction = add;
-  clear(view).append(h('div', { class: 'page-head' }, h('h1', { class: 'display' }, 'Connectors'), h('p', { class: 'muted title-m' }, 'Connect other services so the assistant can read from them and, with your OK, act in them.')), list, h('div', { class: 'fab-slot' }, h('md-fab', { label: 'Add', 'aria-label': 'Add connector', onclick: add }, h('span', { slot: 'icon' }, icon('add')))));
+  clear(view).append(h('div', { class: 'page-head' }, h('h1', { class: 'display' }, 'Connectors'), h('p', { class: 'muted title-m' }, 'Connect other services so the assistant can read from them and, with your OK, act in them.')), list, h('div', { class: 'fab-slot' }, fab('Add', 'Add connector', add)));
   await load();
 }

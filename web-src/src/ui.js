@@ -112,3 +112,6 @@ export function rel(iso) {
 export function download(name, text, type) {
   const a = h('a', { href: URL.createObjectURL(new Blob([text], { type })), download: name }); document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
 }
+
+/** Floating action button: labelled on wide screens, icon-only on phones (so it covers as little of the list as possible). */
+export const fab = (label, ariaLabel, onclick) => h('md-fab', { ...(matchMedia('(max-width: 839px)').matches ? {} : { label }), 'aria-label': ariaLabel, onclick }, h('span', { slot: 'icon' }, icon('add')));

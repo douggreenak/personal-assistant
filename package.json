@@ -16,7 +16,8 @@
     "secret": "node scripts/secret.ts",
     "e2e": "node web-src/e2e/parallel.mjs",
     "test:all": "node scripts/test-all.mjs",
-    "e2e:serial": "node web-src/e2e/run.mjs"
+    "e2e:serial": "node web-src/e2e/run.mjs",
+    "test:layout": "node web-src/e2e/layout.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

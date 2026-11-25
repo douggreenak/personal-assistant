@@ -23,6 +23,12 @@ You are now FIXING a manifest whose dry run failed. You get the docs, the curren
 path/query, auth type or header based on the real response. Do not invent fields that are not in the sample.`;
 
 const note = (j: AutoJob, s: string): void => { j.steps.push(s); };
+/** Network errors in plain words. */
+const friendly = (msg: string): string => {
+  const nf = /ENOTFOUND\s+(\S+)/.exec(msg); if (nf) return `I couldn't find "${nf[1]}" — check the address for typos.`;
+  if (/ECONNREFUSED|ETIMEDOUT|ECONNRESET|EHOSTUNREACH|fetch failed|aborted|timeout/i.test(msg)) return `I couldn't reach that server (${msg.replace(/^.*?:\s*/, '').slice(0, 80)}). It may be down, or the address is wrong.`;
+  return msg;
+};
 
 export function getJob(id: string): AutoJob | undefined { return jobs.get(id); }
 
@@ -30,7 +36,7 @@ export function startAutoConnect(ctx: Ctx, input: string, apiKey: string | undef
   for (const [k, v] of jobs) if (Date.now() - v.startedAt > 3600_000) jobs.delete(k);   // keep the map small
   const job: AutoJob = { id: Math.random().toString(36).slice(2, 10), state: 'running', steps: [], startedAt: Date.now() };
   jobs.set(job.id, job);
-  void run(ctx, job, input, apiKey, fetchImpl).catch((e) => { job.state = 'failed'; job.result = (e as Error).message; note(job, 'Stopped: ' + (e as Error).message); });
+  void run(ctx, job, input, apiKey, fetchImpl).catch((e) => { job.state = 'failed'; job.result = friendly((e as Error).message); });
   return job;
 }
 
@@ -39,7 +45,7 @@ export function continueWithKey(ctx: Ctx, jobId: string, apiKey: string, fetchIm
   if (job && mcp && job.state === 'needs_key' && job.secret) {
     const key = apiKey.trim(); if (!key) throw new Error('Enter the key.');
     pendingMcp.delete(jobId); job.state = 'running'; note(job, 'Key received.');
-    void connectMcp(ctx, job, mcp, key, fetchImpl).catch((e) => { job.state = 'failed'; job.result = (e as Error).message; note(job, 'Stopped: ' + (e as Error).message); });
+    void connectMcp(ctx, job, mcp, key, fetchImpl).catch((e) => { job.state = 'failed'; job.result = friendly((e as Error).message); });
     return job;
   }
   if (!job || job.state !== 'needs_key' || !job.connectorId || !job.secret) throw new Error('Nothing is waiting for a key.');

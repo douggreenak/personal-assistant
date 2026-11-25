@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { h, icon, clear, ago, fmtDate, empty, chip, dialog, guarded, debounce, page } from '../ui.js';
+import { h, icon, clear, ago, fmtDate, empty, chip, dialog, guarded, debounce, page, fab } from '../ui.js';
 
 export default async function inbox(view, { refreshStatus }) {
   let filter = 'all', q = '';
@@ -30,6 +30,6 @@ export default async function inbox(view, { refreshStatus }) {
   }
   drawSeg(); page.newAction = compose;
   clear(view).append(h('div', { class: 'page-head' }, h('h1', { class: 'display' }, 'Inbox'), h('p', { class: 'muted title-m' }, 'Everything the assistant has been sent, and what happened to it.')),
-    h('div', { class: 'toolbar' }, seg, search), list, h('div', { class: 'fab-slot' }, h('md-fab', { label: 'Add', 'aria-label': 'Add message', onclick: compose }, h('span', { slot: 'icon' }, icon('add')))));
+    h('div', { class: 'toolbar' }, seg, search), list, h('div', { class: 'fab-slot' }, fab('Add', 'Add message', compose)));
   await load(); const t = setInterval(() => !document.hidden && !document.querySelector('md-dialog') && load(), 15000); return () => clearInterval(t);
 }

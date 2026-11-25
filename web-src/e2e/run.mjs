@@ -341,7 +341,12 @@ try {
     await btn('Connect', dlg()).click();
     await dlg().locator('.autolog .astep').first().waitFor(); await dlg().locator('.err').waitFor({ timeout: 20000 });
     assert.match(await dlg().innerText(), /Reading what you pasted/); assert.match(await dlg().innerText(), /build a safe connector|claude exited/);
+    // what the owner SEES matters, not just what is in the page: the form and Connect button must be gone, the result on screen
+    assert.equal(await page.locator('md-outlined-text-field[label^="Paste everything"]').isVisible(), false, 'paste form must be hidden while/after connecting');
+    assert.equal(await btn('Connect', dlg()).isVisible(), false, 'Connect button must be hidden after it was pressed');
+    assert.equal(await dlg().locator('.err').isVisible(), true); const eb = await dlg().locator('.err').boundingBox(), db_ = await dlg().evaluate((el) => { const r = el.shadowRoot.querySelector('.container').getBoundingClientRect(); return { y: r.y, height: r.height }; }); assert.ok(eb.y >= db_.y && eb.y + eb.height <= db_.y + db_.height, 'the error is inside the visible dialog');
     await btn('Edit and try again', dlg()).click(); await page.waitForTimeout(300);
+    assert.equal(await page.locator('md-outlined-text-field[label^="Paste everything"]').isVisible(), true, 'form is back for the retry'); assert.equal(await btn('Connect', dlg()).isVisible(), true);
     assert.equal(await page.locator('md-outlined-text-field[label^="Paste everything"]').evaluate((e) => e.value), 'Acme API: GET https://api.acme.example/orders returns a list of orders', 'text is kept for the retry');
     await press('Escape'); await page.waitForTimeout(500);
   });

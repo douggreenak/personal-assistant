@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { h, icon, clear, fmtDate, ago, toLocalInput, empty, dialog, confirmDialog, guarded, chip, menu, debounce, state, page, rel, download, toast } from '../ui.js';
+import { h, icon, clear, fmtDate, ago, toLocalInput, empty, dialog, confirmDialog, guarded, chip, menu, debounce, state, page, rel, download, toast, fab } from '../ui.js';
 
 const KIND_ICON = { ticket: 'confirmation_number', reminder: 'alarm', task: 'checklist' };
 const KIND_LABEL = { ticket: 'Ticket', reminder: 'Reminder', task: 'Task' };
@@ -123,6 +123,6 @@ export default async function items(view) {
     h('div', { class: 'toolbar' }, segs([['open', 'Open'], ['done', 'Done'], ['dropped', 'Dropped'], ['all', 'All']], st, (v) => (st = v)), segs([['', 'Everything'], ['ticket', 'Tickets'], ['reminder', 'Reminders'], ['task', 'Tasks']], kind, (v) => (kind = v)), search),
     h('div', { class: 'toolbar' }, segs([['', 'Any time'], ['overdue', 'Overdue'], ['today', 'Today'], ['week', 'Next 7 days']], when, (v) => (when = v)), h('div', { class: 'grow' }), sortBtn, sortMenu, exportBtn, exportMenu),
     list,
-    h('div', { class: 'fab-slot' }, h('md-fab', { label: 'New', 'aria-label': 'New item', onclick: () => itemDialog(null, load) }, h('span', { slot: 'icon' }, icon('add')))));
+    h('div', { class: 'fab-slot' }, fab('New', 'New item', () => itemDialog(null, load))));
   await load(); const t = setInterval(() => !document.hidden && !document.querySelector('md-dialog') && load(), 30000); return () => clearInterval(t);
 }

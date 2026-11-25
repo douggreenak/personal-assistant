@@ -49,3 +49,5 @@ Mirror `src/backends/ticketing.ts` (a small `fetch` client taking an injectable 
 
 ## Running the tests fast
 `npm run test:all` runs the unit tests (one process per file, all cores) and the browser test (three parts, each with its own throwaway server and browser) at the same time — under a minute instead of two and a half. `npm test` is unit tests only; `npm run e2e` is the parallel browser test; `npm run e2e:serial` runs it in one piece (`E2E_GROUP=a|b|c` runs one part).
+
+`npm run test:layout` is the screen-size test (about 3 minutes, so it is not part of `test:all`): it opens every page, dialog and menu in a real browser at 12 screen sizes (320 px phones to 2560 px desktops, plus a landscape phone) in light and dark, scrolled and not, and measures where things actually are — sideways scrolling, controls hidden under the top or bottom bar, dialogs taller than the screen, a chat box you cannot reach, a stuck page after a dialog closes. Run it after any CSS or layout change. `LAYOUT_WORKERS=n` sets how many run at once.
