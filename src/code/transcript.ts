@@ -11,7 +11,7 @@ export type Msg =
   | { t: 'user'; id: string; ts: string; text: string; command?: string }
   | { t: 'assistant'; id: string; msgId: string; ts: string; model: string; blocks: Block[]; usage?: Usage }
   | { t: 'result'; id: string; toolUseId: string; ts: string; text: string; isError: boolean }
-  | { t: 'note'; id: string; ts: string; text: string }
+  | { t: 'note'; id: string; ts: string; text: string; kind?: 'compact' }
   | { t: 'title'; id: string; title: string }
   | { t: 'mode'; id: string; mode: string };
 
@@ -33,8 +33,8 @@ export function normalize(e: Record<string, any>): Msg[] {   // eslint-disable-l
   const id = String(e.uuid ?? ''); const ts = String(e.timestamp ?? '');
   if (e.type === 'ai-title' && e.aiTitle) return [{ t: 'title', id: 'title', title: String(e.aiTitle) }];
   if (e.type === 'permission-mode' && e.permissionMode) return [{ t: 'mode', id: 'mode', mode: String(e.permissionMode) }];
-  if (e.isSidechain || e.isMeta) return [];
-  if (e.type === 'system') return e.subtype === 'turn_duration' && Number(e.durationMs) >= 1000 ? [{ t: 'note', id, ts, text: `Worked for ${Math.round(Number(e.durationMs) / 1000)}s` }] : e.subtype === 'compact_boundary' ? [{ t: 'note', id, ts, text: 'Conversation compacted' }] : [];
+  if (e.isSidechain || e.isMeta || e.isCompactSummary) return [];     // (the summary Claude writes when compacting is not something you said)
+  if (e.type === 'system') return e.subtype === 'turn_duration' && Number(e.durationMs) >= 1000 ? [{ t: 'note', id, ts, text: `Worked for ${Math.round(Number(e.durationMs) / 1000)}s` }] : e.subtype === 'compact_boundary' ? [{ t: 'note', id, ts, text: 'Conversation compacted', kind: 'compact' }] : [];
   const c = e.message?.content;
   if (e.type === 'user') {
     if (typeof c === 'string') return userText(id, ts, c);
@@ -60,6 +60,7 @@ export function normalize(e: Record<string, any>): Msg[] {   // eslint-disable-l
 }
 function userText(id: string, ts: string, text: string): Msg[] {
   const t = text.trim(); if (!t) return [];
+  if (/^This session is being continued from (a|another) previous conversation/i.test(t)) return [];
   const cmd = /<command-name>\s*([^<]+?)\s*<\/command-name>/.exec(t);
   if (cmd) { const args = /<command-args>([\s\S]*?)<\/command-args>/.exec(t)?.[1]?.trim(); return [{ t: 'user', id, ts, text: args ? `${cmd[1]} ${args}` : cmd[1], command: cmd[1] }]; }
   const out = /<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/.exec(t); if (out) return out[1].trim() ? [{ t: 'note', id, ts, text: out[1].trim().slice(0, 1500) }] : [];

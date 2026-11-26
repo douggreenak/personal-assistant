@@ -472,3 +472,18 @@ md-menu-item.danger { --md-menu-item-label-text-color: var(--md-sys-color-error)
   .stat .num { font-size: clamp(1.2rem, 7vw, 2rem); overflow-wrap: anywhere; }
 }
 .code-perm { max-height: 60vh; } .code-perm .code-pre { max-height: calc(8.4em + 20px); } @media (max-width: 600px) { .code-perm .code-pre { max-height: calc(5.6em + 20px); } }
+
+/* ---- toasts: centred on the screen (not the content column) ---- */
+.toasts { left: 0; right: 0; transform: none; margin: 0 auto; width: max-content; max-width: min(94vw, 560px); }
+/* ---- composer: the text always starts at the top of its line, never stuck at the bottom ---- */
+.composer textarea, .code-composer textarea { box-sizing: border-box; height: auto; min-height: 24px; line-height: 1.5; overflow-y: auto; align-self: center; field-sizing: content; }
+/* ---- queued messages: dotted outline, like a scheduled iMessage ---- */
+.code-queue { display: contents; }
+.bubble.queued { background: transparent; color: var(--md-sys-color-primary); border: 2px dashed var(--md-sys-color-primary); box-shadow: none; opacity: .9; }
+.bubble.queued .queued-note { display: flex; align-items: center; gap: 4px; justify-content: flex-end; font-size: .72rem; margin-top: 4px; opacity: .8; } .bubble.queued .queued-note .ic { width: 14px; height: 14px; }
+/* ---- compact marker: a squiggle either side of a label ---- */
+.code-compact { align-self: stretch; display: flex; align-items: center; gap: 12px; margin: 14px 0; color: var(--md-sys-color-on-surface-variant); font-size: .82rem; font-weight: 600; }
+.code-compact .wave { flex: 1; height: 10px; min-width: 20px; background: var(--md-sys-color-primary); opacity: .55;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='10'%3E%3Cpath d='M0 5 Q5 -1 10 5 T20 5' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E") repeat-x center / 20px 10px;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='10'%3E%3Cpath d='M0 5 Q5 -1 10 5 T20 5' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E") repeat-x center / 20px 10px; }
+.code-compact .lbl { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; } .code-compact .lbl .ic { width: 18px; height: 18px; }

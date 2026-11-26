@@ -48,6 +48,7 @@ export function toLocalInput(iso) {
 // ---- toasts ----
 let toastBox;
 export function toast(text, { action, onAction, error } = {}) {
+  if (!error && !action) return;                       // plain "Saved"/"Queued" confirmations are not shown; only errors and undo-style prompts are
   toastBox ??= document.body.appendChild(h('div', { class: 'toasts', role: 'status', 'aria-live': 'polite' }));
   const t = h('div', { class: 'toast' + (error ? ' error' : '') }, h('span', {}, text), action && h('md-text-button', { onclick: () => { onAction?.(); t.remove(); } }, action));
   toastBox.append(t); setTimeout(() => t.classList.add('out'), error ? 6500 : 3800); setTimeout(() => t.remove(), error ? 7000 : 4300);

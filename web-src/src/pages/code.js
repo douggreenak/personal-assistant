@@ -184,7 +184,7 @@ export default async function code(view) {
     const ta = h('textarea', { rows: 1, 'data-primary': '', placeholder: 'Message Claude Code…', title: 'Enter sends · Shift+Enter adds a line · / for commands', 'aria-label': 'Message' });
     const KEY_D = 'code-draft:' + (ext ? 'x:' : '') + sid; try { ta.value = lsGet(KEY_D) || ''; } catch { /* none */ }
     ta.addEventListener('input', () => { if (ta.value) lsSet(KEY_D, ta.value); else try { localStorage.removeItem(KEY_D); } catch { /* ignore */ } });
-    const grow = () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 200) + 'px'; }; ta.addEventListener('input', grow); if (ta.value) requestAnimationFrame(grow);   // (measuring an empty box before it is on screen made the first line jump)
+    const grow = () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 200) + 'px'; }; ta.addEventListener('input', grow); if (ta.value) requestAnimationFrame(grow); { let w = 0; new ResizeObserver(() => { if (ta.clientWidth !== w) { w = ta.clientWidth; grow(); } }).observe(ta); }   // (measuring an empty box before it is on screen made the first line jump)
     // Attachments: any file, uploaded as soon as it is picked/pasted/dropped; the message then carries @path for each.
     let files = []; const strip = h('div', { class: 'pics code-files', hidden: true }); const fin = h('input', { type: 'file', multiple: true, hidden: true, 'aria-label': 'Choose files' });
     const uploading = () => files.some((f) => !f.path && !f.error);
@@ -216,7 +216,7 @@ export default async function code(view) {
       const ok = files.filter((f) => f.path); if (!text && !ok.length) { files = []; drawFiles(); return; } sendBtn.disabled = true;
       try {
         let full = text; for (const f of ok) full = `${full}${full ? '\n' : ''}@${f.path}`;
-        const sent = await api(`${base}/send`, { method: 'POST', body: { text: full } }); if (sent?.queued) toast(sent.queued === 1 ? 'Queued — it goes in when Claude finishes' : `Queued (${sent.queued} waiting) — they go in order when Claude finishes`); pendingCmd = full.startsWith('/') ? { cmd: full.split('\n')[0].trim(), at: Date.now() } : null; ta.value = ''; try { localStorage.removeItem(KEY_D); } catch { /* ignore */ } grow(); files = []; drawFiles(); cmdBox.hidden = true; stick = true; poll(); setTimeout(poll, 250); setTimeout(poll, 700);
+        const sent = await api(`${base}/send`, { method: 'POST', body: { text: full } }); if (sent?.queued) poll(); pendingCmd = full.startsWith('/') ? { cmd: full.split('\n')[0].trim(), at: Date.now() } : null; ta.value = ''; try { localStorage.removeItem(KEY_D); } catch { /* ignore */ } grow(); files = []; drawFiles(); cmdBox.hidden = true; stick = true; poll(); setTimeout(poll, 250); setTimeout(poll, 700);
       } catch (e) { toast(e.message, { error: true }); } finally { sendBtn.disabled = false; ta.focus({ preventScroll: true }); }
     }
     async function fetchUpload(im) { const bytes = Uint8Array.from(atob(im.data), (c) => c.charCodeAt(0)); return api(`/code/sessions/${sid}/upload?name=${encodeURIComponent(im.name)}`, { method: 'POST', raw: bytes }); }
@@ -288,6 +288,7 @@ export default async function code(view) {
       if (m.t === 'title') { if (into !== msgs) return; title = m.title; titleEl.textContent = title; return; }
       if (m.t === 'mode') return;
       if (m.t === 'user') return void into.append(h('div', { class: 'bubble me code-user' + (m.command ? ' cmd' : '') }, m.command ? h('code', {}, m.text) : md(m.text)));
+      if (m.t === 'note' && m.kind === 'compact') return void into.append(h('div', { class: 'code-compact', role: 'separator' }, h('span', { class: 'wave' }), h('span', { class: 'lbl' }, icon('compress'), 'Conversation compacted'), h('span', { class: 'wave' })));
       if (m.t === 'note') return void into.append(h('div', { class: 'code-note' }, m.text));
       if (m.t === 'assistant') for (const b of m.blocks) {
         if (b.type === 'text') into.append(h('div', { class: 'bubble bot code-bot' }, md(b.text)));
@@ -295,6 +296,13 @@ export default async function code(view) {
         else { const out = h('div', { class: 'code-out' }); const card = h('details', { class: 'code-tool', 'data-tool': b.name }, h('summary', {}, h('span', { class: 'code-dot' }, '●'), h('b', {}, b.name), ' ', h('span', { class: 'mono muted' }, toolSummary(b).slice(0, 140))), toolBody(b), out); tools.set(b.id, out); if (orphans.has(b.id)) { out.append(orphans.get(b.id)); orphans.delete(b.id); } if (b.name === 'TodoWrite') card.open = true; into.append(card); }
       }
       if (m.t === 'result') { const out = tools.get(m.toolUseId); const pre = h('pre', { class: 'code-pre' + (m.isError ? ' err' : '') }, m.text.length > 3000 ? m.text.slice(0, 3000) + '\n…' : m.text || '(no output)'); if (out) { out.append(pre); if (m.isError) out.closest('details')?.classList.add('error'); } else orphans.set(m.toolUseId, pre); }   // its tool call is further up: shown when that part is loaded
+    }
+    // messages still waiting for Claude to finish: dotted outline (like a scheduled iMessage) at the end of the chat until they go in
+    const queueEl = h('div', { class: 'code-queue' }); let queueSig = '';
+    function drawQueue(q) {
+      const sig = q.join('\u0000'); if (sig === queueSig && queueEl.isConnected && msgs.lastElementChild === queueEl) return; queueSig = sig;
+      clear(queueEl).append(...q.map((t) => h('div', { class: 'bubble me code-user queued', title: 'Waiting for Claude to finish — it goes in automatically' }, md(t), h('div', { class: 'queued-note' }, icon('schedule'), 'Waiting'))));
+      msgs.append(queueEl); if (q.length && stick) msgs.scrollTop = msgs.scrollHeight;
     }
     function drawLive(l) {
       const wasRunning = running; running = l.running; scr = l.screen; if (running && !wasRunning && view === 'chat') setTimeout(() => ta.focus({ preventScroll: true }), 150); const sc = l.screen?.state || 'stopped';
@@ -329,7 +337,7 @@ export default async function code(view) {
         for (const m of list) addMsg(m); if (list.length && stick) msgs.scrollTop = msgs.scrollHeight;
         if (first && !l.msgs.length && !l.transcript) msgs.append(h('div', { class: 'code-note', id: 'emptyNote' }, l.running ? 'Session is up. Say something to Claude Code below.' : ''));
         if (l.msgs.length) msgs.querySelector('#emptyNote')?.remove();
-        drawLive(l);
+        drawLive(l); drawQueue(l.queue || []);
         if (pendingCmd && l.screen?.state === 'idle' && Date.now() - pendingCmd.at > 900) { const c = pendingCmd; pendingCmd = null; try { const o = await api(`${base}/output?cmd=${encodeURIComponent(c.cmd)}`); if (o.text && !list.some((m) => m.t === 'note')) { msgs.append(h('pre', { class: 'code-pre code-cmdout' }, o.text)); if (stick) msgs.scrollTop = msgs.scrollHeight; } } catch { /* ignore */ } }
       } catch (e) { infoEl.textContent = e.message; }
     }

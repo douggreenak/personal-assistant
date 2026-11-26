@@ -139,6 +139,8 @@ export async function sendWhenReady(ctx: Ctx, id: string, text: string, timeoutM
 // (Typing it into the busy terminal left it stranded in the box.) One queue per session/pane, delivered in order, in memory only.
 const waiting = new Map<string, { texts: string[]; draining: boolean }>();
 export const queuedCount = (key: string): number => waiting.get(key)?.texts.length ?? 0;
+/** The messages still waiting (shown dotted in the chat until they go in). */
+export const queuedTexts = (key: string): string[] => [...(waiting.get(key)?.texts ?? [])];
 /** Sends now if the session is idle and nothing is ahead of it; otherwise queues it. Returns how many messages are waiting (0 = sent). */
 export async function sendOrQueue(key: string, text: string, screen: () => Promise<ScreenInfo | null>, deliver: (text: string) => Promise<void>): Promise<number> {
   const q = waiting.get(key) ?? { texts: [], draining: false }; waiting.set(key, q);
@@ -151,11 +153,13 @@ export async function sendOrQueue(key: string, text: string, screen: () => Promi
     void (async () => {
       const give = Date.now() + 6 * 3600_000;
       try {
+        let odd = 0;
         while (q.texts.length && Date.now() < give) {
           await sleep(1200);
           const s = await screen().catch(() => null);
           if (!s) { q.texts.length = 0; break; }                      // the session ended
-          if (s.state === 'idle') { const next = q.texts.shift()!; try { await deliver(next); } catch { /* it asked a question or ended: drop it */ } await sleep(2500); }
+          odd = s.state === 'unknown' ? odd + 1 : 0;                   // a screen we cannot read for a while (e.g. just after a compact) is not 'busy' forever
+          if (s.state === 'idle' || odd >= 5) { odd = 0; const next = q.texts.shift()!; try { await deliver(next); } catch { /* it asked a question or ended: drop it */ } await sleep(2500); }
         }
       } finally { q.draining = false; if (!q.texts.length) waiting.delete(key); }
     })();
@@ -231,7 +235,7 @@ export async function screenText(ctx: Ctx, id: string, scrollback = 0): Promise<
   return { running: true, text: await t.capture(name, Math.min(2000, Math.max(0, scrollback))) };
 }
 
-export interface Live { dialogText?: string; running: boolean; screen: ScreenInfo | null; msgs: Msg[]; next: number; start?: number; title: string; transcript: boolean; lastActivity: string | null }
+export interface Live { dialogText?: string; running: boolean; screen: ScreenInfo | null; msgs: Msg[]; next: number; start?: number; title: string; transcript: boolean; lastActivity: string | null; queue?: string[] }
 export async function live(ctx: Ctx, id: string, after: number, tail = 0): Promise<Live> {
   const t = await needTmux(ctx); const s = getSession(ctx, id); const p = getProject(ctx, s.projectId);
   const name = tmuxName(id); const running = await t.has(name);
@@ -243,7 +247,7 @@ export async function live(ctx: Ctx, id: string, after: number, tail = 0): Promi
   if (file) { const d = tail ? readBack(file, tail) : readDelta(file, after); msgs = d.msgs; next = d.next; if ('start' in d) start = d.start; last = new Date(statSync(file).mtimeMs).toISOString(); }
   const title = [...msgs].reverse().find((m) => m.t === 'title') as { title: string } | undefined;
   if (title && title.title !== s.aiTitle) ctx.db.prepare('UPDATE code_sessions SET ai_title = ? WHERE id = ?').run(title.title, id);
-  return { dialogText: screen && (screen.state === 'dialog' || screen.state === 'unknown') ? raw.replace(/\n{3,}/g, '\n\n').trimEnd().slice(-3000) : undefined, running, screen, msgs, next, start, title: title?.title ?? s.aiTitle, transcript: !!file, lastActivity: last };
+  return { dialogText: screen && (screen.state === 'dialog' || screen.state === 'unknown') ? raw.replace(/\n{3,}/g, '\n\n').trimEnd().slice(-3000) : undefined, running, screen, msgs, next, start, title: title?.title ?? s.aiTitle, transcript: !!file, lastActivity: last, queue: queuedTexts('s:' + id) };
 }
 
 export async function sessionSummaries(ctx: Ctx): Promise<{ id: string; running: boolean; state: string }[]> {
