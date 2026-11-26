@@ -36,7 +36,7 @@ export function makeTmux(bin: string, socket: string): Tmux & { panes(): Promise
       run(['list-sessions']).then(() => r(true), (er: Error) => r(/no sessions/i.test(er.message)));   // the host's server must answer (a dead one leaves a stale socket file)
     })),
     has: (name) => (name.startsWith('%') ? run(['display-message', '-p', '-t', name, '#{pane_id}']).then((o) => o.trim() === name, () => false) : run(['has-session', '-t', '=' + name]).then(() => true, () => false)),
-    panes: () => run(['list-panes', '-a', '-F', '#{session_name}\t#{pane_id}\t#{pane_current_command}\t#{pane_current_path}\t#{window_name}']).then((o) => o.split('\n').filter(Boolean).map((l) => { const [session, pane, command, cwd, window] = l.split('\t'); return { session, pane, command, cwd, window }; }), (e) => { if (noServer(e)) return []; throw e; }),
+    panes: () => run(['list-panes', '-a', '-F', '#{session_name} @@ #{pane_id} @@ #{pane_current_command} @@ #{pane_current_path} @@ #{window_name}']).then((o) => o.split('\n').filter(Boolean).map((l) => { const [session, pane, command, cwd, window] = l.split(' @@ '); return { session, pane, command, cwd, window }; }), (e) => { if (noServer(e)) return []; throw e; }),
     list: () => run(['list-sessions', '-F', '#{session_name}']).then((o) => o.split('\n').filter(Boolean), (e) => { if (noServer(e)) return []; throw e; }),
     start: async (name, cwd, argv, env = {}) => {
       const e = Object.entries(env).flatMap(([k, v]) => ['-e', `${k}=${v}`]);
