@@ -108,7 +108,8 @@ export default async function code(view) {
       h('div', { class: 'body' }, h('div', { class: 't' }, title), h('div', { class: 's' }, [s.permissionMode || 'default mode', s.model || 'default model', s.startedAt ? 'started ' + ago(s.startedAt) : 'not started yet'].join(' · '))),
       h('div', { class: 'acts' }, stateChip(s.state, s.running),
         s.running ? h('md-text-button', { onclick: async () => { await guarded(() => api(`/code/sessions/${s.id}/stop`, { method: 'POST' }), 'Stopped'); go('p/' + p.id); location.reload(); } }, icon('stop'), 'Stop')
-          : h('md-text-button', { onclick: async () => { const ok = await guarded(() => api(`/code/sessions/${s.id}/start`, { method: 'POST', body: {} }), 'Started'); if (ok) go('s/' + s.id); } }, icon('play_arrow'), 'Start')));
+          : h('md-text-button', { onclick: async () => { const ok = await guarded(() => api(`/code/sessions/${s.id}/start`, { method: 'POST', body: {} }), 'Started'); if (ok) go('s/' + s.id); } }, icon('play_arrow'), 'Start'),
+        h('md-icon-button', { 'aria-label': 'Delete session', title: 'Delete session', onclick: async () => { if (await confirmDialog('Delete this session?', `“${title}” is stopped and removed from the list. The conversation file stays on disk.`, 'Delete')) { if (await guarded(() => api('/code/sessions/' + s.id, { method: 'DELETE' }), 'Deleted')) { const j = await api('/code/projects'); const np = j.projects.find((x) => x.id === p.id); if (np) draw(np); } } } }, icon('delete'))));
   }
   function newSessionDialog(p, st) {
     const title = h('md-outlined-text-field', { label: 'Name (optional)', 'data-primary': '' });
