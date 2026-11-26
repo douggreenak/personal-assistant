@@ -8,3 +8,8 @@ test('compaction: the summary is not shown as something you said; the boundary b
   const n = normalize({ type: 'system', subtype: 'compact_boundary', uuid: 'c', timestamp: 't' });
   assert.equal(n[0].t, 'note'); assert.equal((n[0] as { kind?: string }).kind, 'compact');
 });
+
+test('/clear shows as a marker, not as something you typed', () => {
+  const n = normalize({ type: 'user', uuid: 'd', timestamp: 't', message: { content: '<command-name>/clear</command-name><command-args></command-args>' } });
+  assert.equal(n.length, 1); assert.equal(n[0].t, 'note'); assert.equal((n[0] as { text: string }).text, 'Conversation cleared'); assert.equal((n[0] as { kind?: string }).kind, 'compact');
+});

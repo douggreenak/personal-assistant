@@ -62,6 +62,7 @@ function userText(id: string, ts: string, text: string): Msg[] {
   const t = text.trim(); if (!t) return [];
   if (/^This session is being continued from (a|another) previous conversation/i.test(t)) return [];
   const cmd = /<command-name>\s*([^<]+?)\s*<\/command-name>/.exec(t);
+  if (cmd && cmd[1] === '/clear') return [{ t: 'note', id, ts, text: 'Conversation cleared', kind: 'compact' }];
   if (cmd) { const args = /<command-args>([\s\S]*?)<\/command-args>/.exec(t)?.[1]?.trim(); return [{ t: 'user', id, ts, text: args ? `${cmd[1]} ${args}` : cmd[1], command: cmd[1] }]; }
   const out = /<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/.exec(t); if (out) return out[1].trim() ? [{ t: 'note', id, ts, text: out[1].trim().slice(0, 1500) }] : [];
   if (/^<(system-reminder|local-command-caveat|task-notification)/.test(t)) return [];

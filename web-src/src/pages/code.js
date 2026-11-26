@@ -288,7 +288,7 @@ export default async function code(view) {
       if (m.t === 'title') { if (into !== msgs) return; title = m.title; titleEl.textContent = title; return; }
       if (m.t === 'mode') return;
       if (m.t === 'user') return void into.append(h('div', { class: 'bubble me code-user' + (m.command ? ' cmd' : '') }, m.command ? h('code', {}, m.text) : md(m.text)));
-      if (m.t === 'note' && m.kind === 'compact') return void into.append(h('div', { class: 'code-compact', role: 'separator' }, h('span', { class: 'wave' }), h('span', { class: 'lbl' }, icon('compress'), 'Conversation compacted'), h('span', { class: 'wave' })));
+      if (m.t === 'note' && m.kind === 'compact') return void into.append(h('div', { class: 'code-compact', role: 'separator' }, h('span', { class: 'wave' }), h('span', { class: 'lbl' }, icon(/clear/i.test(m.text) ? 'cleaning_services' : 'compress'), m.text || 'Conversation compacted'), h('span', { class: 'wave' })));
       if (m.t === 'note') return void into.append(h('div', { class: 'code-note' }, m.text));
       if (m.t === 'assistant') for (const b of m.blocks) {
         if (b.type === 'text') into.append(h('div', { class: 'bubble bot code-bot' }, md(b.text)));
@@ -331,7 +331,7 @@ export default async function code(view) {
       if (document.hidden) return;
       try {
         const l = await api(started ? `${base}/live?after=${after}` : `${base}/live?tail=40`); const first = !started;
-        if (started && l.next < after) { clear(msgs); msgs.prepend(topNote); topNote.hidden = true; tools.clear(); seen.clear(); orphans.clear(); oldest = 0; started = false; after = 0; again = true; return; }   // the conversation file was replaced (e.g. /clear): start over
+        if (started && l.next < after) { { const lastReal = [...msgs.children].filter((n) => n !== queueEl).pop(); if (lastReal && !lastReal.classList.contains('code-compact') && msgs.querySelector('.bubble')) addMsg({ t: 'note', id: 'clear-' + Date.now(), ts: '', text: 'Conversation cleared', kind: 'compact' }); } topNote.hidden = true; tools.clear(); seen.clear(); orphans.clear(); oldest = 0; started = false; after = 0; again = true; return; }   // the conversation file was replaced (e.g. /clear): start over
         loadingEl.remove(); started = true; after = l.next || after; if (first) { oldest = l.start || 0; topNote.hidden = oldest <= 0; setTimeout(fillUp, 100); }
         let list = l.msgs.filter((m) => { if (m.t === 'title' || m.t === 'mode') return true; const k = m.id; if (seen.has(k)) return false; seen.add(k); return true; }); if (first && list.length > 300) { hidden = list.length - 300; list = list.slice(-300); msgs.append(h('div', { class: 'code-note' }, `${hidden} earlier messages are not shown here (they are in the terminal's scrollback and the conversation file).`)); }
         for (const m of list) addMsg(m); if (list.length && stick) msgs.scrollTop = msgs.scrollHeight;
