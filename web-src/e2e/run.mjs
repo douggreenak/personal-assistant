@@ -128,13 +128,18 @@ try {
     await page.locator('.stat.s3').click(); await heading('Items');
   });
 
-  await step('connectors: card, set key, dry-run fails safely, disable, delete', async () => {
+  const call2 = (m, p, b) => fetch(base + p, { method: m, headers: { authorization: 'Bearer ' + 't'.repeat(32), 'content-type': 'application/json' }, body: b && JSON.stringify(b) }).then((r) => r.json());
+  await step('connectors: card, set key, dry-run fails safely, disable, delete, edit instructions', async () => {
     const m = { id: 'acme', name: 'Acme Alerts', description: 'Alerts from Acme', baseUrl: 'https://api.acme.invalid', auth: { type: 'bearer', secret: 'ACME_KEY' }, poll: { path: '/alerts', intervalMinutes: 15, idField: 'id', bodyFields: ['text'] } };
     const d = db(); d.prepare("INSERT INTO connectors (id, manifest, status, created_at) VALUES ('acme', ?, 'approved', ?)").run(JSON.stringify(m), new Date().toISOString()); d.close();
     await goto('connectors'); const card = page.locator('.card', { hasText: 'Acme Alerts' }); await card.waitFor();
     assert.match(await card.innerText(), /Proposed[\s\S]*Approved/); assert.ok(!/✓ Credential/.test(await card.innerText()));
     await btn('Set key', card).click(); await dlg().waitFor(); await setField('ACME_KEY', 'sk-test-123'); await btn('Save', dlg()).click(); await toastText(/Saved/); await page.waitForTimeout(800);
     assert.match(await card.innerText(), /✓ Credential/); assert.match(await card.innerText(), /Change key/);
+    await btn('Instructions', card).click(); await dlg().waitFor(); await setField('Instructions for Acme Alerts', 'Treat HW as homework.'); await btn('Save', dlg()).click(); await toastText(/Instructions saved/); await page.waitForTimeout(800);
+    assert.match(await card.innerText(), /instructions/); assert.equal(JSON.parse((await call2('GET', '/connectors/full')).connectors.find((c) => c.id === 'acme').manifest ? JSON.stringify((await call2('GET', '/connectors/full')).connectors.find((c) => c.id === 'acme').manifest) : '{}').instructions, 'Treat HW as homework.');
+    await btn('Edit instructions', card).click(); await dlg().waitFor(); assert.equal(await page.locator('md-dialog[open] md-outlined-text-field').first().evaluate((e) => e.value), 'Treat HW as homework.'); await btn('Clear', dlg()).click(); await toastText(/Instructions cleared/); await page.waitForTimeout(800);
+    assert.ok(!/Edit instructions/.test(await card.innerText()));
     await btn('Test', card).click(); await dlg().waitFor(); assert.match(await dlg().innerText(), /Dry run failed/); await btn('OK', dlg()).click(); await page.waitForTimeout(500);
     await btn('Enable', card).click(); await toastText(/Run "test connector|test connector/); 
     await card.getByRole('button', { name: 'Delete' }).click(); await dlg().waitFor(); await btn('Delete', dlg()).click(); await toastText(/Deleted/); await page.waitForTimeout(800);

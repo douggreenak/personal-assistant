@@ -63,7 +63,7 @@ async function design(ctx: Ctx, docs: string): Promise<Manifest> {
   for (let attempt = 0; attempt < 2; attempt++) {
     const raw = await ctx.llm.json({ system: CONNECTOR_SYSTEM, prompt: `<docs>\n${docs.slice(0, 60000)}\n</docs>${problem ? `\n\nYour previous manifest was rejected: ${problem}. Fix exactly that and answer again.` : ''}`, schema: MANIFEST_SCHEMA as unknown as Record<string, unknown> });
     try {
-      if (raw && typeof raw === 'object') { const r = raw as { id?: unknown; name?: unknown }; r.id = slug(r.id) || slug(r.name) || 'service'; const au = (raw as { auth?: { secret?: unknown } }).auth; if (au && typeof au.secret === 'string') au.secret = au.secret.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^[^A-Z]+|_+$/g, ''); }
+      if (raw && typeof raw === 'object') { const r = raw as { id?: unknown; name?: unknown; instructions?: unknown }; delete r.instructions; /* only the owner writes these */ r.id = slug(r.id) || slug(r.name) || 'service'; const au = (raw as { auth?: { secret?: unknown } }).auth; if (au && typeof au.secret === 'string') au.secret = au.secret.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^[^A-Z]+|_+$/g, ''); }
       const m = validateManifest(raw);
       await assertPublicHttps(m.baseUrl); return m;
     } catch (e) { problem = (e as Error).message; if (attempt === 1 || !problem.startsWith('invalid manifest')) throw e; }

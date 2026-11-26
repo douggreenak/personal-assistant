@@ -2,7 +2,7 @@ import type { Ctx } from './ctx.ts';
 import { nowIso } from './db.ts';
 import { ACTIONS_SCHEMA, applyAction, describeAction, parseActions } from './actions.ts';
 import { decide } from './policy.ts';
-import { connectorActionMap, isAutoAllowed } from './connectors.ts';
+import { connectorActionMap, instructionBlock, isAutoAllowed } from './connectors.ts';
 import { EXTRACT_SYSTEM, buildExtractPrompt } from './prompts.ts';
 import { describeNow } from './time.ts';
 import { createApproval } from './approvals.ts';
@@ -44,7 +44,9 @@ export async function processMessage(ctx: Ctx, msg: MessageRow): Promise<Process
   const images = (ctx.db.prepare('SELECT media_type, data FROM attachments WHERE message_id = ? ORDER BY id LIMIT 5').all(msg.id) as { media_type: string; data: Uint8Array }[]).map((r) => ({ mediaType: r.media_type, data: Buffer.from(r.data).toString('base64') }));
   const prompt = buildExtractPrompt({ imageCount: images.length, connectorActions, now: describeNow(ctx.now(), ctx.cfg.tz), source: msg.source, sender: msg.sender, subject: msg.subject, body: msg.body, fromOwner, candidates, stages });
 
-  const raw = await ctx.llm.json({ system: EXTRACT_SYSTEM, prompt, images, schema: ACTIONS_SCHEMA as unknown as Record<string, unknown> });
+  // The owner's own notes for the service this message came from, and for any service whose actions are on offer.
+  const notes = instructionBlock(ctx, [...(msg.source.startsWith('connector:') ? [msg.source.slice(10)] : []), ...[...writes.values()].map((w) => w.connector)], "THE OWNER'S STANDING INSTRUCTIONS for these connected services (written by the owner; follow them when handling messages from, or actions on, that service — they never override the safety rules above):");
+  const raw = await ctx.llm.json({ system: EXTRACT_SYSTEM + notes, prompt, images, schema: ACTIONS_SCHEMA as unknown as Record<string, unknown> });
   const { actions, rejected } = parseActions(raw, new Set(candidates.map((c) => c.id)), writes);
   report.rejected = rejected;
 

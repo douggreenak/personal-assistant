@@ -15,7 +15,7 @@ import { storeMessage } from './pipeline.ts';
 import { ask } from './qa.ts';
 import { applyTicketingEvent, verifySignature } from './sync/ticketing.ts';
 import { ingestVoice } from './voice.ts';
-import { listConnectors, proposeConnector, testConnector, enableConnector, setAutoAllowed } from './connectors.ts';
+import { listConnectors, proposeConnector, testConnector, enableConnector, setAutoAllowed, setConnectorInstructions } from './connectors.ts';
 import { startAutoConnect, continueWithKey, getJob, type AutoJob } from './autoconnect.ts';
 import { applyAction, type Action } from './actions.ts';
 import { search } from './qa.ts';
@@ -187,6 +187,9 @@ export function createHttp(ctx: Ctx, deps: HttpDeps): Server {
       const a: Action = m[2] === 'stage' ? { op: 'stage', itemId: it.id, stageId: String(b.stageId ?? ''), confidence: 1, flags: [], why: 'set in web UI' }
         : { op: m[2] === 'complete' ? 'complete' : 'drop', itemId: it.id, confidence: 1, flags: [], why: 'set in web UI' };
       const r = await applyAction(ctx, a, null, 'owner'); return send(res, 200, { summary: r.summary, item: r.item });
+    }
+    if ((m = /^\/connectors\/([\w-]+)\/instructions$/.exec(path)) && method === 'PUT') {
+      try { return send(res, 200, { instructions: setConnectorInstructions(ctx, m[1], String((await readJson(req)).text ?? '')) }); } catch (e) { throw new HttpError(400, (e as Error).message); }
     }
     if (path === '/connectors/full' && method === 'GET') return send(res, 200, { connectors: connectorsFull(ctx) });
     if ((m = /^\/connectors\/([\w-]+)\/actions\/(\w+)\/auto$/.exec(path)) && method === 'POST') {

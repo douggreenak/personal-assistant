@@ -25,6 +25,8 @@ export interface Manifest {
   reads?: ConnAction[];
   /** An MCP server (remote, Streamable HTTP). Its tools are the actions; each action carries `tool`. Built by the code, never by the model. */
   mcp?: { url: string };
+  /** The owner's own standing instructions for the model whenever it handles this service's data (typed in the UI; never written by the model). */
+  instructions?: string;
 }
 export interface ConnAction {
   id: string; name: string; description: string; method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'; path: string;   // path may contain {param} placeholders
@@ -356,4 +358,21 @@ async function mcpTarget(ctx: Ctx, m: Manifest, rawUrl: string): Promise<{ url: 
   const url = await assertPublicHttps(rawUrl); const headers: Record<string, string> = {};
   applyAuth(ctx, m, url, headers);
   return { url, headers };
+}
+
+// ---- owner's per-connector instructions (a "system prompt" for this service) ----
+export const MAX_INSTRUCTIONS = 4000;
+const cleanInstructions = (t: string): string => t.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').replace(/\r\n?/g, '\n').trim().slice(0, MAX_INSTRUCTIONS);
+export function setConnectorInstructions(ctx: Ctx, id: string, text: string): string {
+  const c = getConn(ctx, id); if (!c) throw new Error(`No connector "${id}".`);
+  const t = cleanInstructions(String(text ?? '')); const m = { ...c.manifest };
+  if (t) m.instructions = t; else delete m.instructions;
+  ctx.db.prepare('UPDATE connectors SET manifest = ? WHERE id = ?').run(JSON.stringify(m), id);
+  return t;
+}
+/** The owner's notes for the given connectors, formatted for a system prompt ('' when there are none). */
+export function instructionBlock(ctx: Ctx, ids: Iterable<string>, intro: string): string {
+  const want = new Set(ids); const parts: string[] = [];
+  for (const c of listConnectors(ctx)) if (want.has(c.id) && c.manifest.instructions) parts.push(`### ${c.manifest.name}\n${c.manifest.instructions}`);
+  return parts.length ? `\n\n${intro}\n${parts.join('\n\n')}` : '';
 }

@@ -9,11 +9,19 @@ export default async function connectors(view, { refreshStatus }) {
     const v = h('md-outlined-text-field', { label: c.secretName, type: 'password', 'supporting-text': 'Stored on the server only; the model never sees it.' });
     const { close } = dialog({ title: `Credential for ${c.manifest.name}`, content: v, actions: [h('md-text-button', { onclick: () => close() }, 'Cancel'), h('md-filled-button', { onclick: async () => { if (!v.value) return; if (await run(() => api('/secrets/' + c.secretName, { method: 'PUT', body: { value: v.value } }), 'Saved')) close(); } }, 'Save')] });
   }
+  function instructionsDialog(c) {
+    const t = h('md-outlined-text-field', { label: `Instructions for ${c.manifest.name}`, type: 'textarea', rows: 9, maxlength: 4000, value: c.manifest.instructions || '', 'data-primary': '',
+      'supporting-text': 'Plain sentences. Shown to the assistant every time it reads this service\'s messages, picks lookups, or answers about it.' });
+    const ex = h('div', { class: 'help' }, 'Examples: “Ignore anything under 5 points.” · “Treat HW as homework and Quiz as a test; remind me the evening before.” · “When I ask about grades, show percentages and letters.” · “Amounts are in dollars; flag anything over 500.”');
+    const save = async (text) => { const r = await guarded(() => api(`/connectors/${c.id}/instructions`, { method: 'PUT', body: { text } }), text.trim() ? 'Instructions saved' : 'Instructions cleared'); if (r) { close(); load(); } };
+    const { close } = dialog({ title: 'Instructions', content: h('div', { class: 'form' }, h('p', { class: 'muted' }, 'Your own standing instructions for this connector — like a system prompt that applies only to it. They cannot override the approval rules: writes still ask first.'), t, ex),
+      actions: [h('md-text-button', { onclick: () => close() }, 'Cancel'), c.manifest.instructions ? h('md-text-button', { onclick: () => save('') }, 'Clear') : '', h('md-filled-button', { onclick: () => save(t.value) }, 'Save')] });
+  }
   async function showResult(title, text) { const { close } = dialog({ title, content: h('p', { style: 'white-space:pre-wrap;overflow-wrap:anywhere' }, text), actions: [h('md-filled-button', { onclick: () => close() }, 'OK')] }); }
   function card(c) {
     const m = c.manifest, needsKey = m.auth.type !== 'none';
     const steps = [['Proposed', true], ['Approved', c.status !== 'proposed'], ['Credential', !needsKey || c.secretSet], ['Tested', c.tested], ['Enabled', c.status === 'enabled']];
-    const caps = [m.mcp && chip('MCP', ''), m.poll && chip('reads', ''), (m.reads?.length || (m.mcp && m.actions?.some((a) => a.readOnly))) && chip('live lookups', ''), m.actions?.length && !m.mcp && chip('writes', 'warn')];
+    const caps = [m.mcp && chip('MCP', ''), m.poll && chip('reads', ''), (m.reads?.length || (m.mcp && m.actions?.some((a) => a.readOnly))) && chip('live lookups', ''), m.actions?.length && !m.mcp && chip('writes', 'warn'), m.instructions && chip('instructions', '')];
     const tone = c.status === 'enabled' ? 'ok' : c.lastError ? 'bad' : 'warn';
     const btns = [];
     if (c.status === 'proposed') {
@@ -27,6 +35,7 @@ export default async function connectors(view, { refreshStatus }) {
       btns.push(c.status === 'enabled' ? h('md-filled-tonal-button', { onclick: () => run(() => api(`/connectors/${c.id}/disable`, { method: 'POST' }), 'Disabled') }, icon('block'), 'Disable')
         : h('md-filled-button', { onclick: async () => { const r = await run(() => api(`/connectors/${c.id}/enable`, { method: 'POST' })); if (r) toast(r.result.slice(0, 160)); } }, 'Enable'));
     }
+    btns.push(h('md-outlined-button', { onclick: () => instructionsDialog(c) }, icon('edit'), m.instructions ? 'Edit instructions' : 'Instructions'));
     btns.push(h('md-icon-button', { 'aria-label': 'Delete', onclick: async () => { if (await confirmDialog('Delete connector?', `${m.name} will stop polling. Its past messages stay.`, 'Delete')) run(() => api('/connectors/' + c.id, { method: 'DELETE' }), 'Deleted'); } }, icon('delete')));
     return h('div', { class: 'card high' }, h('div', { style: 'display:flex;gap:10px 14px;align-items:center;flex-wrap:wrap' }, h('div', { class: 'lead k-task' }, icon('extension')), h('div', { style: 'flex:1 1 180px;min-width:0;overflow-wrap:anywhere' }, h('div', { class: 'title-m' }, m.name), h('div', { class: 'muted' }, m.description)), h('div', { style: 'display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;margin-left:auto' }, caps, chip(c.status, tone))),
       h('div', { class: 'mono muted', style: 'overflow-wrap:anywhere' }, m.mcp ? `MCP server · ${m.mcp.url}` : m.poll ? `Reads: GET ${m.baseUrl}${m.poll.path} · every ${m.poll.intervalMinutes} min` : `Writes only · ${m.baseUrl}`),
