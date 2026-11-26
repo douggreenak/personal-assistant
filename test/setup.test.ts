@@ -1,11 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { makeCtx } from './helpers.ts';
 import { applySetup, GUIDES } from '../src/setup.ts';
 import { readOverrides } from '../src/settings.ts';
 
 test('setup: pasted text for a connection is turned into settings (labelled lines, bare values, links, key files)', () => {
-  const { ctx } = makeCtx();
+  const { ctx } = makeCtx([], { env: { ASSISTANT_DATA: mkdtempSync(join(tmpdir(), 'assistant-setup-')) } });   // never the real data folder
+  assert.ok(ctx.cfg.dataDir.startsWith(tmpdir()));
   const o = () => readOverrides(ctx.cfg.dataDir);
   let r = applySetup(ctx, 'canopy', 'Canopy URL: https://canopy.example.com\nread token: abcdefghijklmnop1234\nwrite: zzzzzzzzzzzzzzzzzzzz');
   assert.deepEqual(r.missing, []); assert.equal(o().CANOPY_URL, 'https://canopy.example.com'); assert.equal(o().CANOPY_READ_TOKEN, 'abcdefghijklmnop1234'); assert.equal(o().CANOPY_WRITE_TOKEN, 'zzzzzzzzzzzzzzzzzzzz');
