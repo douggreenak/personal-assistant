@@ -1,3 +1,4 @@
+import { prepareImages, toLlmImages, MAX_IMAGES, MAX_INBOUND_IMAGES } from './images.ts';
 import type { Ctx } from './ctx.ts';
 import { nowIso } from './db.ts';
 import { ACTIONS_SCHEMA, applyAction, describeAction, parseActions } from './actions.ts';
@@ -46,7 +47,9 @@ export async function processMessage(ctx: Ctx, msg: MessageRow): Promise<Process
   const stages = ctx.ticketing ? (await ctx.ticketing.defaultPipeline().catch(() => null))?.stages ?? DEFAULT_STAGES : DEFAULT_STAGES;
   const writes: ReturnType<typeof connectorActionMap> = fromOwner ? connectorActionMap(ctx) : new Map();   // only the owner's own words can ask for a write
   const connectorActions = [...writes].map(([k, v]) => `- ${k} — ${v.name}: ${v.action.description} (${v.action.tool ? 'MCP tool' : v.action.method}; params: ${v.action.params.map((q) => `${q.name}${q.required ? '*' : ''}${q.description ? ` (${q.description})` : ''}`).join(', ') || 'none'})`);
-  const images = (ctx.db.prepare('SELECT media_type, data FROM attachments WHERE message_id = ? ORDER BY id LIMIT 5').all(msg.id) as { media_type: string; data: Uint8Array }[]).map((r) => ({ mediaType: r.media_type, data: Buffer.from(r.data).toString('base64') }));
+  // Safety net for every source: only shrunken still pictures reach the model, and mail from other people loses logos/signatures/banners.
+  const stored = (ctx.db.prepare('SELECT name, media_type, data FROM attachments WHERE message_id = ? ORDER BY id LIMIT 12').all(msg.id) as { name: string; media_type: string; data: Uint8Array }[]).map((r) => ({ name: r.name, mediaType: r.media_type, data: Buffer.from(r.data) }));
+  const images = toLlmImages(await prepareImages(stored, { dropLogos: !fromOwner, maxImages: fromOwner ? MAX_IMAGES : MAX_INBOUND_IMAGES }));
   const prompt = buildExtractPrompt({ imageCount: images.length, connectorActions, now: describeNow(ctx.now(), ctx.cfg.tz), source: msg.source, sender: msg.sender, subject: msg.subject, body: msg.body, fromOwner, candidates, stages, counterpart: msg.counterpart ?? '', conversation: convo.lines, linkedIds: new Set(convo.linked.map((l) => l.id)) });
 
   // The owner's own notes for the service this message came from, and for any service whose actions are on offer.

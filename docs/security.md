@@ -28,6 +28,7 @@ Anyone who can send you a text, an email or a chat message can put words in fron
 | Text of messages being processed, your open item titles, search snippets for questions, connector docs | **Anthropic**, via your Claude Code login | the model call. This includes Canopy-derived text (assignment titles, grade alerts) once it is in an item or message. Your Claude plan's data terms apply. |
 | API calls | Google (Gmail/Drive/Chat/Pub/Sub), Canopy, your connectors' hosts | reading sources, posting replies |
 | Notification text | your ntfy server — **or ntfy.sh if you use their public one** | optional push; if you use ntfy.sh, pick an unguessable topic or self-host, since the text of your reminders is sent |
+| Pictures | **Anthropic**, same route — but only still pictures, downscaled to ≤1280px JPEG (`src/images.ts`). Videos, PDFs and other attachments are never sent. Pictures arriving with other people's messages also lose logos, signatures, banners and tracking pixels, and at most 3 are read per message. Gmail attachments are never downloaded. | keeps model usage low |
 | Voice audio | nowhere — transcribed locally by the Whisper container | |
 | Everything else (database, files you index) | stays on the server | |
 

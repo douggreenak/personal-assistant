@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 
 FROM node:24-slim
 # claude = Claude Code CLI (the "brain", run headless with all tools disabled); poppler/unzip let the file indexer read PDF and DOCX.
-RUN apt-get update && apt-get install -y --no-install-recommends poppler-utils unzip ca-certificates git libevent-core-2.1-7 libncurses6 \
+RUN apt-get update && apt-get install -y --no-install-recommends poppler-utils ffmpeg unzip ca-certificates git libevent-core-2.1-7 libncurses6 \
     && rm -rf /var/lib/apt/lists/* && npm install -g @anthropic-ai/claude-code && npm cache clean --force
 COPY --from=tmux /opt/tmux/bin/tmux /usr/local/bin/tmux
 ENV NODE_ENV=production ASSISTANT_DATA=/data HOME=/home/node

@@ -7,7 +7,7 @@ import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import type { Ctx } from './ctx.ts';
 import { decide, listApprovals } from './approvals.ts';
 import { handleOwnerText } from './commands.ts';
-import { parseUploads, toLlmImages } from './images.ts';
+import { parseUploads, prepareImages, toLlmImages } from './images.ts';
 import { codeRoutes } from './code/routes.ts';
 import { createBackup, restoreBackup, listBackups, backupPath, saveBackupFile, lastBackup } from './backup.ts';
 import { ingestMacRows, type MacRow } from './mac.ts';
@@ -260,8 +260,8 @@ export function createHttp(ctx: Ctx, deps: HttpDeps): Server {
     if (path === '/admin/restart' && method === 'POST') {
       send(res, 200, { ok: true }); setTimeout(() => (deps.restart ?? (() => process.exit(0)))(), 400); return;
     }
-    if (path === '/chat' && method === 'POST') { const b = await readJson(req, IMAGE_BODY_LIMIT); let images; try { images = parseUploads(b.images); } catch (e) { throw new HttpError(400, (e as Error).message); } return send(res, 200, { reply: await handleOwnerText(ctx, String(b.text ?? ''), undefined, images) }); }
-    if (path === '/ask' && method === 'POST') { const b = await readJson(req, IMAGE_BODY_LIMIT); let images; try { images = parseUploads(b.images); } catch (e) { throw new HttpError(400, (e as Error).message); } return send(res, 200, { answer: await ask(ctx, String(b.question ?? ''), toLlmImages(images)) }); }
+    if (path === '/chat' && method === 'POST') { const b = await readJson(req, IMAGE_BODY_LIMIT); let images; try { images = await prepareImages(parseUploads(b.images)); } catch (e) { throw new HttpError(400, (e as Error).message); } return send(res, 200, { reply: await handleOwnerText(ctx, String(b.text ?? ''), undefined, images) }); }
+    if (path === '/ask' && method === 'POST') { const b = await readJson(req, IMAGE_BODY_LIMIT); let images; try { images = await prepareImages(parseUploads(b.images)); } catch (e) { throw new HttpError(400, (e as Error).message); } return send(res, 200, { answer: await ask(ctx, String(b.question ?? ''), toLlmImages(images)) }); }
 
     if (path === '/items' && method === 'GET') return send(res, 200, { items: ctx.items.list({ state: url.searchParams.get('state') ?? 'open', kind: url.searchParams.get('kind') ?? undefined, limit: Number(url.searchParams.get('limit') ?? 200), hidePowerSchool: true }) });
     if ((m = /^\/items\/([0-9a-f-]+)$/.exec(path)) && method === 'GET') {
