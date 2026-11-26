@@ -13,6 +13,12 @@ export async function canopySync(ctx: Ctx): Promise<{ created: number; closed: n
   const c = ctx.canopy; if (!c) return { created: 0, closed: 0 };
   let created = 0, closed = 0;
   const today = (await c.upcoming(2));
+  // PowerSchool assignments use `canopy:ps…` keys so the Tasks page can hide them (they still nag).
+  const mkPs = (kind: 'psdue' | 'psoverdue', id: string, suffix: string, title: string, priority = 'normal') => {
+    const old = `canopy:${kind === 'psdue' ? 'due' : 'overdue'}:${id}${suffix}`; const key = `canopy:${kind}:${id}${suffix}`;
+    ctx.db.prepare('UPDATE items SET external_key = ? WHERE external_key = ?').run(key, old); // migrate pre-existing rows
+    mk(key, title, '', priority);
+  };
   const mk = (key: string, title: string, detail = '', priority = 'normal') => {
     const r = ctx.items.create({ kind: 'reminder', title, detail, priority, externalKey: key, backend: 'local' }, 'canopy-sync');
     if (r.created) created++;
@@ -22,10 +28,10 @@ export async function canopySync(ctx: Ctx): Promise<{ created: number; closed: n
   for (const a of today.assignments) {
     stillDue.add(a.id);
     const when = a.dueDate.slice(0, 10) === today.today ? 'today' : a.dueDate.slice(0, 10);
-    mk(`canopy:due:${a.id}:${a.dueDate.slice(0, 10)}`, `Due ${when}: ${a.className ?? 'class'} — ${a.title}`);
+    mkPs('psdue', a.id, `:${a.dueDate.slice(0, 10)}`, `Due ${when}: ${a.className ?? 'class'} — ${a.title}`);
   }
   for (const t of today.tasks) { stillDue.add(t.id); mk(`canopy:due:${t.id}:${t.dueDate.slice(0, 10)}`, `Due ${t.dueDate.slice(0, 10)}: ${t.title}`); }
-  for (const a of today.overdue.assignments) { stillDue.add(a.id); mk(`canopy:overdue:${a.id}`, `OVERDUE: ${a.className ?? 'class'} — ${a.title} (was due ${a.dueDate.slice(0, 10)})`, '', 'high'); }
+  for (const a of today.overdue.assignments) { stillDue.add(a.id); mkPs('psoverdue', a.id, '', `OVERDUE: ${a.className ?? 'class'} — ${a.title} (was due ${a.dueDate.slice(0, 10)})`, 'high'); }
   for (const t of today.overdue.tasks) { stillDue.add(t.id); mk(`canopy:overdue:${t.id}`, `OVERDUE: ${t.title} (was due ${t.dueDate.slice(0, 10)})`, '', 'high'); }
   for (const a of [...today.assignments, ...today.overdue.assignments]) {
     if (flagged(a.flags, 'missing')) mk(`canopy:missing:${a.id}`, `Missing in PowerSchool: ${a.className ?? 'class'} — ${a.title}`, '', 'high');
@@ -33,7 +39,7 @@ export async function canopySync(ctx: Ctx): Promise<{ created: number; closed: n
   for (const e of today.exams) mk(`canopy:exam:${e.id}:${e.date.slice(0, 10)}`, `Exam ${e.date.slice(0, 10)}: ${e.title}`);
 
   // Anything with a due-reminder that is no longer upcoming/overdue was completed (or moved) in Canopy: stop nagging.
-  const open = ctx.db.prepare("SELECT id, external_key FROM items WHERE state = 'open' AND (external_key LIKE 'canopy:due:%' OR external_key LIKE 'canopy:overdue:%' OR external_key LIKE 'canopy:missing:%')").all() as { id: string; external_key: string }[];
+  const open = ctx.db.prepare("SELECT id, external_key FROM items WHERE state = 'open' AND (external_key LIKE 'canopy:due:%' OR external_key LIKE 'canopy:overdue:%' OR external_key LIKE 'canopy:missing:%' OR external_key LIKE 'canopy:psdue:%' OR external_key LIKE 'canopy:psoverdue:%')").all() as { id: string; external_key: string }[];
   for (const o of open) {
     const cid = o.external_key.split(':')[2];
     if (!stillDue.has(cid)) { ctx.items.patch(o.id, { state: 'done', nextNagAt: null }, 'canopy-sync', { type: 'completed', data: { reason: 'no longer due in Canopy' } }); closed++; }

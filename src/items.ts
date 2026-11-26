@@ -67,8 +67,9 @@ export class ItemStore {
     const r = this.db.prepare('SELECT * FROM items WHERE backend = ? AND backend_ref = ?').get(backend, ref) as Row | undefined;
     return r ? toItem(r) : undefined;
   }
-  list(f: { state?: string; kind?: string; limit?: number } = {}): Item[] {
+  list(f: { state?: string; kind?: string; limit?: number; hidePowerSchool?: boolean } = {}): Item[] {
     const w: string[] = []; const a: string[] = [];
+    if (f.hidePowerSchool) w.push("(external_key IS NULL OR (external_key NOT LIKE 'canopy:ps%' AND external_key NOT LIKE 'canopy:missing:%'))");
     if (f.state && f.state !== 'all') { w.push('state = ?'); a.push(f.state); }
     if (f.kind) { w.push('kind = ?'); a.push(f.kind); }
     const sql = `SELECT * FROM items ${w.length ? 'WHERE ' + w.join(' AND ') : ''} ORDER BY COALESCE(due_at, '9999') , created_at LIMIT ${Math.min(f.limit ?? 200, 1000)}`;

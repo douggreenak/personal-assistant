@@ -29,6 +29,8 @@ Each sync reads `/upcoming?days=2`, `/classes`, `/grade-history`, `/tasks?comple
 | `Exam <date>: …` | exam in the next 2 days | normal |
 | `Grade drop in <class>: 92.0% → 88.5%` | newest grade snapshot fell by ≥ `CANOPY_GRADE_DROP_PCT` since the last sync (first sync only records a baseline) | high |
 
+**Tasks page:** PowerSchool-assignment alerts (due, overdue, missing) are hidden from the web Tasks/Items list (keys `canopy:ps…`, `canopy:missing:`) but still nag and auto-close.
+
 **Auto-stop:** when an assignment or task is completed in Canopy it drops out of the due/overdue lists, and the matching due, overdue and missing-work reminders are closed on the next sync, so you stop being nagged. Tasks the assistant created that you complete in Canopy are marked done locally too.
 
 ## Task stages
