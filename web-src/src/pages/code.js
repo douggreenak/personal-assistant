@@ -169,7 +169,13 @@ export default async function code(view) {
     const grow = () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 200) + 'px'; }; ta.addEventListener('input', grow); if (ta.value) requestAnimationFrame(grow);   // (measuring an empty box before it is on screen made the first line jump)
     // Attachments: any file, uploaded as soon as it is picked/pasted/dropped; the message then carries @path for each.
     let files = []; const strip = h('div', { class: 'pics code-files', hidden: true }); const fin = h('input', { type: 'file', multiple: true, hidden: true, 'aria-label': 'Choose files' });
-    const drawFiles = () => { strip.hidden = !files.length; clear(strip).append(...files.map((f, n) => h('div', { class: 'code-file' + (f.error ? ' bad' : '') }, icon(f.type.startsWith('image/') ? 'image' : 'description'), h('span', { class: 'fname' }, f.name), h('span', { class: 'muted s' }, f.error ? 'failed' : f.path ? (f.size >= 1e6 ? (f.size / 1e6).toFixed(1) + ' MB' : Math.max(1, Math.round(f.size / 1e3)) + ' KB') : 'uploading…'), h('button', { type: 'button', 'aria-label': 'Remove ' + f.name, onclick: () => { files.splice(n, 1); drawFiles(); } }, icon('close'))))); };
+    const uploading = () => files.some((f) => !f.path && !f.error);
+    const drawFiles = () => { strip.hidden = !files.length; sendBtn.disabled = uploading(); sendBtn.title = uploading() ? 'Uploading… one moment' : '';
+      clear(strip).append(...files.map((f, n) => { const busy = !f.path && !f.error; const sz = f.size >= 1e6 ? (f.size / 1e6).toFixed(1) + ' MB' : Math.max(1, Math.round(f.size / 1e3)) + ' KB';
+        return h('div', { class: 'code-file' + (f.error ? ' bad' : busy ? ' busy' : ''), 'aria-busy': String(busy) },
+          busy ? h('md-circular-progress', { indeterminate: true, class: 'code-file-wheel', 'aria-label': 'Uploading ' + f.name }) : icon(f.error ? 'error' : f.type.startsWith('image/') ? 'image' : 'description'),
+          h('span', { class: 'fname' }, f.name), h('span', { class: 'muted s' }, f.error ? 'failed' : busy ? 'uploading… ' + sz : sz),
+          h('button', { type: 'button', 'aria-label': 'Remove ' + f.name, onclick: () => { files.splice(n, 1); drawFiles(); } }, icon('close'))); })); };
     const addFiles = (list) => { for (const file of list) { if (files.length >= 10) { toast('At most 10 files per message.'); break; } const f = { name: file.name || 'file', type: file.type || '', size: file.size, path: '', error: false }; files.push(f); api(`${base}/upload?name=${encodeURIComponent(f.name)}`, { method: 'POST', raw: file }).then((r) => { f.path = r.path; }).catch((e) => { f.error = true; toast(e.message, { error: true }); }).finally(drawFiles); } drawFiles(); };
     fin.addEventListener('change', () => { addFiles([...fin.files]); fin.value = ''; });
     ta.addEventListener('paste', (e) => { const fs = [...(e.clipboardData?.files ?? [])]; if (fs.length) { e.preventDefault(); addFiles(fs); } });

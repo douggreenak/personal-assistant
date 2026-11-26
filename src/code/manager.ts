@@ -155,8 +155,25 @@ export async function sendMessage(ctx: Ctx, id: string, textIn: string): Promise
   if (!text) throw new CodeError('Type a message first.'); if (text.length > 30000) throw new CodeError('That message is too long.');
   const name = tmuxName(id); if (!(await t.has(name))) throw new CodeError('This session is stopped. Start it first.');
   const sc = parseScreen(await t.capture(name)); if (sc.state === 'permission' || sc.state === 'dialog') throw new CodeError('Claude is waiting for an answer (see the buttons above the message box).');
-  if (text.includes('\n')) await t.paste(name, text); else await t.literal(name, text);
-  await sleep(text.startsWith('/') ? 300 : text.includes('\n') ? 90 : 30); await t.keys(name, ['Enter']);
+  await submitText(t, name, text, () => t.capture(name));
+}
+/** Types a message into Claude Code's prompt box and makes sure it is actually SUBMITTED. Two things used to leave it sitting unsent:
+ *  an `@file` reference opens a file-suggestion popup that swallows Enter (a trailing space closes it), and Enter sent while a paste is still
+ *  being processed is lost. So: type, close any popup, press Enter, then look — if the text is still in the box and Claude is not working, press Enter again. */
+export async function submitText(t: Tmux, target: string, text: string, capture: () => Promise<string>): Promise<void> {
+  const multi = text.includes('\n');
+  if (multi) await t.paste(target, text); else await t.literal(target, text);
+  await sleep(text.startsWith('/') ? 300 : multi ? 250 : 40);
+  if (/@\S*$/.test(text)) { await t.literal(target, ' '); await sleep(150); }
+  await t.keys(target, ['Enter']);
+  const snippet = (text.trim().split('\n').pop() ?? '').trim().slice(-30);
+  for (let i = 0; i < 3 && snippet; i++) {
+    await sleep(600);
+    const raw = await capture().catch(() => ''); if (!raw || parseScreen(raw).state === 'working') return;
+    const bottom = raw.replace(/\s+$/, '').split('\n').slice(-8).join('\n');
+    if (!bottom.includes(snippet)) return;                               // gone from the prompt box: it was sent
+    await t.keys(target, ['Enter']);                                      // still sitting there (an extra Enter on an empty box does nothing)
+  }
 }
 /** What the Code tab calls: sends, or queues behind the work in progress. */
 export async function sendOrQueueMessage(ctx: Ctx, id: string, text: string): Promise<number> {

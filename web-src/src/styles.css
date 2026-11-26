@@ -388,6 +388,8 @@ main { position: relative; }
 @media (max-width: 839px) { .display { font-size: 1.5rem; } .chat { height: calc(100dvh - 350px); min-height: 200px; } }
 .code-files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .code-file { display: flex; align-items: center; gap: 6px; padding: 4px 4px 4px 10px; border-radius: 16px; background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); font-size: .85rem; max-width: 260px; }
+.code-file-wheel { --md-circular-progress-size: 20px; --md-circular-progress-active-indicator-width: 12; flex: none; }
+.code-file.busy { opacity: .85; }
 .code-file .ic { width: 18px; height: 18px; } .code-file .fname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .code-file.bad { background: var(--md-sys-color-error-container); }
 .code-file button { all: unset; cursor: pointer; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; } .code-file button:hover { background: #0002; }
 
