@@ -1,9 +1,9 @@
 import { h, icon, dialog, page } from './ui.js';
 import { prefs, isDark } from './theme.js';
 
-const NAV = { h: 'home', i: 'items', c: 'chat', b: 'inbox', a: 'approvals', o: 'connectors', y: 'system', s: 'settings' };
-const NAMES = { home: 'Home', items: 'Items', chat: 'Chat', inbox: 'Inbox', approvals: 'Approvals', connectors: 'Connectors', system: 'System', settings: 'Settings' };
-const ORDER = ['home', 'items', 'chat', 'inbox', 'approvals', 'connectors', 'system', 'settings'];
+const NAV = { h: 'home', i: 'items', c: 'chat', k: 'code', b: 'inbox', a: 'approvals', o: 'connectors', y: 'system', s: 'settings' };
+const NAMES = { home: 'Home', items: 'Items', chat: 'Chat', code: 'Code', inbox: 'Inbox', approvals: 'Approvals', connectors: 'Connectors', system: 'System', settings: 'Settings' };
+const ORDER = ['home', 'items', 'chat', 'code', 'inbox', 'approvals', 'connectors', 'system', 'settings'];
 let chord = null, chordTimer, hint;
 
 const typing = (e) => {
@@ -35,7 +35,7 @@ function showChord(on) {
 export const SHORTCUTS = [
   ['Anywhere', [['/', 'Jump to the text box on this page (opens search if there is none)'], ['Ctrl K', 'Search everything'], ['?', 'Show this list'], ['Esc', 'Leave a text box / close a dialog'],
     ['n', 'New (item, message or connector, depending on the page)'], ['r', 'Refresh this page'], ['t', 'Switch light / dark'], ['Ctrl Enter', 'Submit a dialog or the quick-capture box']]],
-  ['Go to', [['g h', 'Home'], ['g i', 'Items'], ['g c', 'Chat'], ['g b', 'Inbox'], ['g a', 'Approvals'], ['g o', 'Connectors'], ['g y', 'System'], ['g s', 'Settings'], ['1 – 8', 'Jump to a page by its position in the menu']]],
+  ['Go to', [['g h', 'Home'], ['g i', 'Items'], ['g c', 'Chat'], ['g k', 'Code'], ['g b', 'Inbox'], ['g a', 'Approvals'], ['g o', 'Connectors'], ['g y', 'System'], ['g s', 'Settings'], ['1 – 9', 'Jump to a page by its position in the menu']]],
   ['Lists (Items, Inbox, Approvals, Home)', [['j / k', 'Select next / previous'], ['Enter', 'Open the selected row'], ['x', 'Done (item) · approve (approval) · skip (message)'], ['e', 'Edit the selected item'], ['h', 'History of the selected item'],
     ['s', 'Snooze the selected reminder 2 hours'], ['Delete', 'Drop (item) · reject (approval)'], ['Shift R', 'Process the selected message again']]],
 ];
@@ -70,7 +70,7 @@ export function initShortcuts({ nav, refresh, openSearch, newDefault }) {
       case 'j': e.preventDefault(); move(1); return;
       case 'k': e.preventDefault(); move(-1); return;
     }
-    if (/^[1-8]$/.test(e.key)) { e.preventDefault(); nav(ORDER[+e.key - 1]); return; }
+    if (/^[1-9]$/.test(e.key)) { e.preventDefault(); nav(ORDER[+e.key - 1]); return; }
     const fn = row?._keys?.[e.key];
     if (fn && !(e.key === 'Enter' && onControl)) { e.preventDefault(); fn(); }
   });

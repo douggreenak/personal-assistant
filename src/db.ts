@@ -77,6 +77,14 @@ CREATE TABLE attachments (
   name TEXT NOT NULL DEFAULT '', media_type TEXT NOT NULL, data BLOB NOT NULL
 );
 CREATE INDEX attachments_msg ON attachments(message_id);
+`, `
+CREATE TABLE code_projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, path TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL);
+CREATE TABLE code_sessions (
+  id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES code_projects(id) ON DELETE CASCADE,
+  title TEXT NOT NULL, ai_title TEXT NOT NULL DEFAULT '', model TEXT NOT NULL DEFAULT '', permission_mode TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL, started_at TEXT, desired INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX code_sessions_project ON code_sessions(project_id);
 `];
 
 export function openDb(path: string): Db {

@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 /** All configuration comes from environment variables; see .env.example. */
 export interface Config {
   port: number; host: string; token: string; ingestToken: string; webPassword: string; dbPath: string; dataDir: string; tz: string;
@@ -12,6 +13,7 @@ export interface Config {
   gmail: { enabled: boolean; skipBulk: boolean };
   transcribeUrl: string | null;                          // OpenAI-compatible /v1/audio/transcriptions endpoint
   indexPaths: string[]; driveFolderIds: string[]; backup: { auto: boolean; hour: number; keep: number };
+  code: { enabled: boolean; root: string; maxSessions: number; allowBypass: boolean; resumeOnBoot: boolean; claudeBin: string; tmuxBin: string; socket: string; configDir: string; globalConfig: string; claudeEnv: Record<string, string> };
   claude: { bin: string; model?: string; timeoutMs: number };
   autoApplyMinConfidence: number;                        // below this, updates/completions go to the approval queue
   ignoreSenders: RegExp[];
@@ -40,6 +42,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     gmail: { enabled: env.GMAIL_ENABLED === '1', skipBulk: env.GMAIL_SKIP_BULK !== '0' },
     transcribeUrl: env.TRANSCRIBE_URL ?? null,
     indexPaths: list(env.INDEX_PATHS), driveFolderIds: list(env.DRIVE_FOLDER_IDS),
+    code: { enabled: env.CODE_ENABLED !== '0', root: env.CODE_ROOT ?? (existsSync('/workspace') ? '/workspace' : `${dataDir}/workspace`), maxSessions: Math.min(30, Math.max(1, Math.trunc(Number(env.CODE_MAX_SESSIONS ?? 8)) || 8)), allowBypass: env.CODE_ALLOW_BYPASS === '1', resumeOnBoot: env.CODE_RESUME_ON_BOOT !== '0',
+      claudeBin: env.CODE_CLAUDE_BIN ?? env.CLAUDE_BIN ?? 'claude', tmuxBin: env.CODE_TMUX_BIN ?? 'tmux', socket: env.CODE_TMUX_SOCKET ?? 'assistant-code', configDir: env.CLAUDE_CONFIG_DIR ?? `${env.HOME ?? '/home/node'}/.claude`,
+      claudeEnv: env.CLAUDE_CONFIG_DIR ? { CLAUDE_CONFIG_DIR: env.CLAUDE_CONFIG_DIR } : {},
+      globalConfig: env.CLAUDE_CONFIG_DIR ? `${env.CLAUDE_CONFIG_DIR}/.claude.json` : `${env.HOME ?? '/home/node'}/.claude.json` },
     backup: { auto: env.BACKUP_AUTO !== '0', hour: Math.min(23, Math.max(0, Math.trunc(Number(env.BACKUP_HOUR ?? 2)) || 0)), keep: Math.min(365, Math.max(1, Math.trunc(Number(env.BACKUP_KEEP ?? 14)) || 14)) },
     claude: { bin: env.CLAUDE_BIN ?? 'claude', model: env.CLAUDE_MODEL, timeoutMs: Number(env.CLAUDE_TIMEOUT_MS ?? 180000) },
     autoApplyMinConfidence: Number(env.AUTO_APPLY_MIN_CONFIDENCE ?? 0.6),

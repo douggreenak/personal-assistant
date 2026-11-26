@@ -13,7 +13,7 @@ const root = new URL('../../', import.meta.url).pathname;
 const dir = mkdtempSync(join(tmpdir(), 'assistant-e2e-'));
 const port = 20000 + Math.floor(Math.random() * 20000), base = `http://127.0.0.1:${port}`;
 const PW = 'e2e-password-1';
-const srv = spawn('node', ['src/main.ts'], { cwd: root, env: { PATH: process.env.PATH, PORT: String(port), HOST: '127.0.0.1', ASSISTANT_DATA: dir, ASSISTANT_TOKEN: 't'.repeat(32), INGEST_TOKEN: 'i'.repeat(32), WEB_PASSWORD: PW, CLAUDE_BIN: '/bin/false', TZ_NAME: 'America/Anchorage' }, stdio: ['ignore', 'pipe', 'pipe'] });
+const srv = spawn('node', ['src/main.ts'], { cwd: root, env: { PATH: process.env.PATH, PORT: String(port), HOST: '127.0.0.1', ASSISTANT_DATA: dir, ASSISTANT_TOKEN: 't'.repeat(32), INGEST_TOKEN: 'i'.repeat(32), WEB_PASSWORD: PW, CLAUDE_BIN: '/bin/false', CODE_ROOT: join(dir, 'projects'), CODE_CLAUDE_BIN: join(root, 'test/fixtures/code/fake-claude.mjs'), CODE_TMUX_SOCKET: 'e2e' + port, CLAUDE_CONFIG_DIR: join(dir, 'claudecfg'), TZ_NAME: 'America/Anchorage' }, stdio: ['ignore', 'pipe', 'pipe'] });
 let log = ''; srv.stdout.on('data', (d) => (log += d)); srv.stderr.on('data', (d) => (log += d));
 for (let i = 0; i < 50; i++) { try { if ((await fetch(base + '/healthz')).ok) break; } catch { /* starting */ } await new Promise((r) => setTimeout(r, 200)); }
 
@@ -21,7 +21,7 @@ const results = []; let current = '';
 // E2E_GROUP=a|b runs half of the steps (each half has its own server + browser), so the two halves can run side by side. Default: all.
 const GROUP = process.env.E2E_GROUP || 'all';
 const groupOf = (n) => /^(keyboard:|items: sort|command palette|unsaved settings|connection lost)/.test(n) ? 'b'
-  : /^(settings: (edit|theme)|system:|connectors:|mobile:|chat page|connect wizard|dialogs ignore|write connectors)/.test(n) ? 'c' : 'a';
+  : /^(code tab|settings: (edit|theme)|system:|connectors:|mobile:|chat page|connect wizard|dialogs ignore|write connectors)/.test(n) ? 'c' : 'a';
 const step = async (name, fn) => { if (GROUP !== 'all' && !/^no JavaScript errors/.test(name) && groupOf(name) !== GROUP) return; current = name; try { await fn(); results.push([true, name]); console.log('  ✔', name); } catch (e) { results.push([false, name, e]); console.log('  ✖', name, '\n     ', String(e.message).split('\n').slice(0, 4).join('\n      ')); if (errors.length) console.log('      page errors:', errors.slice(-3).join(' | ').slice(0, 400)); await page.screenshot({ path: join(dir, 'fail-' + results.length + '.png') }); } };
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--no-sandbox'] });
@@ -433,9 +433,37 @@ try {
     assert.match(await card.innerText(), /read-only/); assert.match(await card.innerText(), /always asks/);
   });
 
+
+  await step('code tab: add a project, start a session, chat, answer a permission question, terminal, usage, stop and start', async () => {
+    await goto('code'); await page.locator('text=No projects yet').waitFor();
+    await btn('Add a project').click(); await dlg().waitFor();
+    await setField('Folder (inside the projects folder)', 'demo'); await btn('Add', dlg()).click();
+    await page.locator('.code-tabs button[aria-pressed=true]', { hasText: 'demo' }).waitFor();
+    await btn('New session').click(); await dlg().waitFor(); await btn('Start', dlg()).click();
+    await page.locator('.code-session-head').waitFor(); await page.locator('.code-state[data-state=idle]').waitFor({ timeout: 20000 });
+    await page.waitForFunction(() => document.activeElement?.closest?.('.code-composer')); await page.locator('.code-composer textarea').fill('hello e2e'); await page.keyboard.press('Enter');
+    await page.locator('.code-bot', { hasText: 'Echo: hello e2e' }).waitFor({ timeout: 15000 });
+    assert.ok(await page.locator('.code-user', { hasText: 'hello e2e' }).count());
+    await page.locator('.code-state[data-state=idle]').waitFor();
+    await page.locator('.code-composer textarea').fill('PERMISSION go'); await page.keyboard.press('Enter');
+    await page.locator('.code-perm').waitFor({ timeout: 15000 }); assert.match(await page.locator('.code-perm').innerText(), /Do you want to create perm.txt/);
+    await page.locator('.code-perm [data-opt="1"]').click();
+    await page.locator('.code-tool[data-tool=Write]').waitFor({ timeout: 15000 }); await page.locator('.code-perm').waitFor({ state: 'detached', timeout: 15000 });
+    await page.locator('.seg button[data-view=term]').click(); await page.locator('pre.term', { hasText: 'Created perm.txt' }).waitFor({ timeout: 8000 });
+    await page.locator('.seg button[data-view=chat]').click();
+    await page.locator('.code-chips').waitFor(); await page.locator('.code-chips', { hasText: 'in/out' }).waitFor({ timeout: 20000 });
+    await page.locator('.code-tabs button', { hasText: 'Usage' }).click(); await page.locator('.ubar', { hasText: 'Current session' }).waitFor({ timeout: 40000 });
+    assert.ok(await page.locator('.utable', { hasText: 'demo' }).count());
+    await page.locator('.code-tabs button', { hasText: 'Server' }).click(); await page.locator('[data-tmux]').waitFor();
+    await btn('Stop', page.locator('[data-tmux]')).click(); await dlg().waitFor(); await btn('Stop', dlg()).click(); await page.locator('text=Nothing is running').waitFor({ timeout: 8000 });
+    await page.locator('.code-tabs button', { hasText: 'demo' }).click(); await page.locator('.code-session .code-state[data-state=stopped]').waitFor({ timeout: 8000 });
+    await btn('Start', page.locator('.code-session')).click(); await page.locator('.code-bot', { hasText: 'Echo: hello e2e' }).waitFor({ timeout: 20000 });   // conversation came back
+    await page.locator('.code-state[data-state=idle]').waitFor({ timeout: 20000 });
+  });
+
   await step('no JavaScript errors were logged during the whole run', async () => { assert.deepEqual(errors, []); });
 } finally {
-  await browser.close(); srv.kill();
+  await browser.close(); srv.kill(); try { (await import('node:child_process')).execFileSync('tmux', ['-L', 'e2e' + port, 'kill-server'], { stdio: 'ignore' }); } catch { /* none */ }
 }
 const failed = results.filter((r) => !r[0]);
 console.log(`\n${results.length - failed.length}/${results.length} passed`); if (failed.length) { console.log(log.split('\n').slice(-15).join('\n')); console.log('screenshots in', dir); process.exit(1); }

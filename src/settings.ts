@@ -53,6 +53,12 @@ export const SETTINGS: SettingDef[] = [
   { key: 'BACKUP_HOUR', label: 'Backup hour', group: 'Backup', type: 'number', placeholder: '2', help: 'Local hour (0–23). If the assistant was off then, it backs up as soon as it starts.' },
   { key: 'BACKUP_KEEP', label: 'Nightly backups to keep', group: 'Backup', type: 'number', placeholder: '14', help: 'Older nightly files are deleted.' },
 
+  { key: 'CODE_ENABLED', label: 'Code tab', group: 'Code', type: 'bool', default: '1', help: 'Run Claude Code agents in tmux sessions from the Code tab. Separate from the assistant.' },
+  { key: 'CODE_ROOT', label: 'Projects folder', group: 'Code', type: 'text', placeholder: '/workspace', help: 'Every project must live inside this folder (in Docker it is the CODE_DIR folder from docker-compose).' },
+  { key: 'CODE_MAX_SESSIONS', label: 'Max running sessions', group: 'Code', type: 'number', placeholder: '8' },
+  { key: 'CODE_ALLOW_BYPASS', label: 'Allow “bypass permissions” mode', group: 'Code', type: 'bool', help: 'Lets a session run every tool without asking. Off by default; the agent can reach everything the container can.' },
+  { key: 'CODE_RESUME_ON_BOOT', label: 'Resume running sessions after a restart', group: 'Code', type: 'bool', default: '1', help: 'Sessions that were running when the assistant restarted are started again (conversation resumed).' },
+
   { key: 'INGEST_TOKEN', label: 'Ingest token', group: 'Access', type: 'secret', help: 'Send-input-only token for the Mac agent and phone app.' },
 ];
 const BY_KEY = new Map(SETTINGS.map((s) => [s.key, s]));

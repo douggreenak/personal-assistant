@@ -13,6 +13,7 @@ services:
     volumes:
       - ./data:/data
       - ./claude-home:/home/node/.claude        # Claude Code login lives here (see README: one-time `claude login`)
+      - ${CODE_DIR:-./workspace}:/workspace     # the Code tab's projects live here (set CODE_DIR to an existing projects folder on the host)
       # - /mnt/smb/share:/index/share:ro          # your SMB share, mounted on the host, read-only; then INDEX_PATHS=/index
     ports: ["${BIND_ADDR:-127.0.0.1}:8090:8090"]
     depends_on: [ticketing, whisper]

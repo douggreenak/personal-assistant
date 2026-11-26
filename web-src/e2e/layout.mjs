@@ -38,7 +38,7 @@ for (let i = 0; i < 8; i++) await api('POST', '/ingest/message', { source: 'web'
 }
 
 const VIEWPORTS = [[320, 568], [360, 640], [390, 844], [412, 915], [768, 1024], [839, 900], [840, 900], [1024, 768], [1300, 900], [1920, 1080], [800, 360], [2560, 1300]];
-const PAGES = ['home', 'items', 'chat', 'inbox', 'approvals', 'connectors', 'system', 'settings'];
+const PAGES = ['home', 'items', 'chat', 'code', 'inbox', 'approvals', 'connectors', 'system', 'settings'];
 const problems = [];
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--no-sandbox'] });
 

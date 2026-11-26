@@ -86,3 +86,15 @@ The model can request one with an action `{op:"connector_call", connectorId, act
 **Nightly backups.** Once a day after `BACKUP_HOUR` (default 02, in the configured time zone; if the assistant was off then it runs as soon as it starts) a backup with keys is written to `data/backups/nightly-YYYY-MM-DD.backup` (mode 600) and only the newest `BACKUP_KEEP` (default 14) nightly files are kept; `BACKUP_AUTO=0` turns it off. A failure is announced through the normal notifications once a day. `GET /backup/list` → `{auto, hour, keep, last, backups:[{name, kind: nightly|manual|before-restore, size, at}]}`; `POST /backup/run` saves a `manual-*` copy on the server; `GET /backup/file/{name}` downloads one. The `data/` folder is a Docker volume, so these survive rebuilds, but they are on the same disk — copy them elsewhere for real safety.
 
 `PUT /connectors/{id}/instructions` (full token) `{text}` → `{instructions}`: the owner's standing instructions for that connector (≤ 4000 chars, empty clears). They are added to the model's system prompt when it handles that connector's messages, plans live lookups, or answers from its data.
+
+## Code tab (`/code/…`, full token)
+Claude Code agents run in tmux sessions (dedicated tmux socket `assistant-code`), separate from the assistant's own brain. Projects are folders under `CODE_ROOT` (`/workspace` in Docker); paths outside it (symlinks included) are refused.
+- `GET /code/status` → `{enabled, tmux, root, maxSessions, allowBypass, modes, keys}`
+- `GET /code/folders?path=` → `{path, parent, dirs[]}` · `GET/POST /code/projects` (`{folder, name?, create?, cloneUrl?}`; clone is https only) · `PATCH/DELETE /code/projects/:id`
+- `POST /code/projects/:id/sessions` `{title?, model?, permissionMode?, prompt?, start?}` · `GET/PATCH/DELETE /code/sessions/:id`
+- `POST /code/sessions/:id/start|stop|restart` — a stopped session resumes its conversation when started (`--resume`).
+- `GET /code/sessions/:id/live?after=<offset>` → `{running, screen:{state: idle|working|permission|dialog, permission?, mode?}, msgs[], next, title}` (conversation read from Claude Code's transcript file, incrementally).
+- `POST /code/sessions/:id/send` `{text}` · `POST …/keys` `{keys[], text?}` (whitelisted keys only: Enter, Escape, arrows, Tab, BTab, C-c, digits, y/n…) · `GET …/screen` · `GET …/usage` · `POST …/upload?name=` (picture bytes → saved in the project, referenced with `@path`)
+- `GET /code/usage?days=` token totals by day/project/model/session (estimated cost) · `GET /code/usage/plan[?force=1]` plan limits read from Claude Code's `/usage` screen (no model call, cached 5 min)
+- `GET /code/tmux` · `POST /code/tmux/:name/kill`
+Note: the agent runs as the same user as the assistant, so it can reach anything the container can (including `/data`). Keep permission mode on "manual" or "accept edits" unless you trust the task; "bypass permissions" needs `CODE_ALLOW_BYPASS=1`.

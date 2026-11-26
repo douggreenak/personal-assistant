@@ -8,6 +8,7 @@ import type { Ctx } from './ctx.ts';
 import { decide, listApprovals } from './approvals.ts';
 import { handleOwnerText } from './commands.ts';
 import { parseUploads, toLlmImages } from './images.ts';
+import { codeRoutes } from './code/routes.ts';
 import { createBackup, restoreBackup, listBackups, backupPath, saveBackupFile, lastBackup } from './backup.ts';
 import { ingestMacRows, type MacRow } from './mac.ts';
 import { ack, parseSnooze, snooze } from './nag.ts';
@@ -235,6 +236,7 @@ export function createHttp(ctx: Ctx, deps: HttpDeps): Server {
       if (!ctx.cfg.indexPaths.length) throw new HttpError(400, 'No index paths configured.');
       return send(res, 200, await indexPaths(ctx.db, ctx.cfg.indexPaths));
     }
+    if (path.startsWith('/code') && await codeRoutes(ctx, path, method, url.searchParams, { json: (limit) => readJson(req, limit), body: (limit) => readBody(req, limit), send: (st, b) => send(res, st, b) })) return;
     if (path === '/backup/export' && method === 'GET') {
       const { data, info } = createBackup(ctx, url.searchParams.get('secrets') !== '0');
       res.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': data.length, 'cache-control': 'no-store', 'content-disposition': `attachment; filename="assistant-backup-${info.createdAt.slice(0, 10)}.backup"`, 'x-backup-info': JSON.stringify(info) });

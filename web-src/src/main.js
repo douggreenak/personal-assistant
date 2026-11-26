@@ -10,11 +10,12 @@ import { initShortcuts, showHelp } from './shortcuts.js';
 import { itemDialog } from './pages/items.js';
 import { applyTheme, prefs, isDark } from './theme.js';
 import home from './pages/home.js'; import items from './pages/items.js'; import chat from './pages/chat.js'; import inbox from './pages/inbox.js';
+import code from './pages/code.js';
 import approvals from './pages/approvals.js'; import connectors from './pages/connectors.js'; import system from './pages/system.js'; import settings from './pages/settings.js';
 
 applyTheme();
 const PAGES = [
-  { id: 'home', label: 'Home', icon: 'home', fn: home }, { id: 'items', label: 'Items', icon: 'checklist', fn: items }, { id: 'chat', label: 'Chat', icon: 'chat', fn: chat },
+  { id: 'home', label: 'Home', icon: 'home', fn: home }, { id: 'items', label: 'Items', icon: 'checklist', fn: items }, { id: 'chat', label: 'Chat', icon: 'chat', fn: chat }, { id: 'code', label: 'Code', icon: 'code', fn: code },
   { id: 'inbox', label: 'Inbox', icon: 'inbox', fn: inbox }, { id: 'approvals', label: 'Approvals', icon: 'task_alt', fn: approvals },
   { id: 'connectors', label: 'Connect', icon: 'extension', fn: connectors }, { id: 'system', label: 'System', icon: 'monitor_heart', fn: system }, { id: 'settings', label: 'Settings', icon: 'settings', fn: settings },
 ];
@@ -120,7 +121,7 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) { hiddenAt = Date.now(); return; }
   if (!hasToken()) return; refreshStatus();
   const typing = document.activeElement && /^(INPUT|TEXTAREA|MD-)/.test(document.activeElement.tagName);
-  if (Date.now() - hiddenAt > 60000 && !page.guard?.() && !typing && !document.querySelector('md-dialog[open]') && !/^#\/(chat|settings)/.test(location.hash)) route();
+  if (Date.now() - hiddenAt > 60000 && !page.guard?.() && !typing && !document.querySelector('md-dialog[open]') && !/^#\/(chat|settings|code)/.test(location.hash)) route();
 });
 window.addEventListener('auth-lost', () => { clearToken(); showLogin(); });
 setInterval(() => { if (hasToken() && !document.hidden) refreshStatus(); }, 20000);

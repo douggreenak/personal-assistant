@@ -3,7 +3,7 @@ import { h, icon, clear, chip, guarded, toast, dialog, confirmDialog, page, fmtD
 import { PRESETS, prefs, applyTheme } from '../theme.js';
 import { restartServer } from './system.js';
 
-const GROUP_ICON = { General: 'tune', Brain: 'smart_toy', Ticketing: 'confirmation_number', Canopy: 'public', Google: 'mail', Notifications: 'notifications', 'Files & voice': 'folder', Access: 'key', Backup: 'inventory_2' };
+const GROUP_ICON = { General: 'tune', Brain: 'smart_toy', Ticketing: 'confirmation_number', Canopy: 'public', Google: 'mail', Notifications: 'notifications', 'Files & voice': 'folder', Access: 'key', Backup: 'inventory_2', Code: 'terminal' };
 
 export default async function settings(view) {
   const { settings: defs } = await api('/settings');
