@@ -124,5 +124,5 @@ export default async function items(view) {
     h('div', { class: 'toolbar' }, segs([['open', 'Open'], ['done', 'Done'], ['dropped', 'Dropped'], ['all', 'All']], st, (v) => (st = v)), segs([['', 'Everything'], ['ticket', 'Tickets'], ['reminder', 'Reminders'], ['task', 'Tasks']], kind, (v) => (kind = v)), segs([['', 'Any time'], ['overdue', 'Overdue'], ['today', 'Today'], ['week', 'Next 7 days']], when, (v) => (when = v)), search),
     list,
     h('div', { class: 'fab-slot' }, fab('New', 'New item', () => itemDialog(null, load))));
-  await load(); const t = setInterval(() => !document.hidden && !document.querySelector('md-dialog') && load(), 30000); return () => clearInterval(t);
+  await load(); const t = setInterval(() => !document.hidden && !document.querySelector('md-dialog, md-menu[open]') && load(), 30000); return () => clearInterval(t);
 }

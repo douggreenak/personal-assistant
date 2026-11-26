@@ -63,5 +63,5 @@ export default async function tickets(view) {
   drawSeg();
   clear(view).append(h('div', { class: 'page-head' }, h('h1', { class: 'display' }, 'Tickets'), h('p', { class: 'muted title-m' }, 'Track issues through their stages. The assistant creates and moves these too.')),
     h('div', { class: 'toolbar' }, seg, search), list, h('div', { class: 'fab-slot' }, fab('New', 'New ticket', () => newDialog(load))));
-  await load(); const t = setInterval(() => !document.hidden && !document.querySelector('md-dialog') && load(), 30000); return () => clearInterval(t);
+  await load(); const t = setInterval(() => !document.hidden && !document.querySelector('md-dialog, md-menu[open]') && load(), 30000); return () => clearInterval(t);
 }

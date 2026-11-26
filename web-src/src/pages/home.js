@@ -37,6 +37,6 @@ export default async function home(view, { nav, refreshStatus }) {
             return h('div', { class: 'form' }, f, pics.strip, h('div', { class: 'row-acts' }, b, pics.button, h('span', { class: 'grow' })), out, pics.input); })())));
   };
   await load();
-  const t = setInterval(() => !document.hidden && !document.querySelector('md-dialog') && load().catch(() => {}), 30000);
+  const t = setInterval(() => !document.hidden && !document.querySelector('md-dialog, md-menu[open]') && load().catch(() => {}), 30000);
   return () => clearInterval(t);
 }

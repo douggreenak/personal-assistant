@@ -114,5 +114,5 @@ export default async function system(view, { refreshStatus }) {
   }
   clear(view).append(h('div', { class: 'page-head' }, h('h1', { class: 'display' }, 'System'), h('p', { class: 'muted title-m' }, 'Health, logs and maintenance.')), h('div', { class: 'toolbar' }, filter), body);
   clear(body).append(spinner()); await load();
-  const t = setInterval(() => !document.hidden && load().catch(() => {}), 20000); return () => clearInterval(t);
+  const t = setInterval(() => !document.hidden && !document.querySelector('md-dialog[open], md-menu[open]') && load().catch(() => {}), 20000); return () => clearInterval(t);
 }

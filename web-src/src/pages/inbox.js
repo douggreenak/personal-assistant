@@ -33,5 +33,5 @@ export default async function inbox(view, { refreshStatus }) {
   drawSeg(); page.newAction = compose;
   clear(view).append(h('div', { class: 'page-head' }, h('h1', { class: 'display' }, 'Inbox'), h('p', { class: 'muted title-m' }, 'Everything the assistant has been sent, and what happened to it.')),
     h('div', { class: 'toolbar' }, seg, search), list, h('div', { class: 'fab-slot' }, fab('Add', 'Add message', compose)));
-  await load(); const t = setInterval(() => !document.hidden && !document.querySelector('md-dialog') && load(), 15000); return () => clearInterval(t);
+  await load(); const t = setInterval(() => !document.hidden && !document.querySelector('md-dialog, md-menu[open]') && load(), 15000); return () => clearInterval(t);
 }

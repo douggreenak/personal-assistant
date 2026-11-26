@@ -25,7 +25,7 @@ export default async function code(view) {
   // ---- layout like Claude Code on the web: sessions grouped by project on the left, the open session on the right ----
   let curProject = null; const setCur = () => { curProject = r.kind === 'p' ? r.id : r.kind === 's' ? projects.find((p) => p.sessions.some((s) => s.id === r.id))?.id : null; }; setCur();
   const side = h('aside', { class: 'code-side', 'aria-label': 'Sessions' }); const body = h('div', { class: 'code-main' });
-  const layout = h('div', { class: 'code-layout', 'data-pane': ['s', 'u', 't', 'x'].includes(r.kind) ? 'main' : 'list' }, side, body);
+  const layout = h('div', { class: 'code-layout', 'data-pane': ['s', 'u', 't', 'x', 'p'].includes(r.kind) ? 'main' : 'list' }, side, body);
   clear(view).append(head(!status.tmux), layout);
   let externals = [];
   let sideSig = '';
@@ -48,7 +48,7 @@ export default async function code(view) {
   }
   const refreshSide = async () => { try { const [pj, ex] = await Promise.all([api('/code/projects'), api('/code/external').catch(() => ({ sessions: [] }))]); externals = ex.sessions; drawSide(pj.projects); } catch { /* retry */ } };
   drawSide(projects); refreshSide();
-  timers.push(setInterval(() => { if (!document.hidden && !document.querySelector('md-dialog[open]')) refreshSide(); }, 4000));
+  timers.push(setInterval(() => { if (!document.hidden && !document.querySelector('md-dialog[open], md-menu[open]')) refreshSide(); }, 4000));
   function pickProjectDialog(list) {
     const sel = h('md-outlined-select', { label: 'Project' }, ...list.map((p, i) => h('md-select-option', { value: p.id, selected: i === 0 || undefined }, h('div', { slot: 'headline' }, p.name))));
     const { close } = dialog({ title: 'New session in…', content: sel, actions: [h('md-text-button', { onclick: () => close() }, 'Cancel'), h('md-filled-button', { onclick: () => { const p = list.find((x) => x.id === sel.value) || list[0]; close(); newSessionDialog(p, status); } }, 'Next')] });
@@ -57,7 +57,7 @@ export default async function code(view) {
   let mainToken = 0;
   async function renderMain() {
     const tok = ++mainToken; mainTimers.forEach(clearInterval); mainTimers = []; const tm = mainTimers;
-    layout.dataset.pane = ['s', 'u', 't', 'x'].includes(r.kind) ? 'main' : 'list';
+    layout.dataset.pane = ['s', 'u', 't', 'x', 'p'].includes(r.kind) ? 'main' : 'list';
   if (r.kind === 'u') usagePage(body, tm);
   else if (r.kind === 't') serverPage(body, status, tm);
   else if (r.kind === 's') await sessionPage(body, r.id, projects, status, tm);
@@ -113,12 +113,12 @@ export default async function code(view) {
     const list = h('div', { class: 'list' });
     const draw = (ps) => { const rows = ps.sessions; clear(list).append(...(rows.length ? rows.map((s) => sessionRow(p, s)) : [empty('terminal', 'No sessions yet', 'Start one to talk to Claude Code in this folder.')])); };
     const menuBtn = h('md-icon-button', { 'aria-label': 'Project options' }, icon('more_horiz'));
-    clear(el).append(h('div', { class: 'card high' }, h('div', { class: 'code-ph' }, h('div', { class: 'lead k-task' }, icon('code')), h('div', { style: 'flex:1 1 200px;min-width:0' }, h('div', { class: 'title-m' }, p.name), h('div', { class: 'mono muted', style: 'overflow-wrap:anywhere' }, p.path)),
+    clear(el).append(h('div', { class: 'card high' }, h('div', { class: 'code-ph' }, h('md-icon-button', { class: 'code-back-narrow', 'aria-label': 'Back to projects', onclick: () => go('') }, icon('arrow_back')), h('div', { class: 'lead k-task' }, icon('code')), h('div', { style: 'flex:1 1 200px;min-width:0' }, h('div', { class: 'title-m' }, p.name), h('div', { class: 'mono muted', style: 'overflow-wrap:anywhere' }, p.path)),
       h('md-filled-button', { onclick: () => newSessionDialog(p, st) }, icon('add'), 'New session'), menuBtn), list));
     menu(menuBtn, [['Rename project', () => renameDialog('Rename project', p.name, (n) => api('/code/projects/' + p.id, { method: 'PATCH', body: { name: n } }), () => go('p/' + p.id))],
       ['Remove project', async () => { if (await confirmDialog('Remove this project?', 'Its running sessions are stopped and it disappears from here. The folder and the conversations on disk are not touched.', 'Remove')) { await guarded(() => api('/code/projects/' + p.id, { method: 'DELETE' }), 'Project removed'); go(''); } }]]);
     draw(p);
-    const tick = async () => { if (document.hidden || document.querySelector('md-dialog[open]')) return; try { const j = await api('/code/projects'); const np = j.projects.find((x) => x.id === p.id); if (np) draw(np); } catch { /* retry */ } };
+    const tick = async () => { if (document.hidden || document.querySelector('md-dialog[open], md-menu[open]')) return; try { const j = await api('/code/projects'); const np = j.projects.find((x) => x.id === p.id); if (np) draw(np); } catch { /* retry */ } };
     tm.push(setInterval(tick, 4000));
   }
   function sessionRow(p, s) {
@@ -148,9 +148,9 @@ export default async function code(view) {
     const draw = async () => { const j = await guarded(() => api('/code/tmux')); if (!j) return;
       clear(box).append(...(j.sessions.length ? j.sessions.map((t) => h('div', { class: 'row static', 'data-tmux': t.name }, h('div', { class: 'lead k-task' }, icon('terminal')), h('div', { class: 'body' }, h('div', { class: 't' }, t.title || t.name), h('div', { class: 's mono' }, `tmux session ${t.name}${t.known ? '' : ' (not in the app)'}`)),
         h('div', { class: 'acts' }, t.sessionId ? h('md-text-button', { onclick: () => go('s/' + t.sessionId) }, 'Open') : '', h('md-text-button', { onclick: async () => { if (await confirmDialog('Stop this tmux session?', 'The terminal and anything running in it ends. A session from this app can be started again later and resumes its conversation.', 'Stop')) { await guarded(() => api(`/code/tmux/${t.name}/kill`, { method: 'POST' }), 'Stopped'); draw(); } } }, icon('stop'), 'Stop')))) : [empty('terminal', 'Nothing is running', 'Start a session from a project tab.')])); };
-    clear(el).append(h('div', { class: 'card high' }, h('h2', {}, icon('dns'), 'Running tmux sessions'), h('p', { class: 'muted' }, `Up to ${st.maxSessions} sessions can run at once. They live in the assistant's container: restarting the assistant ends them, and the ones that were running are started again (conversation resumed) afterwards.`), box,
+    clear(el).append(h('div', { class: 'card high' }, h('h2', {}, h('md-icon-button', { class: 'code-back-narrow', 'aria-label': 'Back to projects', onclick: () => go('') }, icon('arrow_back')), icon('dns'), 'Running tmux sessions'), h('p', { class: 'muted' }, `Up to ${st.maxSessions} sessions can run at once. They live in the assistant's container: restarting the assistant ends them, and the ones that were running are started again (conversation resumed) afterwards.`), box,
       st.allowBypass ? h('p', { class: 'muted' }, '“Bypass permissions” mode is allowed (Settings → Code).') : ''));
-    draw(); tm.push(setInterval(() => { if (!document.hidden) draw(); }, 4000));
+    draw(); tm.push(setInterval(() => { if (!document.hidden && !document.querySelector('md-dialog[open], md-menu[open]')) draw(); }, 4000));
   }
 
   // ---- Usage ----
@@ -168,7 +168,7 @@ export default async function code(view) {
           h('div', { class: 'help' }, 'Counted from the conversation files of sessions run here (each API message once). Cost is an estimate from list prices — a subscription is not billed per token.')),
         h('div', { class: 'grid cols-2' }, h('div', { class: 'card' }, h('h2', {}, 'By project'), table(u.byProject, 'Project')), h('div', { class: 'card' }, h('h2', {}, 'By model'), table(u.byModel, 'Model'))),
         h('div', { class: 'card' }, h('h2', {}, 'Busiest sessions'), table(u.sessions, 'Session'))); };
-    clear(el).append(h('div', { class: 'card high' }, h('h2', {}, icon('speed'), 'Plan limits', h('span', { class: 'grow' }), h('md-text-button', { onclick: () => loadPlan(true) }, icon('refresh'), 'Refresh')), planBox), tokBox);
+    clear(el).append(h('div', { class: 'card high' }, h('h2', {}, h('md-icon-button', { class: 'code-back-narrow', 'aria-label': 'Back to projects', onclick: () => go('') }, icon('arrow_back')), icon('speed'), 'Plan limits', h('span', { class: 'grow' }), h('md-text-button', { onclick: () => loadPlan(true) }, icon('refresh'), 'Refresh')), planBox), tokBox);
     loadPlan(false); loadTok(); tm.push(setInterval(() => { if (!document.hidden) loadTok(); }, 20000));
   }
 
@@ -316,7 +316,7 @@ export default async function code(view) {
     }
     // One poll at a time (two overlapping polls both used the same offset and drew every new message twice) and each message is drawn once.
     let polling = false, again = false; const seen = new Set(), orphans = new Map(); let oldest = 0, loadingOld = false;
-    const topNote = h('button', { class: 'code-older', type: 'button', hidden: true, onclick: () => loadOlder() }, icon('expand_less'), 'Load earlier messages');
+    const topNote = h('button', { class: 'code-older', type: 'button', hidden: true, onclick: () => loadOlder() }, icon('keyboard_arrow_up'), 'Load earlier messages');
     const loadingEl = spinner('Loading conversation'); msgs.prepend(topNote); msgs.append(loadingEl);
     async function loadOlder() {
       if (loadingOld || oldest <= 0) return; loadingOld = true; topNote.disabled = true;
