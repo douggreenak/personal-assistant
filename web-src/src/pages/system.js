@@ -1,5 +1,5 @@
 import { api, getToken } from '../api.js';
-import { h, icon, clear, ago, fmtDate, empty, chip, confirmDialog, guarded, toast, spinner, copyText } from '../ui.js';
+import { h, icon, clear, ago, fmtDate, empty, chip, confirmDialog, dialog, guarded, toast, spinner, copyText } from '../ui.js';
 
 const dur = (s) => (s < 3600 ? `${Math.round(s / 60)} min` : s < 86400 ? `${(s / 3600).toFixed(1)} h` : `${(s / 86400).toFixed(1)} days`);
 
@@ -8,6 +8,23 @@ export async function restartServer() {
   await guarded(() => api('/admin/restart', { method: 'POST' }));
   toast('Restarting…');
   for (let i = 0; i < 40; i++) { await new Promise((r) => setTimeout(r, 1500)); try { if ((await fetch('/healthz')).ok && i > 1) { toast('Back online'); setTimeout(() => location.reload(), 600); return; } } catch { /* still down */ } }
+}
+
+/** Click a connection that is not set up: where to go, what to do, and a box to paste what it asks for. */
+async function setupDialog(integ, done) {
+  const { guides } = await guarded(() => api('/integrations/guides')) ?? {}; const g = guides?.find((x) => x.id === integ.id); if (!g) return;
+  const box = h('md-outlined-text-field', { label: 'Paste the information here', type: 'textarea', rows: 7, 'data-primary': '', 'supporting-text': 'One value per line, like “' + g.fields[0].label + ': …”. Values are recognised by their label or by what they look like.' });
+  const result = h('div', {});
+  const content = h('div', { class: 'form setup-guide' }, h('p', { class: 'muted' }, g.summary),
+    h('h3', { class: 'title-m' }, 'What to do'), h('ol', { class: 'setup-steps' }, g.steps.map((t) => h('li', {}, t))),
+    h('h3', { class: 'title-m' }, 'What I need from you'), h('ul', { class: 'setup-fields' }, g.fields.map((f) => h('li', {}, h('b', {}, f.label), f.optional ? h('span', { class: 'muted' }, ' (optional)') : '', h('span', { class: 'muted' }, ' — ' + f.hint)))),
+    box, result);
+  const save = h('md-filled-button', { onclick: async () => {
+    const r = await guarded(() => api(`/integrations/${g.id}/setup`, { method: 'POST', body: { text: box.value } })); if (!r) return;
+    save.hidden = true; box.hidden = true;
+    clear(result).append(h('div', { class: 'card flat' }, h('b', {}, 'Saved: ' + r.saved.join(', ')), r.missing.length ? h('p', { class: 'muted' }, 'Still needed: ' + r.missing.join(', ') + '. Open this again and paste the rest.') : '', r.ignored.length ? h('p', { class: 'muted' }, 'I did not recognise: ' + r.ignored.join(' · ')) : '', h('p', { class: 'muted' }, 'Restart the assistant for it to start using this.'), h('md-filled-tonal-button', { onclick: () => { close(); restartServer(); } }, icon('restart_alt'), 'Restart now')));
+    done?.(); } }, 'Save');
+  const { close } = dialog({ title: 'Set up ' + g.name, content, actions: [h('md-text-button', { onclick: () => close() }, 'Close'), save] });
 }
 
 const size = (b) => (b > 1e6 ? (b / 1e6).toFixed(1) + ' MB' : Math.round(b / 1e3) + ' KB');
@@ -80,7 +97,8 @@ export default async function system(view, { refreshStatus }) {
     const levels = h('div', { class: 'seg' }); const drawLevels = () => clear(levels).append(...[['all', 'All'], ['error', 'Errors']].map(([v, l]) => h('button', { 'aria-pressed': String(v === level), onclick: () => { level = v; drawLevels(); drawLogs(); } }, l))); drawLevels();
     clear(body).append(
       h('div', { class: 'grid cols-3' }, stat('Version', 'v' + s.version), stat('Uptime', dur(s.uptimeSec)), stat('Brain', s.model), stat('Time zone', s.tz)),
-      (() => { const on = integ.integrations.filter((i) => i.configured), off = integ.integrations.filter((i) => !i.configured); const row = (i) => h('div', { class: 'row static', style: 'grid-template-columns:auto 1fr auto' }, h('span', { class: 'dot ' + (i.ok === false ? 'bad' : 'ok') }), h('div', {}, h('div', { class: 't' }, i.name), h('div', { class: 's' }, i.detail)), chip(i.ok === false ? 'problem' : 'on', i.ok === false ? 'bad' : 'ok')); return h('div', { class: 'card' }, h('h2', {}, icon('dns'), 'Integrations'), h('div', { class: 'list' }, on.map(row)), off.length ? h('p', { class: 'muted' }, 'Not set up: ' + off.map((i) => i.name).join(', ') + '.') : ''); })(),
+      (() => { const row = (i) => { const off = !i.configured; const el = h(off ? 'button' : 'div', { class: 'row' + (off ? ' setup-row' : ' static'), style: 'grid-template-columns:auto 1fr auto;text-align:left', ...(off ? { type: 'button', 'data-setup': i.id, onclick: () => setupDialog(i, load) } : {}) }, h('span', { class: 'dot ' + (off ? '' : i.ok === false ? 'bad' : 'ok') }), h('div', {}, h('div', { class: 't' }, i.name), h('div', { class: 's' }, off ? 'Not set up — click to see how' : i.detail)), off ? h('span', { class: 'muted s', style: 'display:flex;align-items:center;gap:2px' }, 'Set up', icon('chevron_right')) : chip(i.ok === false ? 'problem' : 'on', i.ok === false ? 'bad' : 'ok')); return el; };
+        return h('div', { class: 'card' }, h('h2', {}, icon('dns'), 'Connections'), h('div', { class: 'list' }, [...integ.integrations.filter((i) => i.configured), ...integ.integrations.filter((i) => !i.configured)].map(row))); })(),
       h('div', { class: 'grid ' + (s.bySource.length ? 'cols-2' : '') },
         s.bySource.length ? h('div', { class: 'card' }, h('h2', {}, icon('inbox'), 'Where messages come from'), s.bySource.length ? h('div', { class: 'list' }, s.bySource.map((r) => h('div', { class: 'row static', style: 'grid-template-columns:1fr auto' }, h('div', { class: 't' }, r.source), chip(String(r.n))))) : h('div', { class: 'muted' }, 'No messages yet.')) : null,
         h('div', { class: 'card' }, h('h2', {}, icon('history'), 'Recent changes'), act.events.length ? h('div', { class: 'timeline' }, act.events.slice(0, 10).map((e) => h('div', {}, h('div', { class: 't' }, `${e.type} · ${e.title}`), h('div', { class: 'muted' }, `${e.actor} · ${ago(e.at)}`)))) : h('div', { class: 'muted' }, 'Nothing yet.'))),

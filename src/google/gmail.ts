@@ -27,7 +27,7 @@ function bodyOf(p: Part | undefined): string {
 const header = (p: Part | undefined, n: string): string => p?.headers?.find((h) => h.name.toLowerCase() === n)?.value ?? '';
 
 /** Turns a Gmail API message into pipeline input; null for mail we never want to process. */
-export function parseGmail(m: GmailMessage, skipBulk: boolean): { sourceId: string; sender: string; subject: string; body: string; receivedAt?: string } | null {
+export function parseGmail(m: GmailMessage, skipBulk: boolean): { sourceId: string; sender: string; subject: string; body: string; receivedAt?: string; thread: string; counterpart: string } | null {
   const labels = m.labelIds ?? [];
   if (labels.some((l) => ['DRAFT', 'SPAM', 'TRASH'].includes(l))) return null;
   const sent = labels.includes('SENT');
@@ -36,7 +36,7 @@ export function parseGmail(m: GmailMessage, skipBulk: boolean): { sourceId: stri
   const body = bodyOf(m.payload) || m.snippet || '';
   if (!body) return null;
   return {
-    sourceId: m.id, sender: sent ? 'me' : header(m.payload, 'from'),
+    sourceId: m.id, sender: sent ? 'me' : header(m.payload, 'from'), thread: `gmail:${m.threadId ?? m.id}`, counterpart: sent ? header(m.payload, 'to') : header(m.payload, 'from'),
     subject: sent ? `to ${header(m.payload, 'to')}: ${header(m.payload, 'subject')}` : header(m.payload, 'subject'),
     body: body.slice(0, 20000), receivedAt: m.internalDate ? new Date(Number(m.internalDate)).toISOString() : undefined,
   };

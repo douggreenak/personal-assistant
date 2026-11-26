@@ -140,3 +140,21 @@ test('concurrent workers never process the same message twice', async () => {
   assert.equal(calls, 1);
   assert.equal(ctx.items.list().length, 1);
 });
+
+test('the model is told who wrote each message and sees the conversation; items from earlier messages in a chat are offered first', async () => {
+  const { ctx, llm } = makeCtx([{ actions: [act({ op: 'create', kind: 'task', title: 'Send Sam the quote' })] }, { actions: [] }, { actions: [] }], { now: NOW });
+  const T = 'mac:chat-sam';
+  storeMessage(ctx, { source: 'mac', sourceId: 'm1', sender: '+15550001', thread: T, counterpart: '+15550001', body: 'Can you send me the quote today?' });
+  await processNext(ctx);
+  storeMessage(ctx, { source: 'mac', sourceId: 'm2', sender: 'me', thread: T, counterpart: '+15550001', subject: 'to +15550001', body: 'Sure, sending it after lunch' });
+  await processNext(ctx);
+  storeMessage(ctx, { source: 'mac', sourceId: 'm3', sender: '+15550001', thread: T, counterpart: '+15550001', body: 'Thanks!' });
+  await processNext(ctx);
+  assert.match(llm.calls[0].prompt, /Direction: RECEIVED by the owner from \+15550001/);
+  assert.match(llm.calls[1].prompt, /Direction: SENT by the owner to \+15550001/);
+  assert.match(llm.calls[1].prompt, /Conversation so far[\s\S]*\+15550001 → me: Can you send me the quote today\?/);
+  assert.match(llm.calls[1].prompt, /Send Sam the quote \| \(already from this conversation\)|Send Sam the quote.*already from this conversation/);
+  assert.match(llm.calls[2].prompt, /Me → \+15550001: Sure, sending it after lunch/);
+  const other = storeMessage(ctx, { source: 'mac', sourceId: 'm4', sender: '+15559999', thread: 'mac:other', counterpart: '+15559999', body: 'unrelated' });
+  assert.ok(other); assert.equal((ctx.db.prepare('SELECT thread FROM messages WHERE id = ?').get(other!) as { thread: string }).thread, 'mac:other');
+});

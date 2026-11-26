@@ -153,3 +153,6 @@ export function pictureAttach(target, onError = () => {}) {
   host.addEventListener('drop', (e) => { host.classList.remove('drop'); const fs = [...(e.dataTransfer?.files ?? [])].filter((f) => f.type.startsWith('image/')); if (fs.length) { e.preventDefault(); add(fs); } });
   return { button, strip, input, images: () => pics.slice(), clear: () => { pics = []; draw(); } };
 }
+
+/** Shown in a list when loading it failed (never "nothing here": that would be a lie). */
+export const loadFailed = (retry) => h('div', { class: 'empty' }, h('div', { class: 'title-m' }, 'Couldn\'t load this'), h('p', { class: 'muted' }, 'The server did not answer.'), h('md-filled-tonal-button', { onclick: retry }, icon('refresh'), 'Try again'));

@@ -79,7 +79,7 @@ export async function output(ctx: Ctx, key: string, cmd: string) { const x = awa
 export async function commands(ctx: Ctx, key: string) { const x = await target(ctx, key); return listCommandsAt(ctx, x.cwd); }
 export async function usage(ctx: Ctx, key: string) {
   const x = await target(ctx, key); const f = newestTranscript(ctx, x.cwd); if (!f) return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, messages: 0, cost: 0, context: 0, model: '' };
-  const u = scanUsage(f); const t = u.rows.reduce((a, r) => ({ input: a.input + r.input, output: a.output + r.output, cacheRead: a.cacheRead + r.cacheRead, cacheWrite: a.cacheWrite + r.cacheWrite, messages: a.messages + r.messages, cost: a.cost + estimateCost(r) }), { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, messages: 0, cost: 0 });
+  const u = scanUsage(f, ctx.cfg.tz); const t = u.rows.reduce((a, r) => ({ input: a.input + r.input, output: a.output + r.output, cacheRead: a.cacheRead + r.cacheRead, cacheWrite: a.cacheWrite + r.cacheWrite, messages: a.messages + r.messages, cost: a.cost + estimateCost(r) }), { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, messages: 0, cost: 0 });
   return { ...t, context: u.lastContext, model: u.lastModel };
 }
 export async function history(ctx: Ctx, key: string, before: number, limit = 30) {

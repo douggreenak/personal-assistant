@@ -147,9 +147,12 @@ try {
   });
 
   await step('system: status, integrations and logs render; restart asks first', async () => {
-    await goto('system'); await page.locator('.card', { hasText: 'Integrations' }).waitFor(); const txt = (await page.locator('main').innerText()).toLowerCase();
+    await goto('system'); await page.locator('.card', { hasText: 'Connections' }).waitFor(); const txt = (await page.locator('main').innerText()).toLowerCase();
     for (const w of ['Version', 'Uptime', 'Ticketing', 'Gmail', 'Server log', 'Maintenance']) assert.ok(txt.includes(w.toLowerCase()), w);
     assert.match(await page.locator('.logs').innerText(), /assistant listening/);
+    await page.locator('[data-setup=ntfy]').click(); await dlg().waitFor(); assert.match(await dlg().innerText(), /What to do[\s\S]*What I need from you/);   // a connection that is not set up explains itself
+    await dlg().locator('md-outlined-text-field').evaluate((el) => { el.value = 'https://ntfy.sh\nassistant-e2e-topic'; el.dispatchEvent(new Event('input', { bubbles: true })); }); await btn('Save', dlg()).click();
+    await dlg().locator('text=Saved: ').waitFor(); await btn('Close', dlg()).click();
     await btn('Restart assistant').click(); await dlg().waitFor(); assert.match(await dlg().innerText(), /Restart the assistant/); await btn('Cancel', dlg()).click();
     await page.locator('.seg button', { hasText: 'Errors' }).click();
   });
@@ -457,7 +460,8 @@ try {
     assert.equal(await page.evaluate(() => window.__side === document.querySelector('.code-side')), true);
     await page.locator('.code-composer textarea').fill('draft kept'); await goto('inbox'); await goto('code'); await page.locator('.code-srow', { hasText: 'Session 1' }).first().click();   // an unsent prompt survives leaving the chat
     await page.waitForFunction(() => document.querySelector('.code-composer textarea')?.value === 'draft kept'); await page.locator('.code-composer textarea').fill('');
-    await page.locator('.code-only').click(); assert.equal(await page.locator('.code-bot', { hasText: 'Echo: hello e2e' }).isVisible(), true); assert.equal(await page.locator('.code-tool').first().isVisible().catch(() => false), false); await page.locator('.code-only').click();   // replies only
+    assert.equal(await page.locator('.code-only').getAttribute('aria-pressed'), 'true');   // replies only is the default
+    assert.equal(await page.locator('.code-bot', { hasText: 'Echo: hello e2e' }).isVisible(), true); await page.locator('.code-only').click(); assert.equal(await page.locator('.code-only').getAttribute('aria-pressed'), 'false');   // switched to all activity for the steps below
     await btn('Settings').click(); await dlg().waitFor(); await dlg().locator('md-outlined-select[label="Permissions"]').evaluate((el) => { el.value = 'plan'; el.dispatchEvent(new Event('change', { bubbles: true })); }); await btn('Apply', dlg()).click();
     await page.locator('.code-sub', { hasText: 'plan' }).waitFor({ timeout: 15000 }); await page.locator('md-dialog[open]').waitFor({ state: 'detached', timeout: 15000 });   // permission mode changed from the UI
     await page.locator('.code-composer textarea').fill('/co'); await page.locator('.code-cmds [data-cmd="/context"]').waitFor(); assert.ok(await page.locator('.code-cmds [data-cmd="/compact"]').count());

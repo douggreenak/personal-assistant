@@ -108,7 +108,7 @@ export function readBack(file: string, limit: number, before?: number): { msgs: 
 
 export interface UsageRow { day: string; model: string; input: number; output: number; cacheRead: number; cacheWrite: number; messages: number }
 /** Token usage per day and model. A message is written once per content block with the same usage: count each API message once (the last record wins). */
-export function scanUsage(file: string): { rows: UsageRow[]; lastContext: number; lastModel: string } {
+export function scanUsage(file: string, tz = 'UTC'): { rows: UsageRow[]; lastContext: number; lastModel: string } {
   const byMsg = new Map<string, { day: string; model: string; u: Usage }>(); let lastContext = 0, lastModel = '';
   let text = ''; try { text = readFileUtf8(file); } catch { return { rows: [], lastContext: 0, lastModel: '' }; }
   for (const line of text.split('\n')) {
@@ -116,7 +116,7 @@ export function scanUsage(file: string): { rows: UsageRow[]; lastContext: number
     try { const e = JSON.parse(line); if (e.type !== 'assistant' || e.isSidechain) continue; const u = usageOf(e.message?.usage); if (!u) continue;
       const key = String(e.message?.id ?? e.uuid); const model = String(e.message?.model ?? '');
       if (model.startsWith('<')) continue;   // synthetic messages
-      byMsg.set(key, { day: String(e.timestamp ?? '').slice(0, 10), model, u }); lastContext = u.input + u.cacheRead + u.cacheWrite; lastModel = model; } catch { /* skip */ }
+      byMsg.set(key, { day: dayIn(String(e.timestamp ?? ''), tz), model, u }); lastContext = u.input + u.cacheRead + u.cacheWrite; lastModel = model; } catch { /* skip */ }
   }
   const agg = new Map<string, UsageRow>();
   for (const { day, model, u } of byMsg.values()) {
@@ -126,6 +126,8 @@ export function scanUsage(file: string): { rows: UsageRow[]; lastContext: number
   return { rows: [...agg.values()], lastContext, lastModel };
 }
 import { readFileSync } from 'node:fs';
+/** The calendar day (YYYY-MM-DD) a timestamp falls on in the owner's time zone. */
+const dayIn = (ts: string, tz: string): string => { const d = new Date(ts); if (isNaN(+d)) return ts.slice(0, 10); try { return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d); } catch { return ts.slice(0, 10); } };
 const readFileUtf8 = (f: string) => readFileSync(f, 'utf8');
 
 /** Approximate list prices in USD per million tokens — an ESTIMATE shown as such (a subscription is not billed per token). */

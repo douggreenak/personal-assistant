@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { h, icon, clear, ago, empty, chip, guarded, toast } from '../ui.js';
+import { h, icon, clear, ago, empty, chip, guarded, toast, loadFailed, spinner } from '../ui.js';
 
 export default async function approvals(view, { refreshStatus }) {
   let status = 'pending';
@@ -7,8 +7,10 @@ export default async function approvals(view, { refreshStatus }) {
   const drawSeg = () => clear(seg).append(...[['pending', 'Waiting'], ['approved', 'Approved'], ['rejected', 'Rejected']].map(([v, l]) => h('button', { 'aria-pressed': String(v === status), onclick: () => { status = v; drawSeg(); load(); } }, l)));
   async function decide(a, yes) { const r = await guarded(() => api(`/approvals/${a.id}/${yes ? 'approve' : 'reject'}`, { method: 'POST' })); if (r) toast(r.result.slice(0, 200)); load(); refreshStatus(); }
   const keyed = (a, el) => { if (status === 'pending') { el.dataset.sel = ''; el._keys = { x: () => decide(a, true), y: () => decide(a, true), Delete: () => decide(a, false), Backspace: () => decide(a, false) }; } return el; };
+  let loaded = false;
   async function load() {
-    const { approvals: list } = (await guarded(() => api('/approvals?status=' + status))) ?? { approvals: [] };
+    if (!loaded) clear(body).append(spinner());
+    const r = await guarded(() => api('/approvals?status=' + status)); if (!r) { if (!loaded) clear(body).append(loadFailed(load)); return; } loaded = true; const { approvals: list } = r;
     clear(body).append(...(list.length ? list.map((a) => keyed(a, h('div', { class: 'card high' },
       h('div', { class: 's muted', style: 'display:flex;gap:8px;align-items:center' }, chip(a.kind === 'connector' ? 'connector' : 'action', a.kind === 'connector' ? 'warn' : ''), `#${a.id} · ${ago(a.createdAt)}`),
       h('div', { class: 'title-m' }, a.summary), h('div', { class: 'muted' }, 'Why I asked: ' + (a.reason || '—')),

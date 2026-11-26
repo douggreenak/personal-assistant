@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { h, icon, clear, fmtDate, ago, toLocalInput, empty, dialog, confirmDialog, guarded, chip, menu, debounce, state, page, rel, download, toast, fab } from '../ui.js';
+import { h, icon, clear, fmtDate, ago, toLocalInput, empty, dialog, confirmDialog, guarded, chip, menu, debounce, state, page, rel, download, toast, fab, loadFailed, spinner } from '../ui.js';
 
 const KIND_ICON = { ticket: 'confirmation_number', reminder: 'alarm', task: 'checklist' };
 const KIND_LABEL = { ticket: 'Ticket', reminder: 'Reminder', task: 'Task' };
@@ -104,7 +104,8 @@ export default async function items(view) {
     clear(list).append(...(rows.length ? rows.map((i) => itemRow(i, load)) : [empty('checklist', 'Nothing here', q || when ? 'No items match those filters.' : 'Nothing in this view yet. Press n to add something.')]));
     search.setAttribute('supporting-text', data.length ? `${rows.length} of ${data.length}` : '');
   };
-  async function load() { const p = new URLSearchParams({ state: st, limit: 500 }); if (kind) p.set('kind', kind); data = (await guarded(() => api('/items?' + p)))?.items ?? []; draw(); }
+  let loaded = false;
+  async function load() { const p = new URLSearchParams({ state: st, limit: 500 }); if (kind) p.set('kind', kind); if (!loaded) clear(list).append(spinner()); const r = await guarded(() => api('/items?' + p)); if (!r) { if (!loaded) clear(list).append(loadFailed(load)); return; } loaded = true; data = r.items; draw(); }
   const sortBtn = h('md-text-button', {}, icon('sort'), h('span', {}, 'Sort: ' + SORTS[sort]));
   const sortMenu = menu(sortBtn, Object.entries(SORTS).map(([k, l]) => ({ label: l, onclick: () => { sort = k; remember(); sortBtn.lastChild.textContent = 'Sort: ' + l; draw(); } })));
   const exportBtn = h('md-text-button', {}, icon('download'), h('span', {}, 'Export'));

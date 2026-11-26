@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, mkdtempSync, copyFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parseScreen, parseUsageScreen } from '../src/code/screen.ts';
+import { parseScreen, parseUsageScreen, resetInZone } from '../src/code/screen.ts';
 import { readBack, readDelta, scanUsage, transcriptPath, encodeCwd, estimateCost } from '../src/code/transcript.ts';
 
 const FX = new URL('./fixtures/code/', import.meta.url).pathname;
@@ -59,4 +59,11 @@ test('code: a long conversation is read from the back in pages that add up to th
   assert.equal(r.msgs.at(-1)!.id, 'a699'); assert.equal(readDelta(f, r.next).msgs.length, 0);   // tail ends at the last complete line; nothing new after it
   let guard = 0; while (r.start > 0 && guard++ < 100) { r = readBack(f, 40, r.start); ids.unshift(...r.msgs.map((m) => m.id)); }
   assert.equal(ids.length, 1400); assert.equal(new Set(ids).size, 1400); assert.equal(ids[0], 'u0'); assert.deepEqual(ids, ids.slice().sort((a, b) => (Number(a.slice(1)) - Number(b.slice(1))) || (a[0] === 'u' ? -1 : 1)));
+});
+
+test('code: plan reset times are shown in the owner\'s time zone', () => {
+  const now = new Date('2026-11-26T10:00:00Z');   // 01:00 in Anchorage
+  assert.equal(resetInZone('2:39am (UTC)', 'America/Anchorage', now), 'today 5:39 PM AKST');   // the next 02:39 UTC is this evening in Alaska
+  assert.equal(resetInZone('Nov 27, 5:59pm (UTC)', 'America/Anchorage', now), 'Nov 27, 8:59 AM AKST');
+  assert.equal(resetInZone('something else', 'America/Anchorage', now), 'something else');
 });

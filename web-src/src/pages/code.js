@@ -126,7 +126,7 @@ export default async function code(view) {
 
   // ---- Server: every tmux session ----
   function serverPage(el, st, tm) {
-    const box = h('div', { class: 'list' });
+    const box = h('div', { class: 'list' }, spinner());
     const draw = async () => { const j = await guarded(() => api('/code/tmux')); if (!j) return;
       clear(box).append(...(j.sessions.length ? j.sessions.map((t) => h('div', { class: 'row static', 'data-tmux': t.name }, h('div', { class: 'lead k-task' }, icon('terminal')), h('div', { class: 'body' }, h('div', { class: 't' }, t.title || t.name), h('div', { class: 's mono' }, `tmux session ${t.name}${t.known ? '' : ' (not in the app)'}`)),
         h('div', { class: 'acts' }, t.sessionId ? h('md-text-button', { onclick: () => go('s/' + t.sessionId) }, 'Open') : '', h('md-text-button', { onclick: async () => { if (await confirmDialog('Stop this tmux session?', 'The terminal and anything running in it ends. A session from this app can be started again later and resumes its conversation.', 'Stop')) { await guarded(() => api(`/code/tmux/${t.name}/kill`, { method: 'POST' }), 'Stopped'); draw(); } } }, icon('stop'), 'Stop')))) : [empty('terminal', 'Nothing is running', 'Start a session from a project tab.')])); };
@@ -137,7 +137,7 @@ export default async function code(view) {
 
   // ---- Usage ----
   function usagePage(el, tm) {
-    const planBox = h('div', {}, spinner('Reading plan usage')); const tokBox = h('div', {});
+    const planBox = h('div', {}, spinner('Reading plan usage')); const tokBox = h('div', {}, spinner());
     const loadPlan = async (force) => { clear(planBox).append(spinner('Reading plan usage')); try { const p = await api('/code/usage/plan' + (force ? '?force=1' : ''));
       clear(planBox).append(...(p.data ? [...p.data.sections.map((s) => h('div', { class: 'ubar' }, h('div', { class: 'field-row' }, h('div', { class: 't' }, s.label), h('div', { class: 'muted' }, s.percent + '% used' + (s.resets ? ' · resets ' + s.resets : ''))), h('div', { class: 'bar', role: 'progressbar', 'aria-valuenow': s.percent, 'aria-label': s.label }, h('div', { style: `width:${Math.min(100, s.percent)}%`, class: s.percent >= 90 ? 'hot' : '' })))),
         h('div', { class: 'help' }, `Read from Claude Code's /usage screen ${p.cached ? '(cached) ' : ''}at ${fmtDate(new Date(p.at).toISOString())}. Reading it costs nothing.`)] : [h('div', { class: 'err' }, p.error || 'Not available.')])); } catch (e) { clear(planBox).append(h('div', { class: 'err' }, e.message)); } };
@@ -220,9 +220,9 @@ export default async function code(view) {
       menu(headBtns.querySelector('#sessMenu'), [['Restart', async () => { await guarded(() => api(`/code/sessions/${sid}/restart`, { method: 'POST' }), 'Restarted'); poll(); }], ['Rename', () => renameDialog('Rename session', title, (n) => api('/code/sessions/' + sid, { method: 'PATCH', body: { title: n } }), () => { titleEl.textContent = title = ''; location.reload(); })],
         ['Delete session', async () => { if (await confirmDialog('Delete this session?', 'It is stopped and removed from the list. The conversation file stays on disk.', 'Delete')) { await guarded(() => api('/code/sessions/' + sid, { method: 'DELETE' }), 'Deleted'); go('p/' + p.id); } }]]); };
     // "Replies only": hides tool cards, thinking, slash commands and their output (remembered per session in this browser)
-    const KEY_H = 'code-replies-only:' + sid; let only = lsGet(KEY_H) === '1';
+    const KEY_H = 'code-replies-only:' + sid; let only = lsGet(KEY_H) !== '0';   // replies only unless this session was switched to "All activity"
     const onlyBtn = h('button', { class: 'code-only', type: 'button', title: 'Show only Claude\'s replies and your messages — hide tool calls, thinking and commands', onclick: () => { only = !only; lsSet(KEY_H, only ? '1' : '0'); drawOnly(); } });
-    const drawOnly = () => { onlyBtn.setAttribute('aria-pressed', String(only)); clear(onlyBtn).append(icon(only ? 'visibility_off' : 'visibility'), only ? 'Replies only' : 'All activity'); msgs.classList.toggle('replies-only', only); if (stick) msgs.scrollTop = msgs.scrollHeight; };
+    const drawOnly = () => { onlyBtn.setAttribute('aria-pressed', String(only)); clear(onlyBtn).append(icon(only ? 'visibility_off' : 'visibility'), only ? 'Replies only' : 'All activity'); msgs.classList.toggle('replies-only', only); fillUp(); if (stick) msgs.scrollTop = msgs.scrollHeight; };
     const seg = h('div', { class: 'seg' }); const drawSeg = () => clear(seg).append(...[['chat', 'Conversation'], ['term', 'Terminal']].map(([v, l]) => h('button', { 'aria-pressed': String(view === v), 'data-view': v, onclick: () => { view = v; drawSeg(); layout(); if (v === 'term') pollTerm(); } }, l))); drawSeg();
     const chatPane = h('div', { class: 'code-chat' }, msgs, permBox);
     const termPane = h('div', { class: 'code-term' }, term, termKeys, h('div', { class: 'code-term-send' }, (() => { const f = h('md-outlined-text-field', { label: 'Type into the terminal', class: 'grow' }); const go2 = async (enter) => { const t = f.value; f.value = ''; await guarded(() => api(`${base}/keys`, { method: 'POST', body: { text: t, keys: enter ? ['Enter'] : undefined } })); pollTerm(); }; f.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); go2(true); } }); return [f, h('md-filled-tonal-button', { onclick: () => go2(true) }, 'Send + Enter'), h('md-text-button', { onclick: () => go2(false) }, 'Type only')]; })()));
@@ -269,13 +269,14 @@ export default async function code(view) {
     // One poll at a time (two overlapping polls both used the same offset and drew every new message twice) and each message is drawn once.
     let polling = false, again = false; const seen = new Set(), orphans = new Map(); let oldest = 0, loadingOld = false;
     const topNote = h('button', { class: 'code-older', type: 'button', hidden: true, onclick: () => loadOlder() }, icon('expand_less'), 'Load earlier messages');
-    msgs.prepend(topNote);
+    const loadingEl = spinner('Loading conversation'); msgs.prepend(topNote); msgs.append(loadingEl);
     async function loadOlder() {
       if (loadingOld || oldest <= 0) return; loadingOld = true; topNote.disabled = true;
       try { const r = await api(`${base}/history?before=${oldest}&limit=30`); const frag = document.createDocumentFragment(); for (const m of r.msgs) { if (m.t !== 'title' && m.t !== 'mode') { if (seen.has(m.id)) continue; seen.add(m.id); } addMsg(m, frag); }
-        const prevH = msgs.scrollHeight, prevT = msgs.scrollTop; topNote.after(frag); msgs.scrollTop = prevT + (msgs.scrollHeight - prevH); oldest = r.start; topNote.hidden = oldest <= 0; }
+        const prevH = msgs.scrollHeight, prevT = msgs.scrollTop; topNote.after(frag); msgs.scrollTop = prevT + (msgs.scrollHeight - prevH); oldest = r.start; topNote.hidden = oldest <= 0; fillUp(); }
       catch (e) { toast(e.message, { error: true }); } finally { loadingOld = false; topNote.disabled = false; }
     }
+    function fillUp() { setTimeout(() => { if (oldest > 0 && !loadingOld && msgs.scrollHeight <= msgs.clientHeight + 60) loadOlder(); }, 60); }   // short history (e.g. replies only): keep loading until the box is full or there is no more
     msgs.addEventListener('scroll', () => { if (msgs.scrollTop < 160 && oldest > 0 && !loadingOld) loadOlder(); });
     function poll() { if (polling) { again = true; return Promise.resolve(); } polling = true; return pollOnce().finally(() => { polling = false; if (again) { again = false; poll(); } }); }
     async function pollOnce() {
@@ -283,7 +284,7 @@ export default async function code(view) {
       try {
         const l = await api(started ? `${base}/live?after=${after}` : `${base}/live?tail=40`); const first = !started;
         if (started && l.next < after) { clear(msgs); msgs.prepend(topNote); topNote.hidden = true; tools.clear(); seen.clear(); orphans.clear(); oldest = 0; started = false; after = 0; again = true; return; }   // the conversation file was replaced (e.g. /clear): start over
-        started = true; after = l.next || after; if (first) { oldest = l.start || 0; topNote.hidden = oldest <= 0; }
+        loadingEl.remove(); started = true; after = l.next || after; if (first) { oldest = l.start || 0; topNote.hidden = oldest <= 0; setTimeout(fillUp, 100); }
         let list = l.msgs.filter((m) => { if (m.t === 'title' || m.t === 'mode') return true; const k = m.id; if (seen.has(k)) return false; seen.add(k); return true; }); if (first && list.length > 300) { hidden = list.length - 300; list = list.slice(-300); msgs.append(h('div', { class: 'code-note' }, `${hidden} earlier messages are not shown here (they are in the terminal's scrollback and the conversation file).`)); }
         for (const m of list) addMsg(m); if (list.length && stick) msgs.scrollTop = msgs.scrollHeight;
         if (first && !l.msgs.length && !l.transcript) msgs.append(h('div', { class: 'code-note', id: 'emptyNote' }, l.running ? 'Session is up. Say something to Claude Code below.' : ''));

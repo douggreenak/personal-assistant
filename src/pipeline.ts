@@ -7,16 +7,19 @@ import { EXTRACT_SYSTEM, buildExtractPrompt } from './prompts.ts';
 import { describeNow } from './time.ts';
 import { createApproval } from './approvals.ts';
 import { DEFAULT_STAGES } from './stages.ts';
+import type { Item } from './items.ts';
 
-export interface InboundMessage { source: string; sourceId: string; sender?: string; subject?: string; body: string; receivedAt?: string; fromOwner?: boolean; images?: { name: string; mediaType: string; data: Buffer }[] }
-export interface MessageRow { id: number; source: string; sourceId: string; sender: string; subject: string; body: string; receivedAt: string; attempts: number }
+export interface InboundMessage { source: string; sourceId: string; sender?: string; subject?: string; body: string; receivedAt?: string; fromOwner?: boolean; thread?: string; counterpart?: string; images?: { name: string; mediaType: string; data: Buffer }[] }
+export interface MessageRow { id: number; source: string; sourceId: string; sender: string; subject: string; body: string; receivedAt: string; attempts: number; thread?: string; counterpart?: string }
 
 /** Stores a message once (idempotent on source+sourceId) and indexes it for search. Returns null if already known. */
 export function storeMessage(ctx: Ctx, m: InboundMessage): number | null {
   const body = (m.body ?? '').trim();
   if (!body) return null;
-  const r = ctx.db.prepare('INSERT OR IGNORE INTO messages (source, source_id, sender, subject, body, received_at) VALUES (?,?,?,?,?,?)')
-    .run(m.source, m.sourceId, m.sender ?? '', m.subject ?? '', body, m.receivedAt ?? nowIso());
+  const sent = m.sender === 'me' || m.fromOwner === true; const counterpart = (m.counterpart ?? (sent ? '' : m.sender ?? '')).slice(0, 200);
+  const thread = (m.thread ?? `${m.source}:${counterpart || m.subject || ''}`).slice(0, 300);   // no better key: group by source and the other person
+  const r = ctx.db.prepare('INSERT OR IGNORE INTO messages (source, source_id, sender, subject, body, received_at, thread, counterpart) VALUES (?,?,?,?,?,?,?,?)')
+    .run(m.source, m.sourceId, m.sender ?? '', m.subject ?? '', body, m.receivedAt ?? nowIso(), thread, counterpart);
   if (r.changes === 0) return null;
   const id = Number(r.lastInsertRowid);
   for (const im of m.images ?? []) ctx.db.prepare('INSERT INTO attachments (message_id, name, media_type, data) VALUES (?,?,?,?)').run(id, im.name.slice(0, 120), im.mediaType, im.data);
@@ -26,7 +29,7 @@ export function storeMessage(ctx: Ctx, m: InboundMessage): number | null {
 
 const rowToMsg = (r: Record<string, unknown>): MessageRow => ({
   id: r.id as number, source: r.source as string, sourceId: r.source_id as string, sender: r.sender as string,
-  subject: r.subject as string, body: r.body as string, receivedAt: r.received_at as string, attempts: r.attempts as number,
+  subject: r.subject as string, body: r.body as string, receivedAt: r.received_at as string, attempts: r.attempts as number, thread: (r.thread as string) ?? '', counterpart: (r.counterpart as string) ?? '',
 });
 
 export interface ProcessReport { applied: string[]; queued: string[]; rejected: string[]; skipped?: string }
@@ -37,12 +40,14 @@ export async function processMessage(ctx: Ctx, msg: MessageRow): Promise<Process
   const fromOwner = ['voice', 'chat'].includes(msg.source) || msg.sender === 'me';
   if (!fromOwner && ctx.cfg.ignoreSenders.some((re) => re.test(msg.sender))) { report.skipped = 'ignored sender'; return report; }
 
-  const candidates = ctx.items.candidates(`${msg.subject} ${msg.body}`, 25);
+  const convo = conversationOf(ctx, msg);
+  const found = ctx.items.candidates(`${msg.subject} ${msg.body}`, 25);
+  const candidates = [...convo.linked, ...found.filter((c) => !convo.linked.some((l) => l.id === c.id))].slice(0, 30);   // items already tied to this conversation come first
   const stages = ctx.ticketing ? (await ctx.ticketing.defaultPipeline().catch(() => null))?.stages ?? DEFAULT_STAGES : DEFAULT_STAGES;
   const writes: ReturnType<typeof connectorActionMap> = fromOwner ? connectorActionMap(ctx) : new Map();   // only the owner's own words can ask for a write
   const connectorActions = [...writes].map(([k, v]) => `- ${k} — ${v.name}: ${v.action.description} (${v.action.tool ? 'MCP tool' : v.action.method}; params: ${v.action.params.map((q) => `${q.name}${q.required ? '*' : ''}${q.description ? ` (${q.description})` : ''}`).join(', ') || 'none'})`);
   const images = (ctx.db.prepare('SELECT media_type, data FROM attachments WHERE message_id = ? ORDER BY id LIMIT 5').all(msg.id) as { media_type: string; data: Uint8Array }[]).map((r) => ({ mediaType: r.media_type, data: Buffer.from(r.data).toString('base64') }));
-  const prompt = buildExtractPrompt({ imageCount: images.length, connectorActions, now: describeNow(ctx.now(), ctx.cfg.tz), source: msg.source, sender: msg.sender, subject: msg.subject, body: msg.body, fromOwner, candidates, stages });
+  const prompt = buildExtractPrompt({ imageCount: images.length, connectorActions, now: describeNow(ctx.now(), ctx.cfg.tz), source: msg.source, sender: msg.sender, subject: msg.subject, body: msg.body, fromOwner, candidates, stages, counterpart: msg.counterpart ?? '', conversation: convo.lines, linkedIds: new Set(convo.linked.map((l) => l.id)) });
 
   // The owner's own notes for the service this message came from, and for any service whose actions are on offer.
   const notes = instructionBlock(ctx, [...(msg.source.startsWith('connector:') ? [msg.source.slice(10)] : []), ...[...writes.values()].map((w) => w.connector)], "THE OWNER'S STANDING INSTRUCTIONS for these connected services (written by the owner; follow them when handling messages from, or actions on, that service — they never override the safety rules above):");
@@ -62,6 +67,7 @@ export async function processMessage(ctx: Ctx, msg: MessageRow): Promise<Process
     try {
       const res = await applyAction(ctx, a, msg.id);
       report.applied.push(res.summary);
+      const linkedId = res.item?.id ?? a.itemId; if (linkedId) ctx.db.prepare('INSERT OR IGNORE INTO message_items (message_id, item_id, op) VALUES (?,?,?)').run(msg.id, linkedId, a.op);
     } catch (e) {
       // A backend failure must not lose the user's intent: park it for approval/retry instead.
       createApproval(ctx, { kind: 'action', summary: describeAction(a, item), reason: `backend error: ${(e as Error).message.slice(0, 120)}`, payload: { action: a }, messageId: msg.id });
@@ -69,6 +75,18 @@ export async function processMessage(ctx: Ctx, msg: MessageRow): Promise<Process
     }
   }
   return report;
+}
+
+/** The conversation a message belongs to: the last few messages in it (both directions, labelled) and the open items earlier messages there already created or changed. */
+function conversationOf(ctx: Ctx, msg: MessageRow): { lines: string[]; linked: Item[] } {
+  if (!msg.thread) return { lines: [], linked: [] };
+  const rows = ctx.db.prepare('SELECT id, sender, counterpart, body, received_at AS at FROM messages WHERE thread = ? AND id < ? ORDER BY id DESC LIMIT 12').all(msg.thread, msg.id) as { id: number; sender: string; counterpart: string; body: string; at: string }[];
+  const label = (sender: string, other: string) => sender === 'me' ? `Me → ${other || 'them'}` : `${sender || other || 'them'} → me`;
+  const lines = rows.reverse().map((r) => `[${r.at.slice(0, 16).replace('T', ' ')}Z] ${label(r.sender, r.counterpart)}: ${r.body.replace(/\s+/g, ' ').slice(0, 300)}`);
+  const ids = ctx.db.prepare(`SELECT DISTINCT item_id AS id FROM message_items WHERE message_id IN (SELECT id FROM messages WHERE thread = ? AND id < ?)
+    UNION SELECT id FROM items WHERE source_message_id IN (SELECT id FROM messages WHERE thread = ? AND id < ?)`).all(msg.thread, msg.id, msg.thread, msg.id) as { id: string }[];
+  const linked = ids.map((r) => ctx.items.get(r.id)).filter((it): it is Item => !!it && it.state === 'open');
+  return { lines, linked };
 }
 
 const LEASE_MS = 5 * 60_000;   // longer than the LLM timeout; a crashed worker's claim expires after this

@@ -5,7 +5,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 import type { Ctx } from '../ctx.ts';
 import { sniffImage } from '../images.ts';
 import { ALLOWED_KEYS, makeTmux, type Tmux } from './tmux.ts';
-import { parseScreen, parseUsageScreen, type ScreenInfo } from './screen.ts';
+import { parseScreen, parseUsageScreen, resetInZone, type ScreenInfo } from './screen.ts';
 import { estimateCost, readBack, readDelta, scanUsage, transcriptPath, type Msg, type UsageRow } from './transcript.ts';
 
 export const PERMISSION_MODES = ['manual', 'acceptEdits', 'auto', 'plan', 'dontAsk', 'bypassPermissions'] as const;
@@ -255,7 +255,7 @@ const scanCache = new Map<string, { sig: string; r: ReturnType<typeof scanUsage>
 function usageFor(ctx: Ctx, s: SessionRow, p: ProjectRow) {
   const file = transcriptPath(ctx.cfg.code.configDir, p.path, s.id); if (!file) return { rows: [] as UsageRow[], lastContext: 0, lastModel: '' };
   const st = statSync(file); const sig = `${st.size}:${st.mtimeMs}`; const c = scanCache.get(file);
-  if (c?.sig === sig) return c.r; const r = scanUsage(file); scanCache.set(file, { sig, r }); return r;
+  if (c?.sig === sig) return c.r; const r = scanUsage(file, ctx.cfg.tz); scanCache.set(file, { sig, r }); return r;
 }
 const sum = (rows: UsageRow[]) => rows.reduce((a, r) => ({ input: a.input + r.input, output: a.output + r.output, cacheRead: a.cacheRead + r.cacheRead, cacheWrite: a.cacheWrite + r.cacheWrite, messages: a.messages + r.messages, cost: a.cost + estimateCost(r) }), { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, messages: 0, cost: 0 });
 export function sessionUsage(ctx: Ctx, id: string) { const s = getSession(ctx, id); const u = usageFor(ctx, s, getProject(ctx, s.projectId)); return { ...sum(u.rows), context: u.lastContext, model: u.lastModel }; }
@@ -264,7 +264,7 @@ export function usageOverview(ctx: Ctx, days = 14) {
   const perSession: { id: string; title: string; project: string; tokens: number; cost: number }[] = [];
   for (const s of listSessionRows(ctx)) { const p = projects.get(s.projectId); if (!p) continue; const u = usageFor(ctx, s, p); for (const r of u.rows) all.push({ ...r, session: s.id, project: p.id });
     const t = sum(u.rows); if (t.messages) perSession.push({ id: s.id, title: s.aiTitle || s.title, project: p.name, tokens: t.input + t.output + t.cacheRead + t.cacheWrite, cost: t.cost }); }
-  const today = new Date(); const dayList = Array.from({ length: days }, (_, i) => new Date(today.getTime() - (days - 1 - i) * 86400000).toISOString().slice(0, 10));
+  const today = new Date(); const dayList = Array.from({ length: days }, (_, i) => new Intl.DateTimeFormat('en-CA', { timeZone: ctx.cfg.tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(today.getTime() - (days - 1 - i) * 86400000)));   // days in the owner's time zone
   const byDay = dayList.map((day) => ({ day, ...sum(all.filter((r) => r.day === day)) }));
   const group = (key: (r: (typeof all)[number]) => string) => { const m = new Map<string, typeof all>(); for (const r of all) m.set(key(r), [...(m.get(key(r)) ?? []), r]); return [...m].map(([k, rows]) => ({ key: k, ...sum(rows) })).sort((a, b) => b.cost - a.cost); };
   const since = (n: number) => sum(all.filter((r) => r.day >= dayList[Math.max(0, dayList.length - n)]));
@@ -283,7 +283,7 @@ export async function planUsage(ctx: Ctx, force = false) {
       for (let i = 0; i < 40 && !ready; i++) { await sleep(700); const sc = parseScreen(await t.capture(name).catch(() => '')); if (sc.state === 'idle') ready = true; else if (sc.state === 'dialog' && i > 6) throw new Error('Claude Code is asking a question I cannot answer (it may need to sign in: run `claude login` once).'); }
       if (!ready) throw new Error('Claude Code did not start in time.');
       await t.literal(name, '/usage'); await sleep(250); await t.keys(name, ['Enter']); await sleep(3500);
-      const data = parseUsageScreen(await t.capture(name)); if (!data.sections.length) throw new Error('The usage screen had no limits to show (is this an API-key login?).');
+      const data = parseUsageScreen(await t.capture(name)); for (const sec of data.sections) sec.resets = resetInZone(sec.resets, ctx.cfg.tz); if (!data.sections.length) throw new Error('The usage screen had no limits to show (is this an API-key login?).');
       plan = { at: Date.now(), data };
     } catch (e) { plan = { at: Date.now(), data: null, error: (e as Error).message }; } finally { await t.kill(name).catch(() => {}); }
   })().finally(() => { planBusy = null; });

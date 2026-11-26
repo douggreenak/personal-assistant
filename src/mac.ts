@@ -34,7 +34,7 @@ export function ingestMacRows(ctx: Ctx, rows: MacRow[]): { accepted: number; max
     const mine = !!Number(r.is_from_me);
     const id = storeMessage(ctx, {
       source: 'mac', sourceId: r.guid || `rowid-${r.rowid}`, sender: mine ? 'me' : (r.handle ?? 'unknown'),
-      subject: mine && r.handle ? `to ${r.handle}` : '', body: text, receivedAt: new Date(r.date).toString() === 'Invalid Date' ? undefined : new Date(r.date).toISOString(),
+      subject: mine && r.handle ? `to ${r.handle}` : '', thread: `mac:${r.chat || r.handle || 'unknown'}`, counterpart: r.handle ?? '', body: text, receivedAt: new Date(r.date).toString() === 'Invalid Date' ? undefined : new Date(r.date).toISOString(),
     });
     if (id !== null) accepted++;
   }

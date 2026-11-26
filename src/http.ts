@@ -23,6 +23,7 @@ import { search } from './qa.ts';
 import { indexPaths } from './index/indexer.ts';
 import { activity, connectorsFull, deleteConnector, integrations, listMessages, retryMessage, saveServiceAccount, setConnectorStatus, setSecret, skipMessage, status } from './admin.ts';
 import { saveSettings, viewSettings } from './settings.ts';
+import { GUIDES, applySetup } from './setup.ts';
 import { getLogs } from './logs.ts';
 import { latestMacRelease, openMacDownload, publicRelease, macHeartbeat, listMacClients, requestMacUpdate, forgetMacClient } from './macapp.ts';
 
@@ -224,6 +225,10 @@ export function createHttp(ctx: Ctx, deps: HttpDeps): Server {
     if ((m = /^\/secrets\/([A-Z0-9_]+)$/.exec(path)) && method === 'PUT') {
       try { setSecret(ctx, m[1], String((await readJson(req)).value ?? '') || null); } catch (e) { throw new HttpError(400, (e as Error).message); }
       return send(res, 200, { ok: true });
+    }
+    if (path === '/integrations/guides' && method === 'GET') return send(res, 200, { guides: GUIDES });
+    if ((m = /^\/integrations\/([a-z]+)\/setup$/.exec(path)) && method === 'POST') {
+      try { return send(res, 200, applySetup(ctx, m[1], String((await readJson(req)).text ?? ''))); } catch (e) { throw new HttpError(400, (e as Error).message); }
     }
     if (path === '/settings' && method === 'GET') return send(res, 200, { settings: viewSettings(ctx.cfg.dataDir) });
     if (path === '/settings' && method === 'PUT') {

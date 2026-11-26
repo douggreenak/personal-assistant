@@ -81,7 +81,7 @@ export async function pollChatSpaces(ctx: Ctx, user: TokenSource, fetchImpl: typ
     for (const m of r.messages ?? []) {
       if (!m.text || m.sender?.type === 'BOT') continue;
       const mine = !!self && (m.sender?.name === self);
-      if (storeMessage(ctx, { source: 'chat-read', sourceId: m.name, sender: mine ? 'me' : (m.sender?.displayName ?? m.sender?.name ?? ''), subject: sp.displayName ?? '', body: m.text, receivedAt: m.createTime }) !== null) n++;
+      if (storeMessage(ctx, { source: 'chat-read', sourceId: m.name, sender: mine ? 'me' : (m.sender?.displayName ?? m.sender?.name ?? ''), subject: sp.displayName ?? '', thread: `chat:${sp.name}`, counterpart: sp.displayName ?? '', body: m.text, receivedAt: m.createTime }) !== null) n++;
     }
   }
   kvSet(ctx.db, 'chatread.since', newest);

@@ -54,10 +54,12 @@ export default async function connectors(view, { refreshStatus }) {
     const r = await guarded(() => api(`/approvals/${id}/${ok ? 'approve' : 'reject'}`, { method: 'POST' }));
     if (r) toast(ok ? 'Approved — now add the key, test it, then enable' : 'Rejected'); load(); refreshStatus(); return !!r;
   }
+  let loaded = false;
   async function load() {
+    if (!loaded) clear(list).append(spinner());
     health = Object.fromEntries((((await api('/status/integrations').catch(() => null)) ?? { integrations: [] }).integrations).map((i) => [i.id, i]));
     pending = Object.fromEntries(((await guarded(() => api('/approvals'))) ?? { approvals: [] }).approvals.filter((a) => a.kind === 'connector').map((a) => [a.payload.id, a.id])); const { connectors: cs } = (await guarded(() => api('/connectors/full'))) ?? { connectors: [] };
-    clear(list).append(...(cs.length ? cs.map(card) : [empty('extension', 'No connectors yet', 'Paste a service\'s docs and key, or an MCP server\'s URL, and I\'ll connect it for you.')])); }
+    loaded = true; clear(list).append(...(cs.length ? cs.map(card) : [empty('extension', 'No connectors yet', 'Paste a service\'s docs and key, or an MCP server\'s URL, and I\'ll connect it for you.')])); }
   function add() {
     const t = h('md-outlined-text-field', { label: 'Paste everything — docs, example requests, your key', type: 'textarea', rows: 8, 'data-primary': '' });
     const key = h('md-outlined-text-field', { label: 'API key (optional — I also find keys inside the paste)', type: 'password', autocomplete: 'off', 'supporting-text': 'Keys are stored on the server only; the model never sees them.' });

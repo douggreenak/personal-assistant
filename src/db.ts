@@ -85,6 +85,12 @@ CREATE TABLE code_sessions (
   created_at TEXT NOT NULL, started_at TEXT, desired INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX code_sessions_project ON code_sessions(project_id);
+`, `
+ALTER TABLE messages ADD COLUMN thread TEXT NOT NULL DEFAULT '';        -- the conversation it belongs to (a text chat, an e-mail thread, a chat space)
+ALTER TABLE messages ADD COLUMN counterpart TEXT NOT NULL DEFAULT '';   -- the other side: who the owner wrote to, or who wrote to the owner
+CREATE INDEX messages_thread ON messages(thread, id);
+CREATE TABLE message_items (message_id INTEGER NOT NULL, item_id TEXT NOT NULL, op TEXT NOT NULL, PRIMARY KEY (message_id, item_id, op));
+CREATE INDEX message_items_item ON message_items(item_id);
 `];
 
 export function openDb(path: string): Db {

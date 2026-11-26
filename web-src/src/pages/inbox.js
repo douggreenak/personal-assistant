@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { h, icon, clear, ago, fmtDate, empty, chip, dialog, guarded, debounce, page, fab } from '../ui.js';
+import { h, icon, clear, ago, fmtDate, empty, chip, dialog, guarded, debounce, page, fab, loadFailed, spinner } from '../ui.js';
 
 export default async function inbox(view, { refreshStatus }) {
   let filter = 'all', q = '';
@@ -8,8 +8,10 @@ export default async function inbox(view, { refreshStatus }) {
   const drawSeg = () => clear(seg).append(...[['all', 'All'], ['pending', 'Waiting'], ['failed', 'Failing'], ['done', 'Processed']].map(([v, l]) => h('button', { 'aria-pressed': String(v === filter), onclick: () => { filter = v; drawSeg(); load(); } }, l)));
   const search = h('md-outlined-text-field', { label: 'Search messages', class: 'grow', 'data-primary': '' }, h('span', { slot: 'leading-icon' }, icon('search')));
   search.addEventListener('input', debounce(() => { q = search.value; load(); }, 300));
+  let loaded = false;
   async function load() {
-    const { messages } = (await guarded(() => api(`/messages?filter=${filter}&limit=150&q=${encodeURIComponent(q)}`))) ?? { messages: [] };
+    if (!loaded) clear(list).append(spinner());
+    const r = await guarded(() => api(`/messages?filter=${filter}&limit=150&q=${encodeURIComponent(q)}`)); if (!r) { if (!loaded) clear(list).append(loadFailed(load)); return; } loaded = true; const { messages } = r;
     clear(list).append(...(messages.length ? messages.map((m) => {
       const state = m.processedAt ? (m.error ? chip('skipped', 'warn') : chip('processed', 'ok')) : m.error ? chip(`failing · ${m.attempts} tries`, 'bad') : chip('waiting', 'warn');
       const skip = async () => { await guarded(() => api(`/messages/${m.id}/skip`, { method: 'POST' }), 'Skipped'); load(); refreshStatus(); };
