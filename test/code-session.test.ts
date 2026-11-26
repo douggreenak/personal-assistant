@@ -1,7 +1,7 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, symlinkSync, existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, symlinkSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { makeCtx } from './helpers.ts';
@@ -46,6 +46,11 @@ test('code: a session starts in tmux, takes messages, shows tools and permission
   // multi-line text arrives intact (bracketed paste)
   await waitFor(async () => (await state(s.id)) === 'idle'); await C.sendMessage(ctx, s.id, 'line one\nline two');
   await waitFor(async () => { await pump(); return seen.some((m) => m.t === 'user' && m.text === 'line one\nline two'); }, 15000, 'multi-line');
+  // a local slash command: its on-screen output is returned, and the command list includes custom commands
+  await waitFor(async () => (await state(s.id)) === 'idle'); await C.sendMessage(ctx, s.id, '/context');
+  assert.equal(await waitFor(async () => (await C.commandOutput(ctx, s.id, '/context')) || false, 8000, 'command output'), 'Context window: 1k of 200k used\n     Messages: 10 tokens');
+  mkdirSync(join(p.path, '.claude', 'commands'), { recursive: true }); writeFileSync(join(p.path, '.claude', 'commands', 'ship.md'), '---\ndescription: Ship it\n---\nbody');
+  const cl = C.listCommands(ctx, s.id); assert.ok(cl.some((c) => c.name === '/compact' && !c.custom)); assert.deepEqual(cl.find((c) => c.name === '/ship'), { name: '/ship', description: 'Ship it', custom: true });
   // a permission question: shown with its options; typing is refused until answered; "No" is reported
   await waitFor(async () => (await state(s.id)) === 'idle'); await C.sendMessage(ctx, s.id, 'PERMISSION please');
   const q = await waitFor(async () => { const l = await pump(); return l.screen?.state === 'permission' ? l.screen : false; }, 15000, 'permission question');

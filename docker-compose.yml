@@ -7,6 +7,11 @@ services:
     env_file: .env
     environment:
       CODE_ROOT: ${CODE_MOUNT:-/workspace}
+      # Claude Code runs on the HOST (in a tmux server started by the host's systemd, see docs/web-ui.md): the container only sends it commands through this socket.
+      CODE_TMUX_SOCKET: ${CODE_TMUX_SOCKET:-assistant-code}
+      CODE_CLAUDE_BIN: ${CODE_CLAUDE_BIN:-claude}
+      CODE_CONFIG_DIR: ${CODE_CONFIG_DIR:-/home/node/.claude}
+      CODE_GLOBAL_CONFIG: ${CODE_GLOBAL_CONFIG:-/home/node/.claude.json}
       TICKETING_URL: http://ticketing:8080
       TICKETING_TOKEN: ${TICKETS_TOKEN:?set TICKETS_TOKEN in .env}
       TRANSCRIBE_URL: http://whisper:8000/v1/audio/transcriptions

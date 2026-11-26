@@ -1,3 +1,4 @@
+import { statSync } from 'node:fs';
 import { execFile } from 'node:child_process';
 
 /** Thin wrapper over the tmux CLI. Its own server (a dedicated socket), arguments always passed as arrays (no shell). */
@@ -18,7 +19,7 @@ export const ALLOWED_KEYS = new Set(['Enter', 'Escape', 'Tab', 'BTab', 'Up', 'Do
 
 export function makeTmux(bin: string, socket: string): Tmux {
   const run = (args: string[], input?: string): Promise<string> => new Promise((resolve, reject) => {
-    const p = execFile(bin, ['-L', socket, ...args], { timeout: 15000, maxBuffer: 8 * 1024 * 1024, encoding: 'utf8' }, (err, stdout, stderr) => {
+    const p = execFile(bin, [socket.startsWith('/') ? '-S' : '-L', socket, ...args], { timeout: 15000, maxBuffer: 8 * 1024 * 1024, encoding: 'utf8' }, (err, stdout, stderr) => {
       if (err) return reject(new Error((stderr || err.message).trim().slice(0, 300)));
       resolve(stdout);
     });
@@ -26,7 +27,12 @@ export function makeTmux(bin: string, socket: string): Tmux {
   });
   const noServer = (e: Error) => /no server running|no sessions|error connecting|can't find session/i.test(e.message);
   return {
-    available: () => new Promise((r) => execFile(bin, ['-V'], { timeout: 5000 }, (e) => r(!e))),
+    // A path socket means "the tmux server running on the host": it must already exist (we never start a server of our own there, or sessions would run inside the container).
+    available: () => new Promise((r) => execFile(bin, ['-V'], { timeout: 5000 }, (e) => {
+      if (e) return r(false); if (!socket.startsWith('/')) return r(true);
+      try { if (!statSync(socket).isSocket()) return r(false); } catch { return r(false); }
+      run(['list-sessions']).then(() => r(true), (er: Error) => r(/no sessions/i.test(er.message)));   // the host's server must answer (a dead one leaves a stale socket file)
+    })),
     has: (name) => run(['has-session', '-t', '=' + name]).then(() => true, () => false),
     list: () => run(['list-sessions', '-F', '#{session_name}']).then((o) => o.split('\n').filter(Boolean), (e) => { if (noServer(e)) return []; throw e; }),
     start: async (name, cwd, argv, env = {}) => {

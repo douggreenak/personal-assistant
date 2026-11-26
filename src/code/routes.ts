@@ -44,6 +44,8 @@ export async function codeRoutes(ctx: Ctx, path: string, method: string, query: 
     if ((m = /^\/code\/sessions\/([\w-]+)\/send$/.exec(path)) && method === 'POST') { await C.sendMessage(ctx, m[1], String((await h.json()).text ?? '')); return ok({ ok: true }); }
     if ((m = /^\/code\/sessions\/([\w-]+)\/keys$/.exec(path)) && method === 'POST') { const b = await h.json(); if (typeof b.text === 'string') await C.typeText(ctx, m[1], b.text); if (b.keys) await C.pressKeys(ctx, m[1], b.keys); return ok({ ok: true }); }
     if ((m = /^\/code\/sessions\/([\w-]+)\/screen$/.exec(path)) && method === 'GET') return ok(await C.screenText(ctx, m[1], Number(query.get('scrollback') ?? 0) || 0));
+    if ((m = /^\/code\/sessions\/([\w-]+)\/output$/.exec(path)) && method === 'GET') return ok({ text: await C.commandOutput(ctx, m[1], query.get('cmd') ?? '') });
+    if ((m = /^\/code\/sessions\/([\w-]+)\/commands$/.exec(path)) && method === 'GET') return ok({ commands: C.listCommands(ctx, m[1]) });
     if ((m = /^\/code\/sessions\/([\w-]+)\/usage$/.exec(path)) && method === 'GET') return ok(C.sessionUsage(ctx, m[1]));
     if ((m = /^\/code\/sessions\/([\w-]+)\/upload$/.exec(path)) && method === 'POST') return ok({ path: C.saveUpload(ctx, m[1], await h.body(12 * 1024 * 1024), query.get('name') ?? 'picture') });
     if (path === '/code/usage' && method === 'GET') return ok(C.usageOverview(ctx, Math.min(90, Math.max(1, Number(query.get('days') ?? 14) || 14))));

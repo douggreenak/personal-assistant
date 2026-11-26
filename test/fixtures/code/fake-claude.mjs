@@ -29,6 +29,7 @@ const reply = (text) => { const id = 'msg_' + randomUUID().slice(0, 8); write({ 
 const submit = (text) => {
   input = '';
   if (text === '/exit') process.exit(0);
+  if (text === '/context') { lines.push('❯ /context', '  ⎿  Context window: 1k of 200k used', '     Messages: 10 tokens'); return render(); }
   if (text === '/usage') { usageOpen = true; return render(); }
   write({ type: 'user', message: { role: 'user', content: text } }); lines.push('❯ ' + text);
   if (text.includes('PERMISSION')) {

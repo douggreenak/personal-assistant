@@ -93,9 +93,9 @@ export async function deleteSession(ctx: Ctx, id: string): Promise<void> { getSe
 export function ensureClaudeConfig(ctx: Ctx, projectPath: string): void {
   const file = ctx.cfg.code.globalConfig; let j: Record<string, any> = {};   // eslint-disable-line @typescript-eslint/no-explicit-any
   try { j = JSON.parse(readFileSync(file, 'utf8')); } catch { /* new file */ }
-  const before = JSON.stringify([j.hasCompletedOnboarding, j.projects?.[projectPath]?.hasTrustDialogAccepted]);
-  j.hasCompletedOnboarding = true; j.projects ??= {}; j.projects[projectPath] ??= { allowedTools: [], mcpContextUris: [], mcpServers: {}, enabledMcpjsonServers: [], disabledMcpjsonServers: [] }; j.projects[projectPath].hasTrustDialogAccepted = true;
-  if (JSON.stringify([j.hasCompletedOnboarding, j.projects[projectPath].hasTrustDialogAccepted]) === before && existsSync(file)) return;
+  const before = JSON.stringify([j.hasCompletedOnboarding, j.theme, j.projects?.[projectPath]?.hasTrustDialogAccepted]);
+  j.hasCompletedOnboarding = true; j.theme ??= 'dark'; j.projects ??= {}; j.projects[projectPath] ??= { allowedTools: [], mcpContextUris: [], mcpServers: {}, enabledMcpjsonServers: [], disabledMcpjsonServers: [] }; j.projects[projectPath].hasTrustDialogAccepted = true;
+  if (JSON.stringify([j.hasCompletedOnboarding, j.theme, j.projects[projectPath].hasTrustDialogAccepted]) === before && existsSync(file)) return;
   mkdirSync(dirname(file), { recursive: true }); const tmp = `${file}.${randomUUID().slice(0, 6)}.tmp`; writeFileSync(tmp, JSON.stringify(j, null, 2), { mode: 0o600 }); renameSync(tmp, file);
 }
 
@@ -129,7 +129,7 @@ export async function sendMessage(ctx: Ctx, id: string, textIn: string): Promise
   const name = tmuxName(id); if (!(await t.has(name))) throw new CodeError('This session is stopped. Start it first.');
   const sc = parseScreen(await t.capture(name)); if (sc.state === 'permission' || sc.state === 'dialog') throw new CodeError('Claude is waiting for an answer (see the buttons above the message box).');
   if (text.includes('\n')) await t.paste(name, text); else await t.literal(name, text);
-  await sleep(150); await t.keys(name, ['Enter']);
+  await sleep(text.startsWith('/') ? 400 : 150); await t.keys(name, ['Enter']);
 }
 export async function pressKeys(ctx: Ctx, id: string, keys: unknown): Promise<void> {
   const t = await needTmux(ctx); getSession(ctx, id);
@@ -146,17 +146,18 @@ export async function screenText(ctx: Ctx, id: string, scrollback = 0): Promise<
   return { running: true, text: await t.capture(name, Math.min(2000, Math.max(0, scrollback))) };
 }
 
-export interface Live { running: boolean; screen: ScreenInfo | null; msgs: Msg[]; next: number; title: string; transcript: boolean; lastActivity: string | null }
+export interface Live { dialogText?: string; running: boolean; screen: ScreenInfo | null; msgs: Msg[]; next: number; title: string; transcript: boolean; lastActivity: string | null }
 export async function live(ctx: Ctx, id: string, after: number): Promise<Live> {
   const t = await needTmux(ctx); const s = getSession(ctx, id); const p = getProject(ctx, s.projectId);
   const name = tmuxName(id); const running = await t.has(name);
-  const screen = running ? parseScreen(await t.capture(name).catch(() => '')) : null;
+  const raw = running ? await t.capture(name).catch(() => '') : '';
+  const screen = running ? parseScreen(raw) : null;
   const file = transcriptPath(ctx.cfg.code.configDir, p.path, id);
   let msgs: Msg[] = [], next = 0, last: string | null = null;
   if (file) { const d = readDelta(file, after); msgs = d.msgs; next = d.next; last = new Date(statSync(file).mtimeMs).toISOString(); }
   const title = [...msgs].reverse().find((m) => m.t === 'title') as { title: string } | undefined;
   if (title && title.title !== s.aiTitle) ctx.db.prepare('UPDATE code_sessions SET ai_title = ? WHERE id = ?').run(title.title, id);
-  return { running, screen, msgs, next, title: title?.title ?? s.aiTitle, transcript: !!file, lastActivity: last };
+  return { dialogText: screen && (screen.state === 'dialog' || screen.state === 'unknown') ? raw.replace(/\n{3,}/g, '\n\n').trimEnd().slice(-3000) : undefined, running, screen, msgs, next, title: title?.title ?? s.aiTitle, transcript: !!file, lastActivity: last };
 }
 
 export async function sessionSummaries(ctx: Ctx): Promise<{ id: string; running: boolean; state: string }[]> {
@@ -165,6 +166,28 @@ export async function sessionSummaries(ctx: Ctx): Promise<{ id: string; running:
   const out: { id: string; running: boolean; state: string }[] = [];
   for (const s of listSessionRows(ctx)) { const name = tmuxName(s.id); if (!running.has(name)) { out.push({ id: s.id, running: false, state: 'stopped' }); continue; }
     out.push({ id: s.id, running: true, state: parseScreen(await t.capture(name).catch(() => '')).state }); }
+  return out;
+}
+
+/** What a local slash command (/context, /status…) printed on the terminal: the lines after its echoed "❯ /cmd", up to the next rule or empty prompt. The transcript does not keep these. */
+export async function commandOutput(ctx: Ctx, id: string, cmd: string): Promise<string> {
+  const t = await needTmux(ctx); getSession(ctx, id); const name = tmuxName(id); if (!(await t.has(name))) return '';
+  const lines = (await t.capture(name, 400)).split('\n'); const want = '❯ ' + String(cmd).trim(); let at = -1;
+  for (let i = lines.length - 1; i >= 0; i--) if (lines[i].trimEnd() === want || lines[i].trimEnd().startsWith(want + ' ')) { at = i; break; }
+  if (at < 0) return '';
+  const out: string[] = []; for (let i = at + 1; i < lines.length; i++) { const l = lines[i]; if (/^[─╌━]{8,}/.test(l.trim()) || /^❯/.test(l)) break; out.push(l.replace(/^\s*⎿\s{0,2}/, '').trimEnd()); }
+  return out.join('\n').replace(/^\n+|\s+$/g, '').slice(0, 6000);
+}
+
+// ---------- slash commands ----------
+const BUILTIN_COMMANDS: [string, string][] = [['/help', 'Show help and commands'], ['/compact', 'Summarize the conversation to free up context'], ['/clear', 'Start a fresh conversation'], ['/context', 'Show what is using the context window'], ['/cost', 'Show token usage for this session'], ['/usage', 'Show plan usage limits'], ['/status', 'Show version, model and account'], ['/model', 'Choose the model'], ['/permissions', 'Manage tool permissions'], ['/config', 'Open settings'], ['/memory', 'Edit CLAUDE.md memory files'], ['/mcp', 'Manage MCP servers'], ['/agents', 'Manage sub-agents'], ['/init', 'Create a CLAUDE.md for this project'], ['/review', 'Review a pull request'], ['/resume', 'Resume another conversation'], ['/rewind', 'Rewind the conversation or code'], ['/todos', 'List the current to-dos'], ['/export', 'Export the conversation'], ['/doctor', 'Check the installation'], ['/vim', 'Toggle vim editing'], ['/exit', 'End the session']];
+export function listCommands(ctx: Ctx, id: string): { name: string; description: string; custom: boolean }[] {
+  const s = getSession(ctx, id); const p = getProject(ctx, s.projectId); const out = BUILTIN_COMMANDS.map(([name, description]) => ({ name, description, custom: false }));
+  const seen = new Set(out.map((c) => c.name));
+  const add = (name: string, description: string) => { if (!seen.has(name)) { seen.add(name); out.push({ name, description, custom: true }); } };
+  const front = (file: string): string => { try { return /^description:\s*(.+)$/m.exec(readFileSync(file, 'utf8').split('---')[1] ?? '')?.[1]?.trim().slice(0, 120) ?? ''; } catch { return ''; } };
+  for (const dir of [join(p.path, '.claude', 'commands'), join(ctx.cfg.code.configDir, 'commands')]) { try { for (const f of readdirSync(dir)) if (/^[\w-]+\.md$/.test(f)) add('/' + f.slice(0, -3), front(join(dir, f)) || 'Custom command'); } catch { /* none */ } }
+  for (const dir of [join(p.path, '.claude', 'skills'), join(ctx.cfg.code.configDir, 'skills')]) { try { for (const f of readdirSync(dir)) if (/^[\w:-]+$/.test(f)) add('/' + f, front(join(dir, f, 'SKILL.md')) || 'Skill'); } catch { /* none */ } }
   return out;
 }
 

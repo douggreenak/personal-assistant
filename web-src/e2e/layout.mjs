@@ -83,7 +83,7 @@ async function runViewport([w, h], scheme) {
   await page.locator('md-outlined-text-field[label="Password"]').evaluate((e, v) => { e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); }, PW);
   bad('login', await page.evaluate(MEASURE));
   await page.locator('md-filled-button', { hasText: 'Sign in' }).click(); await page.locator('h1.display').waitFor();
-  const open = async (p) => { await page.goto(`${base}/#/${p}`); await page.reload(); await page.locator('h1.display').waitFor(); await page.waitForTimeout(700); await page.evaluate(() => scrollTo(0, 0)); };
+  const open = async (p) => { await page.goto(`${base}/#/${p}`); await page.reload(); await page.locator('h1.display, .code-layout').first().waitFor(); await page.waitForTimeout(700); await page.evaluate(() => scrollTo(0, 0)); };
   for (const p of PAGES) {
     await open(p); bad(p, await page.evaluate(MEASURE));
     if (p === 'chat') {   // the composer must be usable: inside the screen, above the bottom bar, and typing must not push anything off

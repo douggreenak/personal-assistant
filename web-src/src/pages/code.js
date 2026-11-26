@@ -20,15 +20,32 @@ export default async function code(view) {
   if (!status.enabled) { clear(view).append(head(), h('div', { class: 'card' }, empty('terminal', 'The Code tab is turned off', 'Turn it on in Settings → Code.'))); return cleanup; }
   const { projects } = await api('/code/projects'); const r = route();
 
-  // ---- tabs: one per project, then Usage and Server ----
-  const tabs = h('div', { class: 'seg code-tabs', role: 'tablist', 'aria-label': 'Projects' });
+  // ---- layout like Claude Code on the web: sessions grouped by project on the left, the open session on the right ----
   const curProject = r.kind === 'p' ? r.id : r.kind === 's' ? projects.find((p) => p.sessions.some((s) => s.id === r.id))?.id : null;
-  const add = (label, on, path, id) => tabs.append(h('button', { role: 'tab', 'aria-pressed': String(on), 'data-tab': id || path, onclick: () => go(path) }, label));
-  for (const p of projects) add(p.name, curProject === p.id, 'p/' + p.id, p.id);
-  add('Usage', r.kind === 'u', 'u'); add('Server', r.kind === 't', 't');
-  tabs.append(h('button', { class: 'code-add', 'aria-label': 'Add a project', onclick: () => addProjectDialog(), title: 'Add a project' }, icon('add'), ' Project'));
-  const body = h('div', { class: 'code-body' });
-  clear(view).append(head(!status.tmux), tabs, body);
+  const side = h('aside', { class: 'code-side', 'aria-label': 'Sessions' }); const body = h('div', { class: 'code-main' });
+  const layout = h('div', { class: 'code-layout', 'data-pane': r.kind === 's' || r.kind === 'u' || r.kind === 't' ? 'main' : 'list' }, side, body);
+  clear(view).append(head(!status.tmux), layout);
+  function drawSide(list) {
+    const rows = [];
+    for (const p of list) {
+      rows.push(h('div', { class: 'code-proj' + (curProject === p.id && r.kind === 'p' ? ' sel' : ''), 'data-project': p.id },
+        h('button', { class: 'code-proj-name', title: p.path, onclick: () => go('p/' + p.id) }, icon('folder'), h('span', {}, p.name)),
+        h('md-icon-button', { 'aria-label': 'New session in ' + p.name, title: 'New session', onclick: () => newSessionDialog(p, status) }, icon('add'))));
+      for (const s of p.sessions) rows.push(h('button', { class: 'code-srow' + (r.kind === 's' && r.id === s.id ? ' sel' : ''), 'data-session': s.id, onclick: () => go('s/' + s.id) },
+        h('span', { class: 'sdot ' + (s.running ? (s.state === 'working' ? 'work' : s.state === 'permission' || s.state === 'dialog' ? 'ask' : 'on') : ''), title: (STATE[s.running ? s.state : 'stopped'] || STATE.unknown)[0] }), h('span', { class: 'stitle' }, s.aiTitle || s.title)));
+    }
+    clear(side).append(
+      h('div', { class: 'code-side-top' }, h('md-filled-tonal-button', { class: 'grow', onclick: () => (list.length === 1 ? newSessionDialog(list[0], status) : list.length ? pickProjectDialog(list) : addProjectDialog()) }, icon('add'), 'New session')),
+      h('div', { class: 'code-side-list' }, ...(rows.length ? rows : [h('p', { class: 'muted s', style: 'padding:8px 12px' }, 'No projects yet. Add a folder to start.')]),
+        h('button', { class: 'code-addproj', onclick: () => addProjectDialog() }, icon('add'), 'Add project')),
+      h('div', { class: 'code-side-foot' }, h('button', { class: r.kind === 'u' ? 'sel' : '', 'data-nav': 'usage', onclick: () => go('u') }, icon('speed'), 'Usage'), h('button', { class: r.kind === 't' ? 'sel' : '', 'data-nav': 'server', onclick: () => go('t') }, icon('dns'), 'Server')));
+  }
+  drawSide(projects);
+  timers.push(setInterval(async () => { if (document.hidden || document.querySelector('md-dialog[open]')) return; try { drawSide((await api('/code/projects')).projects); } catch { /* retry */ } }, 4000));
+  function pickProjectDialog(list) {
+    const sel = h('md-outlined-select', { label: 'Project' }, ...list.map((p, i) => h('md-select-option', { value: p.id, selected: i === 0 || undefined }, h('div', { slot: 'headline' }, p.name))));
+    const { close } = dialog({ title: 'New session in…', content: sel, actions: [h('md-text-button', { onclick: () => close() }, 'Cancel'), h('md-filled-button', { onclick: () => { const p = list.find((x) => x.id === sel.value) || list[0]; close(); newSessionDialog(p, status); } }, 'Next')] });
+  }
 
   if (r.kind === 'u') usagePage(body, timers);
   else if (r.kind === 't') serverPage(body, status, timers);
@@ -40,8 +57,7 @@ export default async function code(view) {
   }
   return cleanup;
 
-  function head(warn) { return h('div', { class: 'page-head' }, h('h1', { class: 'display' }, 'Code'), h('p', { class: 'muted title-m' }, 'Claude Code agents in tmux — separate from the assistant. Each session is a real terminal session you can also reach with `tmux`.'),
-    warn ? h('div', { class: 'card high', style: 'border-left:4px solid var(--md-sys-color-error)' }, h('b', {}, 'tmux is not installed on the server'), h('p', { class: 'muted' }, 'Sessions cannot run until it is. In Docker, rebuild the image (it installs tmux).')) : ''); }
+  function head(warn) { return warn ? h('div', { class: 'card high', style: 'border-left:4px solid var(--md-sys-color-error);margin-bottom:12px' }, h('b', {}, 'The tmux server for Claude Code is not reachable'), h('p', { class: 'muted' }, 'Sessions cannot run until it is. See Settings → Code, or docs/web-ui.md (Code tab).')) : ''; }
 
   // ---- add project ----
   function addProjectDialog() {
@@ -113,7 +129,7 @@ export default async function code(view) {
     const loadTok = async () => { const u = await guarded(() => api('/code/usage?days=14')); if (!u) return;
       const max = Math.max(1, ...u.days.map((d) => d.input + d.output + d.cacheWrite));
       const tot = (x) => `${kfmt(x.input + x.output)} in/out · ${kfmt(x.cacheRead + x.cacheWrite)} cached · ≈${usd(x.cost)}`;
-      const table = (rows, label) => h('table', { class: 'utable' }, h('thead', {}, h('tr', {}, h('th', {}, label), h('th', {}, 'Tokens in/out'), h('th', {}, 'Cached'), h('th', {}, 'Est. cost'))), h('tbody', {}, rows.length ? rows.map((r) => h('tr', {}, h('td', {}, r.key ?? r.title + ' · ' + r.project), h('td', {}, kfmt((r.input ?? 0) + (r.output ?? 0) || r.tokens)), h('td', {}, kfmt((r.cacheRead ?? 0) + (r.cacheWrite ?? 0))), h('td', {}, usd(r.cost)))) : [h('tr', {}, h('td', { colspan: 4, class: 'muted' }, 'Nothing yet.'))]));
+      const table = (rows, label) => h('table', { class: 'utable' }, h('thead', {}, h('tr', {}, h('th', {}, label), h('th', {}, 'Tokens'), h('th', {}, 'Cached'), h('th', {}, 'Cost'))), h('tbody', {}, rows.length ? rows.map((r) => h('tr', {}, h('td', {}, r.key ?? r.title + ' · ' + r.project), h('td', {}, kfmt(r.tokens ?? (r.input + r.output))), h('td', {}, r.tokens != null ? '' : kfmt(r.cacheRead + r.cacheWrite)), h('td', {}, usd(r.cost)))) : [h('tr', {}, h('td', { colspan: 4, class: 'muted' }, 'Nothing yet.'))]));
       clear(tokBox).append(h('div', { class: 'grid cols-3' }, ['Today', 'Last 7 days', 'All time'].map((l, i) => { const x = [u.today, u.week, u.total][i]; return h('div', { class: 'card ucard' }, h('div', { class: 'muted' }, l), h('div', { class: 'title-l' }, kfmt(x.input + x.output + x.cacheRead + x.cacheWrite) + ' tokens'), h('div', { class: 'muted s' }, tot(x))); })),
         h('div', { class: 'card' }, h('h2', {}, icon('bar_chart'), 'Last 14 days'), h('div', { class: 'chart', role: 'img', 'aria-label': 'Tokens per day' }, u.days.map((d) => h('div', { class: 'col', title: `${d.day}: ${kfmt(d.input + d.output + d.cacheWrite)} tokens (≈${usd(d.cost)})` }, h('div', { class: 'bar', style: `height:${Math.max(2, Math.round(((d.input + d.output + d.cacheWrite) / max) * 100))}%` }), h('div', { class: 'lbl' }, d.day.slice(8))))),
           h('div', { class: 'help' }, 'Counted from the conversation files of sessions run here (each API message once). Cost is an estimate from list prices — a subscription is not billed per token.')),
@@ -127,7 +143,7 @@ export default async function code(view) {
   async function sessionPage(el, sid, projects, st, tm) {
     const info = await guarded(() => api('/code/sessions/' + sid)); if (!info) { go(''); return; }
     const { session: s, project: p } = info; lsSet(LAST, p.id);
-    let title = s.aiTitle || s.title, running = false, scr = null, after = 0, view = 'chat', started = false, hidden = 0, stick = true;
+    let pendingCmd = null, title = s.aiTitle || s.title, running = false, scr = null, after = 0, view = 'chat', started = false, hidden = 0, stick = true;
     const msgs = h('div', { class: 'msgs code-msgs', role: 'log', 'aria-live': 'polite' }); const tools = new Map();
     const stateEl = h('span', {}); const infoEl = h('div', { class: 'muted s code-info' }); const titleEl = h('h2', { class: 'code-title' }, title);
     const permBox = h('div', {}); const term = h('pre', { class: 'term', 'aria-label': 'Terminal' }, ''); const termKeys = h('div', { class: 'term-keys' });
@@ -136,36 +152,40 @@ export default async function code(view) {
     const pics = pictureAttach(ta, (m) => toast(m)); pics.input.accept = 'image/*';
     const sendBtn = h('md-filled-icon-button', { 'aria-label': 'Send', onclick: () => send() }, icon('send'));
     const startBtn = h('md-filled-button', { onclick: async () => { await guarded(() => api(`/code/sessions/${sid}/start`, { method: 'POST', body: {} }), 'Starting…'); poll(); } }, icon('play_arrow'), 'Start session');
+    let cmds = []; const cmdBox = h('div', { class: 'code-cmds', role: 'listbox', 'aria-label': 'Commands', hidden: true });
+    api(`/code/sessions/${sid}/commands`).then((j) => { cmds = j.commands; }).catch(() => {});
+    const matches = () => { const v = ta.value; if (!v.startsWith('/') || /\s/.test(v)) return []; return cmds.filter((c) => c.name.startsWith(v.toLowerCase())).slice(0, 8); };
+    const drawCmds = () => { const m = matches(); cmdBox.hidden = !m.length || (m.length === 1 && m[0].name === ta.value); clear(cmdBox).append(...m.map((c) => h('button', { type: 'button', role: 'option', 'data-cmd': c.name, onclick: () => { ta.value = c.name + ' '; grow(); drawCmds(); ta.focus(); } }, h('b', {}, c.name), h('span', { class: 'muted' }, c.description)))); };
+    ta.addEventListener('input', drawCmds);
     const composer = h('div', { class: 'composer code-composer' }, pics.button, ta, sendBtn);
 
     async function send(text) {
       text = (text ?? ta.value).trim(); const images = pics.images(); if (!text && !images.length) return; sendBtn.disabled = true;
       try {
         let full = text; for (const im of images) { const r = await fetchUpload(im); full = `${full}${full ? '\n' : ''}@${r.path}`; }
-        await api(`/code/sessions/${sid}/send`, { method: 'POST', body: { text: full } }); ta.value = ''; grow(); pics.clear(); stick = true; poll();
+        await api(`/code/sessions/${sid}/send`, { method: 'POST', body: { text: full } }); pendingCmd = full.startsWith('/') ? { cmd: full.split('\n')[0].trim(), at: Date.now() } : null; ta.value = ''; grow(); pics.clear(); cmdBox.hidden = true; stick = true; poll();
       } catch (e) { toast(e.message, { error: true }); } finally { sendBtn.disabled = false; ta.focus({ preventScroll: true }); }
     }
     async function fetchUpload(im) { const bytes = Uint8Array.from(atob(im.data), (c) => c.charCodeAt(0)); return api(`/code/sessions/${sid}/upload?name=${encodeURIComponent(im.name)}`, { method: 'POST', raw: bytes }); }
-    ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });
+    ta.addEventListener('keydown', (e) => { if (e.key === 'Tab' && !cmdBox.hidden) { e.preventDefault(); const m = matches(); if (m[0]) { ta.value = m[0].name + ' '; drawCmds(); } return; } if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); const m = matches(); if (m.length && !m.some((c) => c.name === ta.value.trim())) { ta.value = m[0].name + ' '; drawCmds(); return; } cmdBox.hidden = true; send(); } });
     const key = async (...keys) => { await guarded(() => api(`/code/sessions/${sid}/keys`, { method: 'POST', body: { keys } })); poll(); };
 
     // header
     const act = (label, ic, fn, cls = 'md-outlined-button') => h(cls, { onclick: fn }, icon(ic), label);
     const headBtns = h('div', { class: 'code-head-btns' });
     const drawHead = () => { clear(headBtns).append(running ? act('Stop', 'stop', async () => { if (await confirmDialog('Stop this session?', 'The tmux session ends. Start it again later and the conversation resumes.', 'Stop')) { await guarded(() => api(`/code/sessions/${sid}/stop`, { method: 'POST' }), 'Stopped'); poll(); } }) : startBtn,
-      running ? act('Restart', 'refresh', async () => { await guarded(() => api(`/code/sessions/${sid}/restart`, { method: 'POST' }), 'Restarted'); poll(); }) : '',
       h('md-icon-button', { id: 'sessMenu', 'aria-label': 'More' }, icon('more_horiz')));
-      menu(headBtns.querySelector('#sessMenu'), [['Rename', () => renameDialog('Rename session', title, (n) => api('/code/sessions/' + sid, { method: 'PATCH', body: { title: n } }), () => { titleEl.textContent = title = ''; location.reload(); })],
+      menu(headBtns.querySelector('#sessMenu'), [['Restart', async () => { await guarded(() => api(`/code/sessions/${sid}/restart`, { method: 'POST' }), 'Restarted'); poll(); }], ['Rename', () => renameDialog('Rename session', title, (n) => api('/code/sessions/' + sid, { method: 'PATCH', body: { title: n } }), () => { titleEl.textContent = title = ''; location.reload(); })],
         ['Delete session', async () => { if (await confirmDialog('Delete this session?', 'It is stopped and removed from the list. The conversation file stays on disk.', 'Delete')) { await guarded(() => api('/code/sessions/' + sid, { method: 'DELETE' }), 'Deleted'); go('p/' + p.id); } }]]); };
     const seg = h('div', { class: 'seg' }); const drawSeg = () => clear(seg).append(...[['chat', 'Conversation'], ['term', 'Terminal']].map(([v, l]) => h('button', { 'aria-pressed': String(view === v), 'data-view': v, onclick: () => { view = v; drawSeg(); layout(); if (v === 'term') pollTerm(); } }, l))); drawSeg();
     const chatPane = h('div', { class: 'code-chat' }, msgs, permBox);
     const termPane = h('div', { class: 'code-term' }, term, termKeys, h('div', { class: 'code-term-send' }, (() => { const f = h('md-outlined-text-field', { label: 'Type into the terminal', class: 'grow' }); const go2 = async (enter) => { const t = f.value; f.value = ''; await guarded(() => api(`/code/sessions/${sid}/keys`, { method: 'POST', body: { text: t, keys: enter ? ['Enter'] : undefined } })); pollTerm(); }; f.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); go2(true); } }); return [f, h('md-filled-tonal-button', { onclick: () => go2(true) }, 'Send + Enter'), h('md-text-button', { onclick: () => go2(false) }, 'Type only')]; })()));
     for (const [l, k] of [['Enter', 'Enter'], ['Esc', 'Escape'], ['↑', 'Up'], ['↓', 'Down'], ['←', 'Left'], ['→', 'Right'], ['Tab', 'Tab'], ['⇧Tab', 'BTab'], ['Ctrl+C', 'C-c'], ['1', '1'], ['2', '2'], ['3', '3'], ['y', 'y'], ['n', 'n']]) termKeys.append(h('md-outlined-button', { 'data-key': k, onclick: () => key(k) }, l));
-    const quick = h('div', { class: 'code-quick' }, ...[['Interrupt', 'stop', () => key('Escape')], ['Cycle mode', 'sync', () => key('BTab')], ['/compact', 'inventory_2', () => send('/compact')], ['/clear', 'delete', () => send('/clear')]].map(([l, ic, fn]) => h('md-assist-chip', { label: l, onclick: fn })));
-    const layout = () => { chatPane.hidden = view !== 'chat'; termPane.hidden = view !== 'term'; composer.hidden = view !== 'chat' || !running; quick.hidden = view !== 'chat' || !running; startNote.hidden = running; };
+    const quick = h('div', { class: 'code-quick' }, ...[['Interrupt', 'stop', () => key('Escape')], ['Cycle mode', 'sync', () => key('BTab')], ['/ Commands', 'terminal', () => { ta.value = '/'; ta.focus(); drawCmds(); }]].map(([l, ic, fn]) => h('md-assist-chip', { label: l, onclick: fn })));
+    const layout = () => { chatPane.hidden = view !== 'chat'; termPane.hidden = view !== 'term'; composer.hidden = view !== 'chat' || !running; quick.hidden = view !== 'chat' || !running; if (view !== 'chat' || !running) cmdBox.hidden = true; startNote.hidden = running; };
     const startNote = h('div', { class: 'card code-stopped' }, h('b', {}, 'This session is stopped.'), h('span', { class: 'muted' }, ' Start it to continue the conversation — everything said so far is kept.'));
     clear(el).append(h('div', { class: 'card high code-session-head' }, h('div', { class: 'code-ph' }, h('md-icon-button', { 'aria-label': 'Back to ' + p.name, onclick: () => go('p/' + p.id) }, icon('arrow_back')), h('div', { style: 'flex:1 1 180px;min-width:0' }, titleEl, h('div', { class: 'muted s' }, p.name + ' · ' + (s.permissionMode || 'default permissions') + (s.model ? ' · ' + s.model : ''))), stateEl, headBtns), infoEl, seg),
-      chatPane, termPane, startNote, quick, composer, pics.strip, pics.input); drawHead(); layout();
+      chatPane, termPane, startNote, quick, cmdBox, composer, pics.strip, pics.input); drawHead(); layout();
 
     // rendering the conversation
     const near = () => msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 80;
@@ -197,7 +217,7 @@ export default async function code(view) {
       // permission question / dialog
       clear(permBox);
       if (scr?.state === 'permission') permBox.append(h('div', { class: 'card code-perm', role: 'alertdialog', 'aria-label': 'Claude is asking' }, h('b', {}, scr.permission.question), scr.permission.detail ? h('pre', { class: 'code-pre' }, scr.permission.detail) : '', h('div', { class: 'code-perm-btns' }, ...scr.permission.options.map((o) => h(o.selected ? 'md-filled-button' : 'md-outlined-button', { 'data-opt': o.key, onclick: () => key(o.key) }, o.label.replace(/\s*\(shift\+tab\)\s*$/, ''))), h('md-text-button', { onclick: () => key('Escape') }, 'Cancel'))));
-      else if (scr?.state === 'dialog') permBox.append(h('div', { class: 'card code-perm' }, h('b', {}, 'Claude Code is asking something in the terminal'), h('pre', { class: 'code-pre' }, scr.hint || ''), h('md-filled-tonal-button', { onclick: () => { view = 'term'; drawSeg(); layout(); pollTerm(); } }, 'Open the terminal')));
+      else if (scr?.state === 'dialog' || scr?.state === 'unknown' && l.dialogText) permBox.append(h('div', { class: 'card code-dialog', role: 'dialog', 'aria-label': 'Claude Code' }, h('pre', { class: 'code-pre' }, (l.dialogText || scr.hint || '').split('\n').filter((x) => x.trim()).slice(-24).join('\n')), h('div', { class: 'code-perm-btns' }, ...[['↑', 'Up'], ['↓', 'Down'], ['←', 'Left'], ['→', 'Right'], ['Enter', 'Enter'], ['Tab', 'Tab'], ['Esc', 'Escape']].map(([lb, k]) => h('md-outlined-button', { 'data-key': k, onclick: () => key(k) }, lb)))));
       composer.classList.toggle('busy', scr?.state === 'working');
     }
     async function poll() {
@@ -209,6 +229,7 @@ export default async function code(view) {
         if (first && !l.msgs.length && !l.transcript) msgs.append(h('div', { class: 'code-note', id: 'emptyNote' }, l.running ? 'Session is up. Say something to Claude Code below.' : ''));
         if (l.msgs.length) msgs.querySelector('#emptyNote')?.remove();
         drawLive(l);
+        if (pendingCmd && l.screen?.state === 'idle' && Date.now() - pendingCmd.at > 900) { const c = pendingCmd; pendingCmd = null; try { const o = await api(`/code/sessions/${sid}/output?cmd=${encodeURIComponent(c.cmd)}`); if (o.text && !list.some((m) => m.t === 'note')) { msgs.append(h('pre', { class: 'code-pre code-cmdout' }, o.text)); if (stick) msgs.scrollTop = msgs.scrollHeight; } } catch { /* ignore */ } }
       } catch (e) { infoEl.textContent = e.message; }
     }
     async function pollTerm() { if (view !== 'term' || document.hidden) return; try { const j = await api(`/code/sessions/${sid}/screen`); term.textContent = j.running ? j.text.replace(/\n{3,}/g, '\n\n') : '(stopped)'; term.scrollTop = term.scrollHeight; } catch { /* retry */ } }

@@ -207,8 +207,8 @@ try {
     await page.locator('#moreBtn').click(); await page.locator('md-menu-item', { hasText: 'System' }).click(); await heading('System');
   });
 
-  await step('chat page: renders, suggestions present (no message is sent)', async () => {
-    await page.setViewportSize({ width: 1300, height: 900 }); await goto('chat'); assert.ok((await page.locator('md-assist-chip').count()) >= 2); await page.locator('.seg button', { hasText: 'Ask a question' }).click();
+  await step('chat page: renders (no message is sent)', async () => {
+    await page.setViewportSize({ width: 1300, height: 900 }); await goto('chat'); await page.locator('.seg button', { hasText: 'Ask a question' }).click();
     assert.equal(await page.locator('.seg button[aria-pressed=true]').innerText(), 'Ask a question');
   });
 
@@ -435,16 +435,20 @@ try {
 
 
   await step('code tab: add a project, start a session, chat, answer a permission question, terminal, usage, stop and start', async () => {
-    await goto('code'); await page.locator('text=No projects yet').waitFor();
+    await goto('code'); await page.locator('.code-main .title-m', { hasText: 'No projects yet' }).waitFor();
     await btn('Add a project').click(); await dlg().waitFor();
     await setField('Folder (inside the projects folder)', 'demo'); await btn('Add', dlg()).click();
-    await page.locator('.code-tabs button[aria-pressed=true]', { hasText: 'demo' }).waitFor();
+    await page.locator('.code-proj.sel', { hasText: 'demo' }).waitFor();
     await btn('New session').click(); await dlg().waitFor(); await btn('Start', dlg()).click();
-    await page.locator('.code-session-head').waitFor(); await page.locator('.code-state[data-state=idle]').waitFor({ timeout: 20000 });
+    await page.locator('.code-session-head').waitFor(); await page.locator('.code-srow.sel', { hasText: 'Session 1' }).waitFor(); await page.locator('.code-state[data-state=idle]').waitFor({ timeout: 20000 });
     await page.waitForFunction(() => document.activeElement?.closest?.('.code-composer')); await page.locator('.code-composer textarea').fill('hello e2e'); await page.keyboard.press('Enter');
     await page.locator('.code-bot', { hasText: 'Echo: hello e2e' }).waitFor({ timeout: 15000 });
     assert.ok(await page.locator('.code-user', { hasText: 'hello e2e' }).count());
     await page.locator('.code-state[data-state=idle]').waitFor();
+    await page.locator('.code-composer textarea').fill('/co'); await page.locator('.code-cmds [data-cmd="/context"]').waitFor(); assert.ok(await page.locator('.code-cmds [data-cmd="/compact"]').count());
+    await page.keyboard.press('Tab'); assert.equal(await page.locator('.code-composer textarea').inputValue(), '/compact ');   // Tab completes the first match
+    await page.locator('.code-composer textarea').fill('/context'); await page.keyboard.press('Enter');
+    await page.locator('.code-cmdout', { hasText: 'Context window: 1k of 200k used' }).waitFor({ timeout: 10000 });
     await page.locator('.code-composer textarea').fill('PERMISSION go'); await page.keyboard.press('Enter');
     await page.locator('.code-perm').waitFor({ timeout: 15000 }); assert.match(await page.locator('.code-perm').innerText(), /Do you want to create perm.txt/);
     await page.locator('.code-perm [data-opt="1"]').click();
@@ -452,11 +456,11 @@ try {
     await page.locator('.seg button[data-view=term]').click(); await page.locator('pre.term', { hasText: 'Created perm.txt' }).waitFor({ timeout: 8000 });
     await page.locator('.seg button[data-view=chat]').click();
     await page.locator('.code-chips').waitFor(); await page.locator('.code-chips', { hasText: 'in/out' }).waitFor({ timeout: 20000 });
-    await page.locator('.code-tabs button', { hasText: 'Usage' }).click(); await page.locator('.ubar', { hasText: 'Current session' }).waitFor({ timeout: 40000 });
+    await page.locator('.code-side-foot [data-nav=usage]').click(); await page.locator('.ubar', { hasText: 'Current session' }).waitFor({ timeout: 40000 });
     assert.ok(await page.locator('.utable', { hasText: 'demo' }).count());
-    await page.locator('.code-tabs button', { hasText: 'Server' }).click(); await page.locator('[data-tmux]').waitFor();
+    await page.locator('.code-side-foot [data-nav=server]').click(); await page.locator('[data-tmux]').waitFor();
     await btn('Stop', page.locator('[data-tmux]')).click(); await dlg().waitFor(); await btn('Stop', dlg()).click(); await page.locator('text=Nothing is running').waitFor({ timeout: 8000 });
-    await page.locator('.code-tabs button', { hasText: 'demo' }).click(); await page.locator('.code-session .code-state[data-state=stopped]').waitFor({ timeout: 8000 });
+    await page.locator('.code-proj-name', { hasText: 'demo' }).click(); await page.locator('.code-session .code-state[data-state=stopped]').waitFor({ timeout: 8000 });
     await btn('Start', page.locator('.code-session')).click(); await page.locator('.code-bot', { hasText: 'Echo: hello e2e' }).waitFor({ timeout: 20000 });   // conversation came back
     await page.locator('.code-state[data-state=idle]').waitFor({ timeout: 20000 });
   });

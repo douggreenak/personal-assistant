@@ -99,7 +99,7 @@ async function start() {
   const more = h('md-menu', { anchor: 'moreBtn', positioning: 'popover' }, PAGES.filter((p) => !MOBILE.includes(p.id)).map((p) => h('md-menu-item', { onclick: () => nav(p.id) }, h('div', { slot: 'headline' }, p.label), h('span', { slot: 'start' }, icon(p.icon)))));
   const moreBtn = h('button', { class: 'dest', id: 'moreBtn', onclick: () => { more.open = !more.open; } }, h('span', { class: 'pill' }, icon('more_horiz')), h('span', {}, 'More'));
   const bottom = h('nav', { class: 'bottom-nav', 'aria-label': 'Main' }, PAGES.filter((p) => MOBILE.includes(p.id)).map((p) => destination(p)), moreBtn, more);
-  const top = h('div', { class: 'topbar' }, h('div', { class: 'grow' }), h('md-icon-button', { 'aria-label': 'Search', onclick: searchDialog }, icon('search')), h('md-icon-button', { 'aria-label': 'Keyboard shortcuts', title: 'Keyboard shortcuts (?)', onclick: showHelp }, icon('keyboard')), h('md-icon-button', { 'aria-label': 'Refresh', onclick: () => route() }, icon('refresh')),
+  const top = h('div', { class: 'topbar' }, h('div', { class: 'grow' }), h('md-icon-button', { 'aria-label': 'Search', onclick: searchDialog }, icon('search')), 
     h('md-icon-button', { 'aria-label': 'Sign out', onclick: () => { clearToken(); showLogin(); } }, icon('logout')));
   clear(root).append(h('div', { id: 'app' }, rail, h('main', {}, top, h('div', { id: 'view', class: 'page' })), bottom));
   refreshStatus(); route();

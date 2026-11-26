@@ -34,7 +34,7 @@ export default async function chat(view) {
   if (!hist.length) bubble('bot', 'Hi! Tell me what\'s going on and I\'ll turn it into tickets, reminders and tasks. Switch to “Ask a question” to search your messages and files.');
   clear(view).append(h('div', { class: 'page-head' }, h('h1', { class: 'display' }, 'Chat'), h('p', { class: 'muted title-m' }, 'The same assistant you reach from Google Chat.')),
     h('div', { class: 'toolbar' }, mode, h('div', { class: 'grow' }), h('md-text-button', { onclick: () => { hist = []; localStorage.removeItem(KEY); clear(msgs); bubble('bot', 'Cleared.'); } }, 'Clear')),
-    h('div', { class: 'chat' }, msgs, h('div', {}, h('div', { class: 'suggest' }, SUGGEST.map((s) => h('md-assist-chip', { label: s, onclick: () => send(s) }))), pics.strip, h('div', { class: 'composer' }, pics.button, ta, sendBtn), pics.input)));
+    h('div', { class: 'chat' }, msgs, h('div', {}, pics.strip, h('div', { class: 'composer' }, pics.button, ta, sendBtn), pics.input)));
   page.newAction = () => ta.focus();
   setTimeout(() => ta.focus({ preventScroll: true }), 100);
 }
