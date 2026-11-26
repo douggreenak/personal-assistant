@@ -511,3 +511,5 @@ md-dialog { max-height: min(calc(100dvh - 48px), 980px); }
 .chat-approve-card { display: grid; gap: 6px; padding: 12px 14px; border-radius: 18px; border: 2px dashed var(--md-sys-color-outline-variant); background: var(--md-sys-color-surface-container-low); overflow-wrap: anywhere; }
 .chat-approve-btns { display: flex; gap: 8px; justify-content: flex-end; }
 .chat-approve .ok-box, .chat-approve .err-box { display: flex; gap: 10px; align-items: flex-start; }
+
+.code-back-narrow { display: none; } @media (max-width: 900px) { .code-back-narrow { display: inline-flex; } }
