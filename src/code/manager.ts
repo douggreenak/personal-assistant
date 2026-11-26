@@ -123,7 +123,12 @@ async function acceptBypassWarning(ctx: Ctx, id: string): Promise<void> {
     await sleep(500); if (!(await t.has(name))) return;
     const raw = await t.capture(name).catch(() => ''); const sc = parseScreen(raw);
     if (sc.state === 'idle' || sc.state === 'working') return;                      // already past it
-    if (/Bypass Permissions mode/i.test(raw)) { const m = /(\d)\.\s+Yes, I accept/i.exec(raw); if (m) { await t.keys(name, [m[1]]); await sleep(200); await t.keys(name, ['Enter']); return; } }
+    if (/Bypass Permissions mode/i.test(raw) && /Yes, I accept/i.test(raw)) {
+      const m = /(\d)\.\s+Yes, I accept/i.exec(raw);
+      if (m) { await t.keys(name, [m[1]]); await sleep(200); await t.keys(name, ['Enter']); return; }       // numbered menu: press its number
+      if (/^\s*❯\s*(\d\.\s*)?No, exit/m.test(raw)) { await t.keys(name, ['Down']); await sleep(200); }        // un-numbered menu with the cursor on "No, exit": move to "Yes, I accept"
+      await t.keys(name, ['Enter']); return;
+    }
   }
 }
 export async function stopSession(ctx: Ctx, id: string): Promise<void> { getSession(ctx, id); const t = tm(ctx); await t.kill(tmuxName(id)); ctx.db.prepare('UPDATE code_sessions SET desired = 0 WHERE id = ?').run(id); }
