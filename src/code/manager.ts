@@ -131,6 +131,29 @@ export async function sendMessage(ctx: Ctx, id: string, textIn: string): Promise
   if (text.includes('\n')) await t.paste(name, text); else await t.literal(name, text);
   await sleep(text.startsWith('/') ? 300 : text.includes('\n') ? 90 : 30); await t.keys(name, ['Enter']);
 }
+/** Esc: stop what Claude is doing right now (the session stays up). */
+export async function interrupt(ctx: Ctx, id: string): Promise<void> {
+  const t = await needTmux(ctx); getSession(ctx, id); const name = tmuxName(id); if (!(await t.has(name))) throw new CodeError('This session is stopped.');
+  await t.keys(name, ['Escape']);
+}
+const MODE_LABEL: Record<string, RegExp> = { manual: /manual mode/, acceptEdits: /accept edits/, auto: /auto mode/, plan: /plan mode/, dontAsk: /don.t ?ask/i, bypassPermissions: /bypass permissions/ };
+/** Switch the permission mode of a running session the way a person does: Shift+Tab until the footer shows it. */
+export async function setMode(ctx: Ctx, id: string, mode: string): Promise<string> {
+  const t = await needTmux(ctx); getSession(ctx, id); const want = MODE_LABEL[mode]; if (!want) throw new CodeError('Unknown permission mode.');
+  if (mode === 'bypassPermissions' && !ctx.cfg.code.allowBypass) throw new CodeError('“Bypass permissions” is turned off (Settings → Code → Allow bypass).', 403);
+  const name = tmuxName(id); if (!(await t.has(name))) throw new CodeError('This session is stopped. Start it first.');
+  for (let i = 0; i < 7; i++) {
+    const sc = parseScreen(await t.capture(name)); if (sc.state === 'permission' || sc.state === 'dialog') throw new CodeError('Claude is waiting for an answer first.');
+    if (sc.mode && want.test(sc.mode)) { ctx.db.prepare('UPDATE code_sessions SET permission_mode = ? WHERE id = ?').run(mode, id); return sc.mode; }
+    await t.keys(name, ['BTab']); await sleep(350);
+  }
+  throw new CodeError('That mode is not available in this session right now (Claude Code only cycles through the modes it has enabled).');
+}
+/** Switch the model of a running session with Claude Code's own /model command. */
+export async function setModel(ctx: Ctx, id: string, modelIn: string): Promise<void> {
+  const model = String(modelIn ?? '').trim(); if (!/^[\w.\-[\]]{1,60}$/.test(model)) throw new CodeError('That model name is not valid.');
+  await sendMessage(ctx, id, '/model ' + model); ctx.db.prepare('UPDATE code_sessions SET model = ? WHERE id = ?').run(model, id);
+}
 export async function pressKeys(ctx: Ctx, id: string, keys: unknown): Promise<void> {
   const t = await needTmux(ctx); getSession(ctx, id);
   const list = Array.isArray(keys) ? keys.map(String) : []; if (!list.length || list.length > 8 || list.some((k) => !ALLOWED_KEYS.has(k))) throw new CodeError('Those keys are not allowed.');

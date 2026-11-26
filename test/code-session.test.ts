@@ -51,6 +51,10 @@ test('code: a session starts in tmux, takes messages, shows tools and permission
   assert.equal(await waitFor(async () => (await C.commandOutput(ctx, s.id, '/context')) || false, 8000, 'command output'), 'Context window: 1k of 200k used\n     Messages: 10 tokens');
   mkdirSync(join(p.path, '.claude', 'commands'), { recursive: true }); writeFileSync(join(p.path, '.claude', 'commands', 'ship.md'), '---\ndescription: Ship it\n---\nbody');
   const cl = C.listCommands(ctx, s.id); assert.ok(cl.some((c) => c.name === '/compact' && !c.custom)); assert.deepEqual(cl.find((c) => c.name === '/ship'), { name: '/ship', description: 'Ship it', custom: true });
+  // permission mode is switched with Shift+Tab until the footer shows it; Esc interrupts
+  await waitFor(async () => (await state(s.id)) === 'idle'); assert.match(await C.setMode(ctx, s.id, 'plan'), /plan mode/); assert.equal(C.getSession(ctx, s.id).permissionMode, 'plan');
+  await assert.rejects(C.setMode(ctx, s.id, 'bypassPermissions'), /turned off/); await assert.rejects(C.setMode(ctx, s.id, 'bogus'), /Unknown/); await assert.rejects(C.setModel(ctx, s.id, 'a b;c'), /not valid/);
+  await C.interrupt(ctx, s.id); await C.setMode(ctx, s.id, 'manual');
   // a permission question: shown with its options; typing is refused until answered; "No" is reported
   await waitFor(async () => (await state(s.id)) === 'idle'); await C.sendMessage(ctx, s.id, 'PERMISSION please');
   const q = await waitFor(async () => { const l = await pump(); return l.screen?.state === 'permission' ? l.screen : false; }, 15000, 'permission question');

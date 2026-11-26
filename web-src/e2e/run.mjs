@@ -441,6 +441,8 @@ try {
     await page.locator('.code-composer textarea').fill('read this'); await page.keyboard.press('Enter');
     await page.locator('.code-user', { hasText: '.claude-uploads/' }).waitFor({ timeout: 15000 }); assert.equal(await page.locator('.code-file').count(), 0);
     await page.locator('.code-state[data-state=idle]').waitFor();
+    await btn('Settings').click(); await dlg().waitFor(); await dlg().locator('md-outlined-select[label="Permissions"]').evaluate((el) => { el.value = 'plan'; el.dispatchEvent(new Event('change', { bubbles: true })); }); await btn('Apply', dlg()).click();
+    await page.locator('.code-sub', { hasText: 'plan' }).waitFor({ timeout: 15000 });   // permission mode changed from the UI
     await page.locator('.code-composer textarea').fill('/co'); await page.locator('.code-cmds [data-cmd="/context"]').waitFor(); assert.ok(await page.locator('.code-cmds [data-cmd="/compact"]').count());
     await page.keyboard.press('Tab'); assert.equal(await page.locator('.code-composer textarea').inputValue(), '/compact ');   // Tab completes the first match
     await page.locator('.code-composer textarea').fill('/context'); await page.keyboard.press('Enter');

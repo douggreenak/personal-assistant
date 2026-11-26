@@ -164,13 +164,14 @@ export default async function code(view) {
     const dropHost = () => composer; setTimeout(() => { composer.addEventListener('dragover', (e) => { if ([...(e.dataTransfer?.types ?? [])].includes('Files')) { e.preventDefault(); composer.classList.add('drop'); } }); composer.addEventListener('dragleave', () => composer.classList.remove('drop')); composer.addEventListener('drop', (e) => { composer.classList.remove('drop'); if (e.dataTransfer?.files?.length) { e.preventDefault(); addFiles([...e.dataTransfer.files]); } }); });
     const pics = { button: attachBtn, strip, input: fin };
     const sendBtn = h('md-filled-icon-button', { 'aria-label': 'Send', onclick: () => send() }, icon('send'));
+    const stopBtn = h('md-filled-tonal-icon-button', { 'aria-label': 'Stop Claude', title: 'Stop what Claude is doing (Esc)', hidden: true, onclick: async () => { await guarded(() => api(`${base}/${ext ? 'keys' : 'interrupt'}`, { method: 'POST', body: ext ? { keys: ['Escape'] } : {} })); poll(); } }, icon('stop'));
     const startBtn = h('md-filled-button', { onclick: async () => { await guarded(() => api(`/code/sessions/${sid}/start`, { method: 'POST', body: {} }), 'Starting…'); poll(); } }, icon('play_arrow'), 'Start session');
     let cmds = []; const cmdBox = h('div', { class: 'code-cmds', role: 'listbox', 'aria-label': 'Commands', hidden: true });
     api(`${base}/commands`).then((j) => { cmds = j.commands; }).catch(() => {});
     const matches = () => { const v = ta.value; if (!v.startsWith('/') || /\s/.test(v)) return []; return cmds.filter((c) => c.name.startsWith(v.toLowerCase())).slice(0, 8); };
     const drawCmds = () => { const m = matches(); cmdBox.hidden = !m.length || (m.length === 1 && m[0].name === ta.value); clear(cmdBox).append(...m.map((c) => h('button', { type: 'button', role: 'option', 'data-cmd': c.name, onclick: () => { ta.value = c.name + ' '; grow(); drawCmds(); ta.focus(); } }, h('b', {}, c.name), h('span', { class: 'muted' }, c.description)))); };
     ta.addEventListener('input', drawCmds);
-    const composer = h('div', { class: 'composer code-composer' }, ext ? '' : pics.button, ta, sendBtn);
+    const composer = h('div', { class: 'composer code-composer' }, ext ? '' : pics.button, ta, stopBtn, sendBtn);
 
     async function send(text) {
       text = (text ?? ta.value).trim(); if (!text && !files.length) return;
@@ -188,7 +189,20 @@ export default async function code(view) {
     // header
     const act = (label, ic, fn, cls = 'md-outlined-button') => h(cls, { onclick: fn }, icon(ic), label);
     const headBtns = h('div', { class: 'code-head-btns' });
-    const drawHead = () => { if (ext) { clear(headBtns).append(chip(running ? 'On this computer' : 'Ended')); return; } clear(headBtns).append(running ? act('Stop', 'stop', async () => { if (await confirmDialog('Stop this session?', 'The tmux session ends. Start it again later and the conversation resumes.', 'Stop')) { await guarded(() => api(`/code/sessions/${sid}/stop`, { method: 'POST' }), 'Stopped'); poll(); } }) : startBtn,
+    const MODE_NAMES = { manual: 'Manual — ask for everything', acceptEdits: 'Accept edits automatically', auto: 'Auto — Claude judges risk', plan: 'Plan only — no changes', dontAsk: "Don't ask", bypassPermissions: 'Bypass permissions (no prompts)' };
+    const MODE_FROM_SCREEN = (m) => { m = String(m || ''); return /accept edits/.test(m) ? 'acceptEdits' : /plan/.test(m) ? 'plan' : /auto/.test(m) ? 'auto' : /manual/.test(m) ? 'manual' : /bypass/.test(m) ? 'bypassPermissions' : /ask/.test(m) ? 'dontAsk' : ''; };
+    function settingsDialog() {
+      const cur = MODE_FROM_SCREEN(scr?.mode) || s.permissionMode || 'manual';
+      const mode = h('md-outlined-select', { label: 'Permissions' }, ...st.modes.filter((m) => m !== 'bypassPermissions' || st.allowBypass).map((m) => h('md-select-option', { value: m, selected: m === cur || undefined }, h('div', { slot: 'headline' }, MODE_NAMES[m] || m))));
+      const known = [['', 'Keep current'], ['sonnet', 'Sonnet'], ['opus', 'Opus'], ['haiku', 'Haiku']];
+      const model = h('md-outlined-select', { label: 'Model' }, ...known.map(([v, l]) => h('md-select-option', { value: v, selected: v === '' || undefined }, h('div', { slot: 'headline' }, l + (v === '' && s.model ? ` (${s.model})` : '')))));
+      const { close } = dialog({ title: 'Session settings', content: h('div', { class: 'form' }, mode, model, h('div', { class: 'help' }, 'Applied to the running session right away, the same way you would in the terminal (Shift+Tab for permissions, /model for the model). Claude must be idle (not waiting for an answer).')),
+        actions: [h('md-text-button', { onclick: () => close() }, 'Cancel'), h('md-filled-button', { onclick: async () => {
+          if (mode.value && mode.value !== cur) { const r = await guarded(() => api(`/code/sessions/${sid}/mode`, { method: 'POST', body: { mode: mode.value } }), 'Permissions changed'); if (!r) return; s.permissionMode = mode.value; }
+          if (model.value) { const r = await guarded(() => api(`/code/sessions/${sid}/model`, { method: 'POST', body: { model: model.value } }), 'Switching model…'); if (!r) return; s.model = model.value; }
+          close(); poll(); } }, 'Apply')] });
+    }
+    const drawHead = () => { if (ext) { clear(headBtns).append(chip(running ? 'On this computer' : 'Ended')); return; } clear(headBtns).append(running ? act('Settings', 'tune', settingsDialog) : '', running ? act('Stop', 'stop', async () => { if (await confirmDialog('Stop this session?', 'The tmux session ends. Start it again later and the conversation resumes.', 'Stop')) { await guarded(() => api(`/code/sessions/${sid}/stop`, { method: 'POST' }), 'Stopped'); poll(); } }) : startBtn,
       h('md-icon-button', { id: 'sessMenu', 'aria-label': 'More' }, icon('more_horiz')));
       menu(headBtns.querySelector('#sessMenu'), [['Restart', async () => { await guarded(() => api(`/code/sessions/${sid}/restart`, { method: 'POST' }), 'Restarted'); poll(); }], ['Rename', () => renameDialog('Rename session', title, (n) => api('/code/sessions/' + sid, { method: 'PATCH', body: { title: n } }), () => { titleEl.textContent = title = ''; location.reload(); })],
         ['Delete session', async () => { if (await confirmDialog('Delete this session?', 'It is stopped and removed from the list. The conversation file stays on disk.', 'Delete')) { await guarded(() => api('/code/sessions/' + sid, { method: 'DELETE' }), 'Deleted'); go('p/' + p.id); } }]]); };
@@ -233,13 +247,18 @@ export default async function code(view) {
       clear(permBox);
       if (scr?.state === 'permission') permBox.append(h('div', { class: 'card code-perm', role: 'alertdialog', 'aria-label': 'Claude is asking' }, h('b', {}, scr.permission.question), scr.permission.detail ? h('pre', { class: 'code-pre' }, scr.permission.detail) : '', h('div', { class: 'code-perm-btns' }, ...scr.permission.options.map((o) => h(o.selected ? 'md-filled-button' : 'md-outlined-button', { 'data-opt': o.key, onclick: () => key(o.key) }, o.label.replace(/\s*\(shift\+tab\)\s*$/, ''))), h('md-text-button', { onclick: () => key('Escape') }, 'Cancel'))));
       else if (scr?.state === 'dialog' || scr?.state === 'unknown' && l.dialogText) permBox.append(h('div', { class: 'card code-dialog', role: 'dialog', 'aria-label': 'Claude Code' }, h('pre', { class: 'code-pre' }, (l.dialogText || scr.hint || '').split('\n').filter((x) => x.trim()).slice(-24).join('\n')), h('div', { class: 'code-perm-btns' }, ...[['↑', 'Up'], ['↓', 'Down'], ['←', 'Left'], ['→', 'Right'], ['Enter', 'Enter'], ['Tab', 'Tab'], ['Esc', 'Escape']].map(([lb, k]) => h('md-outlined-button', { 'data-key': k, onclick: () => key(k) }, lb)))));
-      composer.classList.toggle('busy', scr?.state === 'working');
+      composer.classList.toggle('busy', scr?.state === 'working'); stopBtn.hidden = scr?.state !== 'working';
     }
-    async function poll() {
+    // One poll at a time (two overlapping polls both used the same offset and drew every new message twice) and each message is drawn once.
+    let polling = false, again = false; const seen = new Set();
+    function poll() { if (polling) { again = true; return Promise.resolve(); } polling = true; return pollOnce().finally(() => { polling = false; if (again) { again = false; poll(); } }); }
+    async function pollOnce() {
       if (document.hidden) return;
       try {
-        const l = await api(`${base}/live?after=${after}`); after = l.next || after; const first = !started; started = true;
-        let list = l.msgs; if (first && list.length > 300) { hidden = list.length - 300; list = list.slice(-300); msgs.append(h('div', { class: 'code-note' }, `${hidden} earlier messages are not shown here (they are in the terminal's scrollback and the conversation file).`)); }
+        const l = await api(`${base}/live?after=${after}`); const first = !started; started = true;
+        if (l.next < after) { clear(msgs); tools.clear(); seen.clear(); hidden = 0; }   // the conversation file was replaced (e.g. /clear): start over
+        after = l.next || after;
+        let list = l.msgs.filter((m) => { if (m.t === 'title' || m.t === 'mode') return true; const k = m.id; if (seen.has(k)) return false; seen.add(k); return true; }); if (first && list.length > 300) { hidden = list.length - 300; list = list.slice(-300); msgs.append(h('div', { class: 'code-note' }, `${hidden} earlier messages are not shown here (they are in the terminal's scrollback and the conversation file).`)); }
         for (const m of list) addMsg(m); if (list.length && stick) msgs.scrollTop = msgs.scrollHeight;
         if (first && !l.msgs.length && !l.transcript) msgs.append(h('div', { class: 'code-note', id: 'emptyNote' }, l.running ? 'Session is up. Say something to Claude Code below.' : ''));
         if (l.msgs.length) msgs.querySelector('#emptyNote')?.remove();

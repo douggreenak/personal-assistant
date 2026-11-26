@@ -13,7 +13,9 @@ const cfgJson = process.env.CLAUDE_CONFIG_DIR ? join(process.env.CLAUDE_CONFIG_D
 if (cfgJson && existsSync(cfgJson)) { const j = JSON.parse(readFileSync(cfgJson, 'utf8')); if (!j.projects?.[cwd]?.hasTrustDialogAccepted) { /* the real one would ask */ } }
 
 let lines = [], input = '', state = 'idle', pending = null, timer = null, usageOpen = false, seq = 0;
-const MODE = { manual: '⏸ manual mode on · ? for shortcuts', auto: '⏵⏵ auto mode on (shift+tab to cycle)', plan: '⏸ plan mode on', acceptEdits: '⏵⏵ accept edits on', dontAsk: "⏵⏵ don't ask on", bypassPermissions: '⏵⏵ bypass permissions on' }[mode] ?? mode;
+const CYCLE = ['manual', 'acceptEdits', 'plan', 'auto']; let curMode = mode;
+const MODES = { manual: '⏸ manual mode on · ? for shortcuts', auto: '⏵⏵ auto mode on (shift+tab to cycle)', plan: '⏸ plan mode on', acceptEdits: '⏵⏵ accept edits on', dontAsk: "⏵⏵ don't ask on", bypassPermissions: '⏵⏵ bypass permissions on' };
+const modeText = () => MODES[curMode] ?? curMode;
 const RULE = '─'.repeat(110);
 const write = (e) => { mkdirSync(dir, { recursive: true }); appendFileSync(file, JSON.stringify({ sessionId: sid, cwd, timestamp: new Date().toISOString(), uuid: randomUUID(), ...e }) + '\n'); };
 const render = () => {
@@ -21,7 +23,7 @@ const render = () => {
   if (usageOpen) { out += readFileSync(FX + 'screen-usage.txt', 'utf8'); process.stdout.write(out); return; }
   out += ` ▐▛███▛█   Claude Code v0.0.0-fake\n▝▜██████▀  ${model}\n ▝▝   ▝▝   ${cwd}\n\n` + lines.join('\n') + '\n';
   if (state === 'permission') { out += RULE + '\n Create file\n ' + pending.file + '\n╌╌╌╌╌╌╌╌╌╌╌╌\n  1 ok\n╌╌╌╌╌╌╌╌╌╌╌╌\n Do you want to create ' + pending.file + '?\n ❯ 1. Yes\n   2. Yes, and switch to accept edits (auto-approve file edits and common file commands) for this session (shift+tab)\n   3. No\n\n Esc to cancel · Tab to amend\n'; }
-  else { if (state === 'working') out += '✶ Pondering… (' + (seq++ % 9 + 1) + 's · ↓ 5 tokens)\n'; out += RULE + '\n❯ ' + input + '\n' + RULE + '\n  ' + MODE + (state === 'working' ? ' · esc to interrupt' : '') + '\n'; }
+  else { if (state === 'working') out += '✶ Pondering… (' + (seq++ % 9 + 1) + 's · ↓ 5 tokens)\n'; out += RULE + '\n❯ ' + input + '\n' + RULE + '\n  ' + modeText() + (state === 'working' ? ' · esc to interrupt' : '') + '\n'; }
   process.stdout.write(out);
 };
 const usage = (i, o) => ({ input_tokens: i, output_tokens: o, cache_read_input_tokens: 1000, cache_creation_input_tokens: 200 });
@@ -49,6 +51,7 @@ process.stdin.setRawMode(true); process.stdin.resume(); process.stdin.setEncodin
 let paste = false;
 process.stdin.on('data', (d) => {
   for (let i = 0; i < d.length; i++) {
+    if (d.startsWith('\x1b[Z', i)) { curMode = CYCLE[(CYCLE.indexOf(curMode) + 1) % CYCLE.length]; i += 2; render(); continue; }
     if (d.startsWith('\x1b[200~', i)) { paste = true; i += 5; continue; } if (d.startsWith('\x1b[201~', i)) { paste = false; i += 5; continue; }
     const c = d[i];
     if (state === 'permission') { if (c === '1') decide(true); else if (c === '3' || c === '\x1b') decide(false); continue; }
