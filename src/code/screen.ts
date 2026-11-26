@@ -18,7 +18,10 @@ export function parseScreen(text: string): ScreenInfo {
     tail.forEach((l, i) => { const m = OPTION.exec(l); if (m && (opts.length === 0 || Number(m[2]) === opts.length + 1)) { if (first < 0) first = i; opts.push({ key: m[2], label: m[3], selected: !!m[1] }); } });
     if (opts.length >= 2) {
       let q = first - 1; while (q >= 0 && !tail[q].trim()) q--;
-      const above: string[] = []; for (let i = Math.max(0, q - 12); i <= q; i++) above.push(tail[i]);
+      // The detail is the tool call being approved: walk up from the question to its "● Tool(...)" header (kept), and never into the chat before it
+      // (a "❯" prompt line, the banner/logo) — otherwise a short prompt drags earlier conversation into the card.
+      let from = Math.max(0, q - 12); for (let i = q - 1; i >= from; i--) { if (/^\s*[●⏺]/.test(tail[i])) { from = i; break; } if (/^\s*❯/.test(tail[i])) { from = i + 1; break; } }
+      const above: string[] = []; for (let i = from; i <= q; i++) above.push(tail[i]);
       return { ...info, state: 'permission', permission: { question: (tail[q] ?? '').trim(), detail: above.filter((l) => l.trim() && !RULE.test(l)).slice(0, -1).join('\n').trim(), options: opts } };
     }
     return { ...info, state: 'dialog', hint: tail.filter((l) => l.trim() && !RULE.test(l)).join('\n').trim() };   // trust prompt, theme picker, login… — answer in the terminal view

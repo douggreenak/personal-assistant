@@ -109,6 +109,7 @@ async function runViewport([w, h], scheme) {
     ['settings', async () => page.locator('md-filled-tonal-button', { hasText: 'Change password' }).click(), 'change password'], ['inbox', async () => page.locator('.row').first().click(), 'message'], ['home', async () => page.keyboard.press('Control+k'), 'search'], ['home', async () => page.keyboard.press('?'), 'shortcuts']];
   for (const [p, doOpen, name] of dialogs) {
     await open(p);
+    if (p === 'settings') { await page.locator('button.set-nav-item', { hasText: 'Security & access' }).waitFor({ timeout: 10000 }); await page.evaluate(() => [...document.querySelectorAll('button.set-nav-item')].find((b) => /Security/.test(b.textContent)).click()); await page.waitForTimeout(300); }   // settings is tabbed: the password button lives on this tab
     if (p === 'settings') await page.locator('md-filled-tonal-button', { hasText: 'Change password' }).waitFor({ state: 'attached', timeout: 10000 }).catch(() => {});
     if (p === 'settings') await page.locator('md-filled-tonal-button', { hasText: 'Change password' }).scrollIntoViewIfNeeded();
     try { await doOpen(); await page.locator('md-dialog[open]').waitFor({ timeout: 4000 }); await page.waitForTimeout(450); } catch { problems.push(`[${tag}] ${name}: could not open`); continue; }
@@ -118,9 +119,9 @@ async function runViewport([w, h], scheme) {
   }
   // the connect wizard after pressing Connect: the form must be gone and the outcome visible inside the dialog
   await open('connectors'); await page.locator('md-fab').click(); await page.locator('md-dialog[open]').waitFor(); await page.waitForTimeout(400);
-  await page.locator('md-outlined-text-field[label^="Paste everything"]').click(); await page.keyboard.type('Acme API: GET https://api.acme.example/orders');
+  await page.locator('md-outlined-text-field[label^="Paste docs"]').click(); await page.keyboard.type('Acme API: GET https://api.acme.example/orders');
   await page.locator('md-filled-button', { hasText: 'Connect' }).click(); await page.locator('md-dialog[open] .err').waitFor({ timeout: 25000 }).catch(() => problems.push(`[${tag}] wizard: no result shown`));
-  const wz = await page.evaluate(() => { const d = document.querySelector('md-dialog[open]'); const f = d.querySelector('md-outlined-text-field[label^="Paste everything"]'); const e = d.querySelector('.err'); const box = d.shadowRoot.querySelector('.container').getBoundingClientRect(); const er = e?.getBoundingClientRect();
+  const wz = await page.evaluate(() => { const d = document.querySelector('md-dialog[open]'); const f = d.querySelector('md-outlined-text-field[label^="Paste docs"]'); const e = d.querySelector('.err'); const box = d.shadowRoot.querySelector('.container').getBoundingClientRect(); const er = e?.getBoundingClientRect();
     return [f && f.getBoundingClientRect().height > 0 ? 'the paste form is still showing after Connect' : '', er && (er.top < box.top || er.bottom > box.bottom) ? 'the result is outside the visible dialog' : ''].filter(Boolean); });
   bad('wizard', wz); bad('wizard dialog', await page.evaluate(DIALOG)); await page.keyboard.press('Escape'); await page.waitForTimeout(300);
   // row menu at the top and the bottom of a long list
@@ -128,10 +129,11 @@ async function runViewport([w, h], scheme) {
   for (const where of ['top', 'bottom']) {
     if (where === 'bottom') { await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight)); await page.waitForTimeout(150); }
     const btn = where === 'top' ? page.locator('.row md-icon-button').nth(1) : page.locator('.row md-icon-button').last();
-    await btn.click(); await page.waitForTimeout(400);
+    await btn.click(); await page.waitForTimeout(1200);
     const m = await page.evaluate(() => { const mm = document.querySelector('md-menu[open]'); if (!mm) return 'no menu'; const r = (mm.shadowRoot.querySelector('.menu') ?? mm).getBoundingClientRect(); return r.left < -1 || r.right > innerWidth + 1 || r.top < -1 || r.bottom > innerHeight + 1 ? `menu is off-screen (${Math.round(r.left)},${Math.round(r.top)} → ${Math.round(r.right)},${Math.round(r.bottom)})` : ''; });
     if (m) problems.push(`[${tag}] row menu (${where}): ${m}`);
-    await page.keyboard.press('Escape'); await page.waitForTimeout(250);
+    await page.keyboard.press('Escape'); await page.waitForTimeout(600);
+    { const left = await page.evaluate(() => [...document.querySelectorAll('md-menu[open]')].map((m) => m.getAttribute('anchor') + ':' + [...m.querySelectorAll('md-menu-item')].map((i) => i.textContent.trim()).join('/') + ' focus=' + (document.activeElement?.tagName))); if (left.length) problems.push(`[${tag}] row menu (${where}): Escape did not close it — ${left.join(' ; ')}`); }
   }
   // mobile More menu
   if (w < 840) { await page.locator('#moreBtn').click(); await page.waitForTimeout(400);
@@ -144,7 +146,7 @@ async function runViewport([w, h], scheme) {
 const jobs = VIEWPORTS.filter(([w, h]) => !process.env.LAYOUT_ONLY || process.env.LAYOUT_ONLY === `${w}x${h}`).flatMap((v) => ['light', 'dark'].map((s) => [v, s]));
 let next = 0; const CONC = Math.max(2, Math.min(6, Number(process.env.LAYOUT_WORKERS) || 4));
 const t0 = Date.now();
-await Promise.all(Array.from({ length: CONC }, async () => { while (next < jobs.length) { const [v, s] = jobs[next++]; try { await runViewport(v, s); } catch (e) { problems.push(`[${v.join('x')} ${s}] test crashed: ${String(e.message).split('\n')[0]}`); } } }));
+await Promise.all(Array.from({ length: CONC }, async () => { while (next < jobs.length) { const [v, s] = jobs[next++]; try { await runViewport(v, s); } catch (e) { problems.push(`[${v.join('x')} ${s}] test crashed: ${String(e.stack).split("\n").slice(0, 14).join(" | ")}`); } } }));
 await browser.close(); srv.kill();
 const uniq = [...new Set(problems)];
 console.log(uniq.length ? uniq.map((p) => '  ✖ ' + p).join('\n') : '  ✔ no layout problems');

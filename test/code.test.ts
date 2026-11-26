@@ -17,6 +17,9 @@ test('code: the terminal screen is understood — idle, working, permission ques
   assert.equal(perm.state, 'permission'); assert.equal(perm.permission!.question, 'Do you want to create perm.txt?');
   assert.deepEqual(perm.permission!.options.map((o) => [o.key, o.selected]), [['1', true], ['2', false], ['3', false]]);
   assert.match(perm.permission!.options[1].label, /accept edits/); assert.match(perm.permission!.detail, /Create file/); assert.equal(perm.mode, undefined);
+  // earlier conversation and the banner above the tool call must not end up in the card
+  const noisy = parseScreen([' ▐▛███▜▌   Claude Code', '❯ hello', '● Echo: hello', '❯ go', '● Write(perm.txt)', '  Create file', '  perm.txt', '', ' Do you want to create perm.txt?', ' ❯ 1. Yes', '   2. Yes, allow all edits', '   3. No', ' Esc to cancel'].join('\n'));
+  assert.equal(noisy.state, 'permission'); assert.equal(noisy.permission!.detail, '● Write(perm.txt)\n  Create file\n  perm.txt');
   assert.equal(parseScreen('Welcome to Claude Code\n Let\'s get started\n ❯ ✔ Auto (match terminal)\n').state, 'dialog');
   assert.equal(parseScreen('').state, 'unknown');
   const u = parseUsageScreen(screen('screen-usage.txt'));
