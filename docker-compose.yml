@@ -6,6 +6,7 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
+      CODE_ROOT: ${CODE_MOUNT:-/workspace}
       TICKETING_URL: http://ticketing:8080
       TICKETING_TOKEN: ${TICKETS_TOKEN:?set TICKETS_TOKEN in .env}
       TRANSCRIBE_URL: http://whisper:8000/v1/audio/transcriptions
@@ -13,7 +14,9 @@ services:
     volumes:
       - ./data:/data
       - ./claude-home:/home/node/.claude        # Claude Code login lives here (see README: one-time `claude login`)
-      - ${CODE_DIR:-./workspace}:/workspace     # the Code tab's projects live here (set CODE_DIR to an existing projects folder on the host)
+      # The Code tab's projects. CODE_DIR is a folder on the host; CODE_MOUNT is where it appears in the container.
+      # Use the SAME absolute path for both (e.g. /home/you) and projects keep their real paths, so tmux sessions, git and logs match the host.
+      - ${CODE_DIR:-./workspace}:${CODE_MOUNT:-/workspace}
       # - /mnt/smb/share:/index/share:ro          # your SMB share, mounted on the host, read-only; then INDEX_PATHS=/index
     ports: ["${BIND_ADDR:-127.0.0.1}:8090:8090"]
     depends_on: [ticketing, whisper]
