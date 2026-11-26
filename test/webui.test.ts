@@ -318,3 +318,17 @@ test('voice: a missing Whisper model is downloaded once automatically, then tran
   const bad = (async (url: string) => new URL(url).pathname.startsWith('/v1/models/') ? new Response('x', { status: 500 }) : new Response('{}', { status: 404 })) as unknown as typeof fetch;
   await assert.rejects(transcribe('http://stt.test/v1/audio/transcriptions', new Uint8Array([1]), 'a.wav', bad), /could not be downloaded/);
 });
+
+test('home-screen app: manifest, icons, service worker and the iOS meta tags are served and consistent', async () => {
+  const s = await boot();
+  try {
+    const none = {} as never;
+    const idx = (await s.call('GET', '/', undefined, none)).text;
+    for (const re of [/rel="manifest" href="\/manifest\.webmanifest"/, /rel="apple-touch-icon" href="\/apple-touch-icon\.png"/, /apple-mobile-web-app-capable" content="yes"/, /viewport-fit=cover/, /name="theme-color"/]) assert.match(idx, re);
+    const mf = await s.call('GET', '/manifest.webmanifest', undefined, none); assert.equal(mf.status, 200); assert.match(mf.headers.get('content-type')!, /manifest\+json/);
+    assert.equal(mf.json.display, 'standalone'); assert.equal(mf.json.start_url, '/'); assert.ok(mf.json.icons.some((i: any) => i.sizes === '512x512' && i.purpose === 'maskable') && mf.json.icons.some((i: any) => i.sizes === '192x192'));
+    for (const i of mf.json.icons) { const r = await fetch(s.base + i.src); assert.equal(r.status, 200, i.src); assert.equal(r.headers.get('content-type'), i.type, i.src); }
+    const ap = await fetch(s.base + '/apple-touch-icon.png'); assert.equal(ap.status, 200); assert.equal((await ap.arrayBuffer()).byteLength > 500, true);
+    const sw = await s.call('GET', '/sw.js', undefined, none); assert.equal(sw.status, 200); assert.match(sw.headers.get('content-type')!, /javascript/); assert.match(sw.text, /fetch/); assert.doesNotMatch(sw.text, /\/api|Authorization/i);
+  } finally { s.close(); }
+});

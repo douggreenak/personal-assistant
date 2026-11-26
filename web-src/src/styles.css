@@ -398,3 +398,24 @@ main { position: relative; }
 
 .setup-row { all: unset; box-sizing: border-box; display: grid; align-items: center; gap: 14px; padding: 12px 14px; border-radius: 16px; cursor: pointer; width: 100%; } .setup-row:hover { background: var(--md-sys-color-surface-container-highest); } .setup-row:focus-visible { outline: 2px solid var(--md-sys-color-primary); }
 .setup-steps, .setup-fields { margin: 4px 0 8px; padding-left: 22px; display: grid; gap: 6px; }
+
+/* ===== Phone / "Add to Home Screen" ===== */
+html { -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
+button, a, md-icon-button, md-filled-button, md-outlined-button, md-text-button, md-filled-tonal-button, .row, .dest { touch-action: manipulation; }   /* no double-tap zoom delay */
+body { overscroll-behavior-y: none; }
+@media (max-width: 900px) {
+  /* iOS zooms the page when a field under 16px is focused */
+  textarea, input, select, md-outlined-text-field, md-filled-text-field, md-outlined-select { font-size: 16px; --md-outlined-text-field-input-text-size: 16px; --md-filled-text-field-input-text-size: 16px; --md-outlined-select-text-field-input-text-size: 16px; }
+  main { padding-left: max(var(--pad), env(safe-area-inset-left)); padding-right: max(var(--pad), env(safe-area-inset-right)); }
+  .bottom-nav { padding-left: max(8px, env(safe-area-inset-left)); padding-right: max(8px, env(safe-area-inset-right)); }
+  .code-msgs { max-height: 55dvh; } .term { height: 45dvh; }
+  .toast-host, .toasts { bottom: calc(90px + env(safe-area-inset-bottom)); }
+  .savebar { bottom: calc(86px + env(safe-area-inset-bottom)); }
+}
+.login { min-height: 100dvh; padding-top: max(20px, env(safe-area-inset-top)); padding-bottom: max(20px, env(safe-area-inset-bottom)); }
+.rail { height: 100dvh; }
+@media (display-mode: standalone) {
+  .topbar { padding-top: max(8px, env(safe-area-inset-top)); }
+  body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  textarea, input, .msgs, .code-msgs, .term, pre, .mono, .logs, .bubble, .code-pre { -webkit-user-select: text; user-select: text; }   /* chrome is not selectable, text still is */
+}

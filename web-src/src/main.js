@@ -130,3 +130,5 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('auth-lost', () => { clearToken(); showLogin(); });
 setInterval(() => { if (hasToken() && !document.hidden) refreshStatus(); }, 20000);
 if (hasToken()) start().catch(showLogin); else showLogin();
+
+if ('serviceWorker' in navigator && location.protocol === 'https:' || location.hostname === 'localhost') navigator.serviceWorker?.register('/sw.js').catch(() => {});   // offline shell for the home-screen app

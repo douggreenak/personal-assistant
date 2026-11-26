@@ -1,6 +1,6 @@
 // Builds the web UI into ../src/web/assets (committed, so the server needs no build step or runtime dependencies).
 import { build } from 'esbuild';
-import { readFileSync, writeFileSync, mkdirSync, copyFileSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, copyFileSync, rmSync, readdirSync } from 'node:fs';
 
 const ICONS = ['code', 'stop', 'bar_chart', 'arrow_back', 'attach_file', 'image', 'home', 'checklist', 'chat', 'inbox', 'task_alt', 'extension', 'monitor_heart', 'settings', 'add', 'close', 'check', 'schedule', 'delete', 'edit',
   'send', 'refresh', 'search', 'history', 'warning', 'error', 'restart_alt', 'logout', 'key', 'upload', 'dark_mode', 'light_mode', 'palette', 'bolt', 'notifications',
@@ -20,5 +20,6 @@ const out = '../src/web/assets';
 rmSync(out, { recursive: true, force: true }); mkdirSync(out + '/fonts', { recursive: true });
 copyFileSync('node_modules/@fontsource-variable/roboto-flex/files/roboto-flex-latin-full-normal.woff2', out + '/fonts/roboto-flex.woff2');
 await build({ entryPoints: { app: 'src/main.js' }, bundle: true, minify: true, format: 'esm', target: 'es2022', outdir: out, legalComments: 'none' });
+for (const f of readdirSync('public')) copyFileSync('public/' + f, out + '/' + f);   // PWA: manifest, service worker, phone icons
 copyFileSync('src/styles.css', out + '/styles.css'); copyFileSync('icon.svg', out + '/icon.svg');
 console.log('built', out);

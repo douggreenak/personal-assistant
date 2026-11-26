@@ -54,7 +54,7 @@ const tokenOk = (h: string | undefined, token: string): boolean => {
 
 // The web UI is static files (built from web-src/); they hold no data and every API call needs the bearer token.
 const WEB_DIR = new URL('./web/', import.meta.url).pathname;
-const MIME: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.woff2': 'font/woff2', '.svg': 'image/svg+xml', '.json': 'application/json' };
+const MIME: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.woff2': 'font/woff2', '.svg': 'image/svg+xml', '.json': 'application/json', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
 const CSP = "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'";
 const assetCache = new Map<string, Buffer>();
 function webFile(rel: string): { body: Buffer; type: string } | null {
@@ -89,8 +89,8 @@ export function createHttp(ctx: Ctx, deps: HttpDeps): Server {
   async function route(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url ?? '/', 'http://x'); const path = url.pathname.replace(/\/+$/, '') || '/'; const method = req.method ?? 'GET';
     if (path === '/healthz') return send(res, 200, { ok: true });
-    if (method === 'GET' && (path === '/' || path.startsWith('/assets/'))) {
-      const f = webFile(path === '/' ? 'index.html' : path.slice(1));
+    if (method === 'GET' && (path === '/' || path.startsWith('/assets/') || path === '/sw.js' || path === '/manifest.webmanifest' || path === '/apple-touch-icon.png' || path === '/favicon.ico')) {
+      const f = webFile(path === '/' ? 'index.html' : path === '/sw.js' ? 'assets/sw.js' : path === '/manifest.webmanifest' ? 'assets/manifest.webmanifest' : path === '/apple-touch-icon.png' ? 'assets/apple-touch-icon.png' : path === '/favicon.ico' ? 'assets/apple-touch-icon.png' : path.slice(1));
       if (!f) throw new HttpError(404, 'Not found.');
       res.writeHead(200, { 'content-type': f.type, 'cache-control': 'no-cache', 'content-security-policy': CSP, 'x-content-type-options': 'nosniff' });
       return void res.end(f.body);
