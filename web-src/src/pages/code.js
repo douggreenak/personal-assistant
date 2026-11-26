@@ -306,7 +306,7 @@ export default async function code(view) {
     }
     function drawLive(l) {
       const wasRunning = running; running = l.running; scr = l.screen; if (running && !wasRunning && view === 'chat') setTimeout(() => ta.focus({ preventScroll: true }), 150); const sc = l.screen?.state || 'stopped';
-      clear(stateEl).append(stateChip(sc, running)); drawHead(); layout();
+      clear(stateEl).append(stateChip(sc, running)); if (running !== wasRunning || !headBtns.childElementCount) drawHead(); layout();   // not on every poll: redrawing rebuilds the ⋯ menu and closes it
       infoEl.textContent = [scr?.working && '✻ ' + scr.working, scr?.mode, l.lastActivity && 'last activity ' + ago(l.lastActivity)].filter(Boolean).join(' · ');
       // permission question / dialog
       clear(permBox);
