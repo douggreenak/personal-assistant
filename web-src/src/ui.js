@@ -67,6 +67,14 @@ export function dialog({ title, content, actions = [], fullscreen = false, onClo
   dlg.addEventListener('keydown', (e) => {            // Ctrl/Cmd+Enter submits whatever the dialog's main button is
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { const b = [...dlg.querySelectorAll('[slot=actions] md-filled-button')].pop(); if (b && !b.disabled) { e.preventDefault(); b.click(); } }
   });
+  // Enter submits the dialog's main button (not inside a multi-line box, a select, or on another button).
+  dlg.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+    const t = e.composedPath()[0]; const host = e.target;
+    if (host?.tagName === 'MD-OUTLINED-SELECT' || host?.tagName === 'MD-SELECT-OPTION' || (host?.tagName?.startsWith('MD-') && host.type === 'textarea')) return;
+    if (t?.tagName === 'TEXTAREA' || t?.tagName === 'SELECT' || t?.tagName === 'A' || /BUTTON/.test(t?.tagName || '') || /BUTTON|MENU-ITEM/.test(host?.tagName || '')) return;
+    const b = [...dlg.querySelectorAll('[slot=actions] md-filled-button')].pop(); if (b && !b.disabled) { e.preventDefault(); b.click(); }
+  });
   // A click on the dimmed area must not throw away what you typed; Esc and the Close/Cancel buttons still work.
   let escAt = 0; dlg.addEventListener('keydown', (e) => { if (e.key === 'Escape') escAt = Date.now(); });
   if (!dismissable) dlg.addEventListener('cancel', (e) => { if (Date.now() - escAt > 400) e.preventDefault(); });
@@ -79,7 +87,7 @@ export function confirmDialog(title, text, okLabel = 'Confirm') {
     let result = false;
     const { close } = dialog({ title, content: h('p', {}, text), onClose: () => res(result), actions: [
       h('md-text-button', { onclick: () => close() }, 'Cancel'),
-      h('md-filled-button', { onclick: () => { result = true; close(); } }, okLabel)] });
+      h('md-filled-button', { class: /delet|remov|drop|stop|discard|clear/i.test(okLabel) ? 'danger' : '', onclick: () => { result = true; close(); } }, okLabel)] });
   });
 }
 
@@ -93,7 +101,7 @@ export function field(label, props = {}, type = 'md-outlined-text-field') {
 export function menu(anchorBtn, entries) {
   const id = 'm' + Math.random().toString(36).slice(2, 8);
   anchorBtn.id = id;
-  const m = h('md-menu', { anchor: id, 'positioning': 'popover' }, entries.map((e) => h('md-menu-item', { onclick: e.onclick }, h('div', { slot: 'headline' }, e.label), e.icon && h('span', { slot: 'start' }, icon(e.icon)))));
+  const m = h('md-menu', { anchor: id, 'positioning': 'popover' }, entries.map((e) => h('md-menu-item', { class: /^(delete|drop|remove)\b/i.test(e.label) ? 'danger' : '', onclick: e.onclick }, h('div', { slot: 'headline' }, e.label), e.icon && h('span', { slot: 'start' }, icon(e.icon)))));
   anchorBtn.addEventListener('click', (ev) => { ev.stopPropagation(); m.open = !m.open; });
   return m;
 }

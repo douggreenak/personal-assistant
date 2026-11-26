@@ -438,3 +438,11 @@ body { overscroll-behavior-y: none; }
 .help-chat h3 { display: flex; align-items: center; gap: 6px; margin: 0; } .help-chat .composer { margin-top: 0; }
 .help-msgs { display: grid; gap: 8px; max-height: 320px; overflow-y: auto; } .help-msgs:empty { display: none; }
 .help-msgs .bubble { max-width: 100%; animation: none; }
+
+/* ---- destructive actions are red ---- */
+md-filled-button.danger { --md-filled-button-container-color: var(--md-sys-color-error); --md-filled-button-label-text-color: var(--md-sys-color-on-error); --md-filled-button-icon-color: var(--md-sys-color-on-error); }
+md-icon-button.danger, md-icon-button[aria-label^="Delete" i], md-icon-button[aria-label^="Remove" i], md-icon-button[title^="Delete" i] { --md-icon-button-icon-color: var(--md-sys-color-error); --md-icon-button-hover-icon-color: var(--md-sys-color-error); --md-icon-button-focus-icon-color: var(--md-sys-color-error); --md-icon-button-pressed-icon-color: var(--md-sys-color-error); color: var(--md-sys-color-error); }
+md-text-button.danger, md-outlined-button.danger { --md-text-button-label-text-color: var(--md-sys-color-error); --md-text-button-icon-color: var(--md-sys-color-error); --md-text-button-hover-label-text-color: var(--md-sys-color-error); --md-text-button-focus-label-text-color: var(--md-sys-color-error); --md-text-button-pressed-label-text-color: var(--md-sys-color-error); --md-outlined-button-label-text-color: var(--md-sys-color-error); --md-outlined-button-outline-color: var(--md-sys-color-error); }
+md-menu-item.danger { --md-menu-item-label-text-color: var(--md-sys-color-error); --md-menu-item-leading-icon-color: var(--md-sys-color-error); }
+.code-file button[aria-label^="Remove"]:hover, .pic button[aria-label^="Remove"]:hover { color: var(--md-sys-color-error); }
+.code-crumb { overflow-wrap: anywhere; font-size: .85rem; } .code-folders { max-height: 300px; overflow-y: auto; }

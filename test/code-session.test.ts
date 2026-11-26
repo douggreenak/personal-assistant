@@ -11,7 +11,7 @@ const FAKE = new URL('./fixtures/code/fake-claude.mjs', import.meta.url).pathnam
 let haveTmux = true; try { execFileSync('tmux', ['-V']); } catch { haveTmux = false; }
 const base = mkdtempSync(join(tmpdir(), 'cc-sess-')); const socket = 'test-' + Math.random().toString(36).slice(2, 8);
 const root = join(base, 'root'); mkdirSync(root);
-const { ctx } = makeCtx([], { env: { ASSISTANT_DATA: join(base, 'data'), CODE_ROOT: root, CODE_CLAUDE_BIN: FAKE, CODE_TMUX_SOCKET: socket, CLAUDE_CONFIG_DIR: join(base, 'cfg'), CODE_MAX_SESSIONS: '2' } });
+const { ctx } = makeCtx([], { env: { ASSISTANT_DATA: join(base, 'data'), CODE_ROOT: root, CODE_CLAUDE_BIN: FAKE, CODE_TMUX_SOCKET: socket, CLAUDE_CONFIG_DIR: join(base, 'cfg'), CODE_MAX_SESSIONS: '2', CODE_ALLOW_BYPASS: '0' } });
 after(() => { try { execFileSync('tmux', ['-L', socket, 'kill-server']); } catch { /* none running */ } });
 const waitFor = async <T>(fn: () => Promise<T | false | undefined | null>, ms = 15000, what = 'condition'): Promise<T> => { const end = Date.now() + ms; for (;;) { const v = await fn(); if (v) return v; if (Date.now() > end) throw new Error('timed out waiting for ' + what); await new Promise((r) => setTimeout(r, 150)); } };
 const state = async (id: string) => (await C.live(ctx, id, 0)).screen?.state;
@@ -112,4 +112,12 @@ test('code: Claude sessions started outside the app (in any tmux server on the h
     assert.ok((await X.usage(ctx, key)).output > 0); assert.ok((await X.commands(ctx, key)).some((c) => c.name === '/compact'));
     execFileSync('tmux', ['-S', sock, 'kill-server']); assert.deepEqual((await X.discover(ctx)).filter((e) => e.cwd === cwd), []); assert.equal((await X.live(ctx, key, 0)).running, false);
   } finally { delete process.env.CODE_TMUX_DIRS; try { execFileSync('tmux', ['-S', sock, 'kill-server'], { stdio: 'ignore' }); } catch { /* gone */ } }
+});
+
+test('code: a new session starts on Sonnet and skips permission prompts by default (unless bypass is switched off)', async () => {
+  const b2 = mkdtempSync(join(tmpdir(), 'code-def-')); const r2 = join(b2, 'projects'); mkdirSync(r2);
+  const { ctx: c2 } = makeCtx([], { env: { ASSISTANT_DATA: join(b2, 'data'), CODE_ROOT: r2, CODE_CLAUDE_BIN: FAKE, CODE_TMUX_SOCKET: 'x' + Date.now(), CLAUDE_CONFIG_DIR: join(b2, 'cfg') } });
+  const p = await C.addProject(c2, { folder: 'demo', create: true }); const s = C.createSession(c2, p.id, {});
+  assert.equal(s.model, 'sonnet'); assert.equal(s.permissionMode, 'bypassPermissions');
+  assert.equal(C.createSession(c2, p.id, { model: 'opus', permissionMode: 'plan' }).model, 'opus');   // explicit choices still win
 });

@@ -1,5 +1,7 @@
 import { api, getToken } from '../api.js';
-import { page, h, icon, clear, spinner, empty, chip, dialog, confirmDialog, toast, guarded, ago, fmtDate, pictureAttach, menu } from '../ui.js';
+import { page, h, icon, clear, spinner, empty, chip, dialog, confirmDialog, toast, guarded, ago, fmtDate, pictureAttach, menu as uiMenu } from '../ui.js';
+/** Attaches a ⋯ menu of [label, action] pairs to its button (the menu element has to be in the page to show). */
+const menu = (btn, pairs) => { const m = uiMenu(btn, pairs.map(([label, onclick]) => ({ label, onclick }))); btn.after(m); return m; };
 import { md } from '../markdown.js';
 import { prepareImage } from '../ui.js';
 
@@ -37,7 +39,7 @@ export default async function code(view) {
       for (const s of p.sessions) rows.push(h('button', { class: 'code-srow' + (r.kind === 's' && r.id === s.id ? ' sel' : ''), 'data-session': s.id, onclick: () => go('s/' + s.id) },
         h('span', { class: 'sdot ' + (s.running ? (s.state === 'working' ? 'work' : s.state === 'permission' || s.state === 'dialog' ? 'ask' : 'on') : ''), title: (STATE[s.running ? s.state : 'stopped'] || STATE.unknown)[0] }), h('span', { class: 'stitle' }, s.aiTitle || s.title)));
     }
-    if (externals.length) { rows.push(h('div', { class: 'code-proj ext-head' }, h('span', { class: 'code-proj-name' }, icon('terminal'), h('span', {}, 'On this computer')))); for (const x of externals) rows.push(h('button', { class: 'code-srow' + (r.kind === 'x' && r.id === x.key ? ' sel' : ''), 'data-ext': x.key, title: x.cwd, onclick: () => go('x/' + x.key) }, h('span', { class: 'sdot' + (x.claude ? ' on' : '') }), h('span', { class: 'stitle' }, x.name + ' · ' + x.session + (x.claude ? '' : ' (' + x.command + ')')))); }
+    if (externals.length) { rows.push(h('div', { class: 'code-proj ext-head' }, h('span', { class: 'code-proj-name' }, icon('terminal'), h('span', {}, 'On this computer')))); for (const x of externals) rows.push(h('button', { class: 'code-srow' + (r.kind === 'x' && r.id === x.key ? ' sel' : ''), 'data-ext': x.key, title: x.cwd, onclick: () => go('x/' + x.key) }, h('span', { class: 'sdot' + (x.claude ? (x.state === 'working' ? ' work' : x.state === 'permission' || x.state === 'dialog' ? ' ask' : ' on') : ''), title: x.claude ? (STATE[x.state || 'unknown'] || STATE.unknown)[0] : '' }), h('span', { class: 'stitle' }, x.name + ' · ' + x.session + (x.claude ? '' : ' (' + x.command + ')')))); }
     clear(side).append(
       h('div', { class: 'code-side-top' }, h('md-filled-tonal-button', { class: 'grow', onclick: () => (list.length === 1 ? newSessionDialog(list[0], status) : list.length ? pickProjectDialog(list) : addProjectDialog()) }, icon('add'), 'New session')),
       h('div', { class: 'code-side-list' }, ...(rows.length ? rows : [h('p', { class: 'muted s', style: 'padding:8px 12px' }, 'No projects yet. Add a folder to start.')]),
@@ -75,17 +77,35 @@ export default async function code(view) {
   function head(warn) { return warn ? h('div', { class: 'card high', style: 'border-left:4px solid var(--md-sys-color-error);margin-bottom:12px' }, h('b', {}, 'The tmux server for Claude Code is not reachable'), h('p', { class: 'muted' }, 'Sessions cannot run until it is. See Settings → Code, or docs/web-ui.md (Code tab).')) : ''; }
 
   // ---- add project ----
+  // Three plain choices: use a folder that exists, make a new one, or copy one from Git. Browse to where you want, then press the button.
   function addProjectDialog() {
-    let cwd = ''; const list = h('div', { class: 'list code-folders' }); const where = h('div', { class: 'mono muted' });
-    const folder = h('md-outlined-text-field', { label: 'Folder (inside the projects folder)', 'data-primary': '', placeholder: 'my-app', 'supporting-text': `Projects live under ${status.root} — type . for the folder itself` });
-    const name = h('md-outlined-text-field', { label: 'Name (optional)' }); const clone = h('md-outlined-text-field', { label: 'Clone from a Git URL (optional, https://…)', placeholder: 'https://github.com/you/repo.git' });
-    const create = h('md-switch', { selected: true, 'aria-label': 'Create the folder if it does not exist' });
-    async function browse(rel) { const j = await guarded(() => api('/code/folders?path=' + encodeURIComponent(rel))); if (!j) return; cwd = j.path; where.textContent = '/' + (j.path || '');
-      clear(list).append(...(j.parent !== null ? [h('div', { class: 'row static code-dir', onclick: () => browse(j.parent) }, icon('arrow_back'), ' ..')] : []), ...j.dirs.map((d) => h('div', { class: 'row static code-dir', 'data-dir': d.rel, onclick: () => { folder.value = d.rel; browse(d.rel); } }, icon('folder'), ' ', d.name)), ...(j.dirs.length ? [] : [h('div', { class: 'muted s', style: 'padding:8px' }, 'No sub-folders here.')])); }
-    const { close } = dialog({ title: 'Add a project', content: h('div', { class: 'form' }, folder, h('div', { class: 'field-row' }, h('div', {}, h('div', { class: 't' }, 'Create the folder if it does not exist')), create), name, clone, h('div', {}, h('md-text-button', { onclick: () => { folder.value = '.'; name.value ||= 'Home folder'; } }, icon('home'), 'Use the home folder itself (' + status.root + ')')), h('div', { class: 'label' }, 'Or pick an existing folder'), where, list),
-      actions: [h('md-text-button', { onclick: () => close() }, 'Cancel'), h('md-filled-button', { onclick: async () => {
-        const j = await guarded(() => api('/code/projects', { method: 'POST', body: { folder: folder.value, name: name.value, create: create.selected, cloneUrl: clone.value.trim() || undefined } }), 'Project added'); if (j) { close(); lsSet(LAST, j.project.id); go('p/' + j.project.id); } } }, 'Add')] });
-    browse('');
+    let mode = 'existing', cwd = '';
+    const root = status.root; const crumb = h('div', { class: 'code-crumb mono muted' }); const list = h('div', { class: 'list code-folders' });
+    const seg = h('div', { class: 'seg', role: 'group' }); const body = h('div', { class: 'form' });
+    const newName = h('md-outlined-text-field', { label: 'Name of the new folder', placeholder: 'my-app', 'data-primary': '' });
+    const gitUrl = h('md-outlined-text-field', { label: 'Git address', placeholder: 'https://github.com/you/repo.git', 'supporting-text': 'Public https:// repositories. It is copied into a new folder here.' });
+    const here = () => '/' + (cwd ? cwd : '');
+    const folderOf = (n) => (cwd ? cwd + '/' : '') + n;
+    async function browse(rel) {
+      const j = await guarded(() => api('/code/folders?path=' + encodeURIComponent(rel))); if (!j) return; cwd = j.path; crumb.textContent = 'In ' + root + (cwd ? '/' + cwd : ''); refresh();
+      clear(list).append(...(j.parent !== null ? [h('div', { class: 'row static code-dir', onclick: () => browse(j.parent) }, icon('arrow_back'), h('span', {}, 'Up one level'))] : []),
+        ...j.dirs.map((d) => h('div', { class: 'row static code-dir', 'data-dir': d.rel, onclick: () => browse(d.rel) }, icon('folder'), h('span', { class: 'grow' }, d.name), icon('chevron_right'))),
+        ...(j.dirs.length ? [] : [h('div', { class: 'muted s', style: 'padding:8px' }, 'No folders in here.')]));
+    }
+    const drawSeg = () => clear(seg).append(...[['existing', 'Use a folder'], ['new', 'New folder'], ['git', 'From Git']].map(([v, l]) => h('button', { type: 'button', 'aria-pressed': String(v === mode), onclick: () => { mode = v; drawSeg(); drawBody(); } }, l)));
+    const drawBody = () => { clear(body).append(...(mode === 'existing' ? [h('p', { class: 'muted s' }, 'Open the folder Claude should work in, then press “Use this folder”.'), crumb, list] : mode === 'new' ? [h('p', { class: 'muted s' }, 'A new empty folder is created in the place you are browsing:'), crumb, newName, list] : [gitUrl, h('p', { class: 'muted s' }, 'It is copied into a new folder in the place you are browsing:'), crumb, list])); refresh(); if (mode !== 'existing') setTimeout(() => (mode === 'new' ? newName : gitUrl).focus(), 50); };
+    const go2 = h('md-filled-button', { onclick: submit }, 'Add');
+    const refresh = () => { go2.textContent = mode === 'existing' ? (cwd ? 'Use this folder' : 'Use the main folder') : mode === 'new' ? 'Create and add' : 'Copy and add'; };
+    async function submit() {
+      let b;
+      if (mode === 'existing') b = { folder: cwd || '.', create: false };
+      else if (mode === 'new') { const n = newName.value.trim(); if (!n) { newName.focus(); return; } b = { folder: folderOf(n), create: true }; }
+      else { const u = gitUrl.value.trim(); if (!u) { gitUrl.focus(); return; } const guess = (u.replace(/\.git$/, '').split('/').pop() || 'repo').replace(/[^\w.-]/g, '-'); b = { folder: folderOf(guess), cloneUrl: u }; go2.disabled = true; }
+      const j = await guarded(() => api('/code/projects', { method: 'POST', body: b }), 'Project added'); go2.disabled = false;
+      if (j) { close(); lsSet(LAST, j.project.id); go('p/' + j.project.id); }
+    }
+    const { close } = dialog({ title: 'Add a project', content: h('div', { class: 'form' }, seg, body), actions: [h('md-text-button', { onclick: () => close() }, 'Cancel'), go2] });
+    drawSeg(); drawBody(); browse('');
   }
 
   // ---- one project: its sessions ----
@@ -111,14 +131,11 @@ export default async function code(view) {
           : h('md-text-button', { onclick: async () => { const ok = await guarded(() => api(`/code/sessions/${s.id}/start`, { method: 'POST', body: {} }), 'Started'); if (ok) go('s/' + s.id); } }, icon('play_arrow'), 'Start'),
         h('md-icon-button', { 'aria-label': 'Delete session', title: 'Delete session', onclick: async () => { if (await confirmDialog('Delete this session?', `“${title}” is stopped and removed from the list. The conversation file stays on disk.`, 'Delete')) { if (await guarded(() => api('/code/sessions/' + s.id, { method: 'DELETE' }), 'Deleted')) { const j = await api('/code/projects'); const np = j.projects.find((x) => x.id === p.id); if (np) draw(np); } } } }, icon('delete'))));
   }
-  function newSessionDialog(p, st) {
-    const title = h('md-outlined-text-field', { label: 'Name (optional)', 'data-primary': '' });
-    const mode = h('md-outlined-select', { label: 'Permissions' }, h('md-select-option', { value: '', selected: true }, h('div', { slot: 'headline' }, 'Default (asks before risky steps)')), ...st.modes.map((m) => h('md-select-option', { value: m }, h('div', { slot: 'headline' }, { manual: 'Manual — ask for everything', acceptEdits: 'Accept edits automatically', auto: 'Auto — Claude judges risk', plan: 'Plan only — no changes', dontAsk: "Don't ask", bypassPermissions: 'Bypass permissions (dangerous)' }[m] || m))));
-    const model = h('md-outlined-select', { label: 'Model' }, ...[['', 'Default'], ['sonnet', 'Sonnet'], ['opus', 'Opus'], ['haiku', 'Haiku']].map(([v, l]) => h('md-select-option', { value: v, selected: v === '' || undefined }, h('div', { slot: 'headline' }, l))));
-    const prompt = h('md-outlined-text-field', { label: 'First message (optional)', type: 'textarea', rows: 4 });
-    const { close } = dialog({ title: 'New session', content: h('div', { class: 'form' }, title, mode, model, prompt, h('div', { class: 'help' }, 'A session is a Claude Code conversation running in its own tmux session in this project\'s folder. You can stop and start it any time; starting it again picks the conversation up where it was.')),
-      actions: [h('md-text-button', { onclick: () => close() }, 'Cancel'), h('md-filled-button', { onclick: async () => {
-        const j = await guarded(() => api(`/code/projects/${p.id}/sessions`, { method: 'POST', body: { title: title.value, permissionMode: mode.value, model: model.value, prompt: prompt.value.trim() || undefined } })); if (j) { close(); go('s/' + j.session.id); } } }, 'Start')] });
+  /** No form: a new session starts at once (Sonnet, permission prompts skipped — the server's defaults) and opens straight to the chat. */
+  let creating = false;
+  async function newSessionDialog(p) {
+    if (creating) return; creating = true;
+    try { const j = await guarded(() => api(`/code/projects/${p.id}/sessions`, { method: 'POST', body: {} })); if (j) go('s/' + j.session.id); } finally { creating = false; }
   }
   function renameDialog(titleText, cur, call, done) {
     const f = h('md-outlined-text-field', { label: 'Name', value: cur, 'data-primary': '' });
@@ -205,6 +222,22 @@ export default async function code(view) {
     async function fetchUpload(im) { const bytes = Uint8Array.from(atob(im.data), (c) => c.charCodeAt(0)); return api(`/code/sessions/${sid}/upload?name=${encodeURIComponent(im.name)}`, { method: 'POST', raw: bytes }); }
     ta.addEventListener('keydown', (e) => { if (e.key === 'Tab' && !cmdBox.hidden) { e.preventDefault(); const m = matches(); if (m[0]) { ta.value = m[0].name + ' '; drawCmds(); } return; } if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); const m = matches(); if (m.length && !m.some((c) => c.name === ta.value.trim())) { ta.value = m[0].name + ' '; drawCmds(); return; } cmdBox.hidden = true; send(); } });
     const key = async (...keys) => { await guarded(() => api(`${base}/keys`, { method: 'POST', body: { keys } })); poll(); };
+    // Keyboard: Enter answers whatever Claude is asking (the highlighted option / the dialog), "/" jumps to the message box.
+    if (window.__codeKeys) document.removeEventListener('keydown', window.__codeKeys, true);
+    window.__codeKeys = (e) => {
+      if (!msgs.isConnected || e.isComposing || e.ctrlKey || e.metaKey || e.altKey || document.querySelector('md-dialog[open], md-menu[open]')) return;
+      const t = e.composedPath()[0]; const field = t?.tagName && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable || /^MD-(OUTLINED|FILLED)-(TEXT-FIELD|SELECT)$/.test(t.tagName));
+      if (e.key === 'Enter' && !e.shiftKey) {
+        if (scr?.state !== 'permission' && scr?.state !== 'dialog') return;
+        if (field && t !== ta) return; if (t === ta && ta.value.trim()) return;      // typing a message: Enter sends it as usual
+        if (!field && t?.closest?.('button, a, md-text-button, md-filled-button, md-outlined-button, md-filled-tonal-button, md-icon-button, md-menu-item')) return;   // a focused button handles its own Enter
+        e.preventDefault(); e.stopPropagation(); key('Enter');
+      } else if (e.key === '/' && !field) {
+        const target = view === 'term' ? termPane.querySelector('md-outlined-text-field') : ta; if (!target) return;
+        e.preventDefault(); e.stopPropagation(); target.focus(); target.scrollIntoView?.({ block: 'nearest' });
+      }
+    };
+    document.addEventListener('keydown', window.__codeKeys, true);
 
     // header
     const act = (label, ic, fn, cls = 'md-outlined-button') => h(cls, { onclick: fn }, icon(ic), label);

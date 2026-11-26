@@ -30,7 +30,7 @@ async function ticketDialog(id, changed) {
     comment, h('div', {}, h('md-filled-tonal-button', { onclick: async () => { if (!comment.value.trim()) return; if (await guarded(() => api(`/tickets/${id}/comments`, { method: 'POST', body: { body: comment.value } }))) { close(); changed(); ticketDialog(id, changed); } } }, 'Comment')),
     h('div', { class: 'timeline' }, events.slice().reverse().map((e) => h('div', {}, h('div', { class: 't' }, line(e)), h('div', { class: 'muted' }, `${e.actor} · ${ago(e.at)}`)))));
   const { close } = dialog({ title: `#${t.id} ${t.title}`, fullscreen: true, dismissable: true, content: body, actions: [
-    h('md-text-button', { onclick: async () => { if (await confirmDialog('Delete this ticket?', t.title, 'Delete')) { if (await guarded(() => api('/tickets/' + id, { method: 'DELETE' }), 'Deleted')) { close(); changed(); } } } }, 'Delete'),
+    h('md-text-button', { class: 'danger', onclick: async () => { if (await confirmDialog('Delete this ticket?', t.title, 'Delete')) { if (await guarded(() => api('/tickets/' + id, { method: 'DELETE' }), 'Deleted')) { close(); changed(); } } } }, 'Delete'),
     h('md-filled-button', { onclick: () => close() }, 'Close')] });
 }
 

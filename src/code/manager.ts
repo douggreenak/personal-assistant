@@ -75,10 +75,12 @@ const toSession = (r: Record<string, unknown>): SessionRow => ({ id: r.id as str
 export const listSessionRows = (ctx: Ctx, projectId?: string): SessionRow[] => (projectId ? ctx.db.prepare('SELECT * FROM code_sessions WHERE project_id = ? ORDER BY created_at DESC').all(projectId) : ctx.db.prepare('SELECT * FROM code_sessions ORDER BY created_at DESC').all()).map((r) => toSession(r as Record<string, unknown>));
 export function getSession(ctx: Ctx, id: string): SessionRow { const r = UUID.test(id) ? ctx.db.prepare('SELECT * FROM code_sessions WHERE id = ?').get(id) as Record<string, unknown> | undefined : undefined; if (!r) throw new CodeError('No such session.', 404); return toSession(r); }
 
+/** New sessions start on Sonnet and skip every permission prompt unless the caller (or the owner's setting) says otherwise. */
+export const DEFAULT_MODEL = 'sonnet';
 export function createSession(ctx: Ctx, projectId: string, o: { title?: string; model?: string; permissionMode?: string }): SessionRow {
   enabled(ctx); getProject(ctx, projectId);
-  const model = String(o.model ?? '').trim(); if (model && !/^[\w.\-[\]]{1,60}$/.test(model)) throw new CodeError('That model name is not valid.');
-  const mode = String(o.permissionMode ?? '').trim(); if (mode && !(PERMISSION_MODES as readonly string[]).includes(mode)) throw new CodeError('Unknown permission mode.');
+  const model = String(o.model ?? '').trim() || DEFAULT_MODEL; if (!/^[\w.\-[\]]{1,60}$/.test(model)) throw new CodeError('That model name is not valid.');
+  const mode = String(o.permissionMode ?? '').trim() || (ctx.cfg.code.allowBypass ? 'bypassPermissions' : ''); if (mode && !(PERMISSION_MODES as readonly string[]).includes(mode)) throw new CodeError('Unknown permission mode.');
   if (mode === 'bypassPermissions' && !ctx.cfg.code.allowBypass) throw new CodeError('“Bypass permissions” is turned off (Settings → Code → Allow bypass).', 403);
   const n = (ctx.db.prepare('SELECT COUNT(*) n FROM code_sessions WHERE project_id = ?').get(projectId) as { n: number }).n + 1;
   const id = randomUUID(); const title = String(o.title ?? '').trim().slice(0, 80) || `Session ${n}`;
@@ -111,7 +113,18 @@ export async function startSession(ctx: Ctx, id: string, firstPrompt?: string): 
   const argv = [ctx.cfg.code.claudeBin, ...(resumed ? ['--resume', id] : ['--session-id', id]), ...(s.model ? ['--model', s.model] : []), ...(s.permissionMode ? ['--permission-mode', s.permissionMode] : [])];
   await t.start(tmuxName(id), p.path, argv, ctx.cfg.code.claudeEnv);
   ctx.db.prepare('UPDATE code_sessions SET started_at = ?, desired = 1 WHERE id = ?').run(new Date().toISOString(), id);
+  if (s.permissionMode === 'bypassPermissions') void acceptBypassWarning(ctx, id).catch(() => {});
   if (firstPrompt?.trim()) void sendWhenReady(ctx, id, firstPrompt).catch(() => {});
+}
+/** Claude Code asks once per start "are you sure?" before bypass mode; the owner already chose it, so answer "Yes, I accept" (never any other question). */
+async function acceptBypassWarning(ctx: Ctx, id: string): Promise<void> {
+  const t = tm(ctx); const name = tmuxName(id);
+  for (let i = 0; i < 40; i++) {
+    await sleep(500); if (!(await t.has(name))) return;
+    const raw = await t.capture(name).catch(() => ''); const sc = parseScreen(raw);
+    if (sc.state === 'idle' || sc.state === 'working') return;                      // already past it
+    if (/Bypass Permissions mode/i.test(raw)) { const m = /(\d)\.\s+Yes, I accept/i.exec(raw); if (m) { await t.keys(name, [m[1]]); await sleep(200); await t.keys(name, ['Enter']); return; } }
+  }
 }
 export async function stopSession(ctx: Ctx, id: string): Promise<void> { getSession(ctx, id); const t = tm(ctx); await t.kill(tmuxName(id)); ctx.db.prepare('UPDATE code_sessions SET desired = 0 WHERE id = ?').run(id); }
 export async function restartSession(ctx: Ctx, id: string): Promise<void> { await stopSession(ctx, id); await sleep(300); await startSession(ctx, id); }

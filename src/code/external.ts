@@ -8,7 +8,7 @@ import { sendOrQueue, submitText, CodeError, listCommandsAt, commandOutputOf, wr
 
 /** Claude Code sessions that were started outside this app: any tmux server on the host whose socket the container can see
  *  (the app's own is skipped; its sessions are managed). Found by looking for a pane running `claude`. */
-export interface External { key: string; socket: string; pane: string; session: string; window: string; cwd: string; name: string; claude: boolean; command: string }
+export interface External { state?: string; key: string; socket: string; pane: string; session: string; window: string; cwd: string; name: string; claude: boolean; command: string }
 const isClaude = (cmd: string) => /^claude(\.exe)?$/i.test(cmd) || /^\d+\.\d+\.\d+/.test(cmd);
 /** Claude Code's own screen: its banner, or the footer under the prompt box. */
 const looksLikeClaude = (screen: string) => /Claude Code v?\d|\? for shortcuts|\(shift\+tab to cycle\)|esc to interrupt|accept edits on/.test(screen);
@@ -34,7 +34,8 @@ export async function discover(ctx: Ctx): Promise<External[]> {
     try { for (const p of await tmx(ctx, socket).panes()) {
       const claude = isClaude(p.command) || (/^(node|bun|deno|bash|zsh|sh)$/.test(p.command) && looksLikeClaude(await tmx(ctx, socket).capture(p.pane).catch(() => '')));
       if ((socket === ctx.cfg.code.socket || basename(socket) === ctx.cfg.code.socket) && p.session.startsWith('cc-')) continue;   // managed by the app
-      out.push({ key: enc(socket, p.pane), socket, pane: p.pane, session: p.session, window: p.window, cwd: p.cwd, name: `${basename(p.cwd) || p.cwd}`, claude, command: p.command });
+      const state = claude ? parseScreen(await tmx(ctx, socket).capture(p.pane).catch(() => '')).state : undefined;   // so the list can show who is working
+      out.push({ state, key: enc(socket, p.pane), socket, pane: p.pane, session: p.session, window: p.window, cwd: p.cwd, name: `${basename(p.cwd) || p.cwd}`, claude, command: p.command });
     } } catch { /* stale socket or another tmux version */ }
   }));
   return out.sort((a, b) => Number(b.claude) - Number(a.claude) || a.cwd.localeCompare(b.cwd) || a.session.localeCompare(b.session));
