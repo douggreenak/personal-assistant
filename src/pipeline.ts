@@ -74,7 +74,7 @@ export async function processMessage(ctx: Ctx, msg: MessageRow): Promise<Process
     } catch (e) {
       // A backend failure must not lose the user's intent: park it for approval/retry instead.
       createApproval(ctx, { kind: 'action', summary: describeAction(a, item), reason: `backend error: ${(e as Error).message.slice(0, 120)}`, payload: { action: a }, messageId: msg.id });
-      report.failed = [...(report.failed ?? []), `${describeAction(a, item)} — it failed: ${(e as Error).message.slice(0, 200)}. Saved in Approvals; approve it there to retry.`];
+      report.failed = [...(report.failed ?? []), `${describeAction(a, item)} \n\n> ${(e as Error).message.slice(0, 200)}\n\nSaved so you can retry it (Approve below, or in Approvals).`];
     }
   }
   return report;

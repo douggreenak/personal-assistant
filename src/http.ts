@@ -274,7 +274,8 @@ export function createHttp(ctx: Ctx, deps: HttpDeps): Server {
     if (path === '/admin/restart' && method === 'POST') {
       send(res, 200, { ok: true }); setTimeout(() => (deps.restart ?? (() => process.exit(0)))(), 400); return;
     }
-    if (path === '/chat' && method === 'POST') { const b = await readJson(req, IMAGE_BODY_LIMIT); let images; try { images = await prepareImages(parseUploads(b.images)); } catch (e) { throw new HttpError(400, (e as Error).message); } { const text = String(b.text ?? ''); const reply = await handleOwnerText(ctx, text, undefined, images); logChat(ctx, { kind: 'chat', text, reply, pictures: images.length }); return send(res, 200, { reply }); } }
+    if (path === '/chat' && method === 'POST') { const b = await readJson(req, IMAGE_BODY_LIMIT); let images; try { images = await prepareImages(parseUploads(b.images)); } catch (e) { throw new HttpError(400, (e as Error).message); } { const text = String(b.text ?? ''); const before = Number((ctx.db.prepare('SELECT MAX(id) m FROM approvals').get() as { m: number | null }).m ?? 0); const reply = await handleOwnerText(ctx, text, undefined, images); logChat(ctx, { kind: 'chat', text, reply, pictures: images.length });
+      const approvals = listApprovals(ctx).filter((a) => a.id > before).map((a) => ({ id: a.id, summary: a.summary, reason: a.reason })); return send(res, 200, { reply, approvals }); } }
     if (path === '/help' && method === 'POST') {   // the setup helper: a question + optional screenshots about connecting a service
       const b = await readJson(req, IMAGE_BODY_LIMIT); let images; try { images = await prepareImages(parseUploads(b.images)); } catch (e) { throw new HttpError(400, (e as Error).message); }
       return send(res, 200, { answer: await helpAnswer(ctx, { question: String(b.question ?? ''), topic: b.topic ? String(b.topic) : undefined, history: Array.isArray(b.history) ? b.history as HelpTurn[] : [], images: toLlmImages(images) }) });

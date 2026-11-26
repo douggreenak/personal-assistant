@@ -15,6 +15,17 @@ export default async function chat(view) {
     const b = h('div', { class: 'bubble ' + role, 'data-at': String(at ?? Date.now()) }, thumbs.length ? h('div', { class: 'bubble-pics' }, thumbs.map((t) => h('img', { src: t, alt: 'attached picture' }))) : '', text ? md(text) : '');
     msgs.append(b); msgs.scrollTop = msgs.scrollHeight; return b;
   };
+  // Approve / reject what the assistant just asked about, right in the chat; the outcome replaces the buttons (green = done, red = failed).
+  const approvalRow = (list) => {
+    for (const a of list) {
+      const row = h('div', { class: 'chat-approve' }); msgs.append(row); msgs.scrollTop = msgs.scrollHeight;
+      const done = (text, bad) => { clear(row).append(h('div', { class: bad ? 'err-box' : 'ok-box' }, icon(bad ? 'error' : 'check'), h('span', { style: 'overflow-wrap:anywhere;flex:1' }, text))); msgs.scrollTop = msgs.scrollHeight; };
+      const decide = async (yes) => { row.querySelectorAll('md-text-button, md-filled-button').forEach((b) => { b.disabled = true; });
+        try { const r = await api(`/approvals/${a.id}/${yes ? 'approve' : 'reject'}`, { method: 'POST' }); done(r.result, /but it failed/.test(r.result)); } catch (e) { done(e.message, true); } };
+      row.append(h('div', { class: 'chat-approve-card' }, h('div', { class: 's muted' }, `Approval #${a.id}`), h('div', {}, a.summary), a.reason ? h('div', { class: 's muted' }, 'Why: ' + a.reason) : '',
+        h('div', { class: 'chat-approve-btns' }, h('md-text-button', { onclick: () => decide(false) }, 'Reject'), h('md-filled-button', { onclick: () => decide(true) }, icon('check'), 'Approve'))));
+    }
+  };
   const ta = h('textarea', { 'data-primary': '', rows: 1, placeholder: 'Message… (Markdown, pictures)', 'aria-label': 'Message' });
   ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 160) + 'px'; });
   const pics = pictureAttach(ta, (m) => toast(m));
@@ -23,10 +34,10 @@ export default async function chat(view) {
     const thumbs = images.map((p) => p.thumb); pics.clear();
     ta.value = ''; ta.style.height = 'auto'; hist.push({ role: 'me', text, thumbs, at: Date.now() }); bubble('me', text, thumbs);
     const wait = h('div', { class: 'bubble bot' }, spinner()); msgs.append(wait); msgs.scrollTop = msgs.scrollHeight; sendBtn.disabled = true;
-    let reply;
+    let reply, approvals = [];
     const pay = images.map(({ name, data }) => ({ name, data }));
-    try { reply = (await api('/chat', { method: 'POST', body: { text: text || 'What is in this picture?', images: pay } })).reply; } catch (e) { reply = 'Error: ' + e.message; }
-    wait.remove(); bubble('bot', reply); hist.push({ role: 'bot', text: reply, at: Date.now() });
+    try { const j = await api('/chat', { method: 'POST', body: { text: text || 'What is in this picture?', images: pay } }); reply = j.reply; approvals = j.approvals ?? []; } catch (e) { reply = 'Error: ' + e.message; }
+    wait.remove(); bubble('bot', reply); if (approvals.length) approvalRow(approvals); hist.push({ role: 'bot', text: reply, at: Date.now() });
     try { hist = fresh(hist); localStorage.setItem(KEY, JSON.stringify(hist.slice(-40))); } catch { /* storage full or blocked: history just won't persist */ } sendBtn.disabled = false; ta.focus({ preventScroll: true });
   };
   ta.addEventListener('keydown', (e) => { if (e.key === 'ArrowUp' && !ta.value) { const last = [...hist].reverse().find((m) => m.role === 'me'); if (last && last.text) { e.preventDefault(); ta.value = last.text; ta.dispatchEvent(new Event('input')); } } if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
