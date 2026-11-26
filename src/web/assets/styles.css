@@ -487,3 +487,17 @@ md-menu-item.danger { --md-menu-item-label-text-color: var(--md-sys-color-error)
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='10'%3E%3Cpath d='M0 5 Q5 -1 10 5 T20 5' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E") repeat-x center / 20px 10px;
           mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='10'%3E%3Cpath d='M0 5 Q5 -1 10 5 T20 5' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E") repeat-x center / 20px 10px; }
 .code-compact .lbl { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; } .code-compact .lbl .ic { width: 18px; height: 18px; }
+
+/* ---- dialogs use the room a big screen gives them ---- */
+md-dialog { min-width: min(560px, 94vw); }
+@media (min-width: 1000px) { md-dialog { min-width: clamp(560px, 42vw, 760px); } md-dialog.full { min-width: clamp(760px, 66vw, 1180px); } }
+@media (min-width: 1700px) { md-dialog { min-width: clamp(640px, 38vw, 860px); } md-dialog.full { min-width: clamp(900px, 62vw, 1400px); } }
+md-dialog { --md-dialog-container-max-block-size: 92vh; }
+md-dialog [slot=content] { max-height: none; }
+md-dialog .form { max-width: 100%; }
+.setup-guide { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 1000px) { .setup-guide { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; } .setup-guide .sg-act { position: sticky; top: 0; } }
+/* wide form dialogs: two columns of fields, long things (text areas, notes) stay full width */
+@media (min-width: 1000px) { md-dialog.full [slot=content] > .form:not(.sg-info):not(.sg-act) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 20px; align-items: start; }
+  md-dialog.full [slot=content] > .form > md-outlined-text-field[type=textarea], md-dialog.full [slot=content] > .form > :is(p, h3, .muted, .card, .setup-guide) { grid-column: 1 / -1; } }
+md-dialog { max-height: min(calc(100dvh - 48px), 980px); }

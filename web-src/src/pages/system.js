@@ -16,18 +16,18 @@ async function setupDialog(integ, done) {
   const { guides } = await guarded(() => api('/integrations/guides')) ?? {}; const g = guides?.find((x) => x.id === integ.id); if (!g) { toast('No setup guide for ' + integ.name + '.', { error: true }); return; }
   const box = h('md-outlined-text-field', { label: 'Paste the information here', type: 'textarea', rows: 7, 'data-primary': '', 'supporting-text': 'One value per line, like “' + g.fields[0].label + ': …”. Values are recognised by their label or by what they look like.' });
   const result = h('div', {});
-  const content = h('div', { class: 'form setup-guide' }, h('p', { class: 'muted' }, g.summary),
+  const content = h('div', { class: 'setup-guide' }, h('div', { class: 'form sg-info' }, h('p', { class: 'muted' }, g.summary),
     integ.configured && integ.ok === false ? h('div', { class: 'card flat', style: 'border-left:4px solid var(--md-sys-color-error)' }, h('b', {}, 'What is wrong'), h('p', {}, integ.detail || 'It is set up but not working.'), h('p', { class: 'muted' }, 'Re-paste the missing values below (or ask the helper) and save.')) : '',
     g.links?.length ? h('div', { class: 'setup-links' }, h('h3', { class: 'title-m' }, 'Go here'), ...g.links.map((l) => h('a', { class: 'setup-link', href: l.url, target: '_blank', rel: 'noopener noreferrer' }, icon('open_in_new'), l.label))) : '',
     h('h3', { class: 'title-m' }, 'What to do'), h('ol', { class: 'setup-steps' }, g.steps.map((t) => h('li', {}, t))),
     h('h3', { class: 'title-m' }, 'What I need from you'), h('ul', { class: 'setup-fields' }, g.fields.map((f) => h('li', {}, h('b', {}, f.label), f.optional ? h('span', { class: 'muted' }, ' (optional)') : '', h('span', { class: 'muted' }, ' — ' + f.hint)))),
-    box, result, helpChat(g.id));
+    ), h('div', { class: 'form sg-act' }, box, result, helpChat(g.id)));
   const save = h('md-filled-button', { onclick: async () => {
     const r = await guarded(() => api(`/integrations/${g.id}/setup`, { method: 'POST', body: { text: box.value } })); if (!r) return;
     save.hidden = true; box.hidden = true;
     clear(result).append(h('div', { class: 'card flat' }, h('b', {}, 'Saved: ' + r.saved.join(', ')), r.missing.length ? h('p', { class: 'muted' }, 'Still needed: ' + r.missing.join(', ') + '. Open this again and paste the rest.') : '', r.ignored.length ? h('p', { class: 'muted' }, 'I did not recognise: ' + r.ignored.join(' · ')) : '', h('p', { class: 'muted' }, 'Restart the assistant for it to start using this.'), h('md-filled-tonal-button', { onclick: () => { close(); restartServer(); } }, icon('restart_alt'), 'Restart now')));
     done?.(); } }, 'Save');
-  const { close } = dialog({ title: 'Set up ' + g.name, content, actions: [h('md-text-button', { onclick: () => close() }, 'Close'), save] });
+  const { close } = dialog({ title: 'Set up ' + g.name, fullscreen: true, content, actions: [h('md-text-button', { onclick: () => close() }, 'Close'), save] });
 }
 
 const size = (b) => (b > 1e6 ? (b / 1e6).toFixed(1) + ' MB' : Math.round(b / 1e3) + ' KB');
