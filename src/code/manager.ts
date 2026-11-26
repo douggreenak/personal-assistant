@@ -172,6 +172,9 @@ export async function sessionSummaries(ctx: Ctx): Promise<{ id: string; running:
 /** What a local slash command (/context, /status…) printed on the terminal: the lines after its echoed "❯ /cmd", up to the next rule or empty prompt. The transcript does not keep these. */
 export async function commandOutput(ctx: Ctx, id: string, cmd: string): Promise<string> {
   const t = await needTmux(ctx); getSession(ctx, id); const name = tmuxName(id); if (!(await t.has(name))) return '';
+  return commandOutputOf(t, name, cmd);
+}
+export async function commandOutputOf(t: Tmux, name: string, cmd: string): Promise<string> {
   const lines = (await t.capture(name, 400)).split('\n'); const want = '❯ ' + String(cmd).trim(); let at = -1;
   for (let i = lines.length - 1; i >= 0; i--) if (lines[i].trimEnd() === want || lines[i].trimEnd().startsWith(want + ' ')) { at = i; break; }
   if (at < 0) return '';
@@ -181,8 +184,9 @@ export async function commandOutput(ctx: Ctx, id: string, cmd: string): Promise<
 
 // ---------- slash commands ----------
 const BUILTIN_COMMANDS: [string, string][] = [['/help', 'Show help and commands'], ['/compact', 'Summarize the conversation to free up context'], ['/clear', 'Start a fresh conversation'], ['/context', 'Show what is using the context window'], ['/cost', 'Show token usage for this session'], ['/usage', 'Show plan usage limits'], ['/status', 'Show version, model and account'], ['/model', 'Choose the model'], ['/permissions', 'Manage tool permissions'], ['/config', 'Open settings'], ['/memory', 'Edit CLAUDE.md memory files'], ['/mcp', 'Manage MCP servers'], ['/agents', 'Manage sub-agents'], ['/init', 'Create a CLAUDE.md for this project'], ['/review', 'Review a pull request'], ['/resume', 'Resume another conversation'], ['/rewind', 'Rewind the conversation or code'], ['/todos', 'List the current to-dos'], ['/export', 'Export the conversation'], ['/doctor', 'Check the installation'], ['/vim', 'Toggle vim editing'], ['/exit', 'End the session']];
-export function listCommands(ctx: Ctx, id: string): { name: string; description: string; custom: boolean }[] {
-  const s = getSession(ctx, id); const p = getProject(ctx, s.projectId); const out = BUILTIN_COMMANDS.map(([name, description]) => ({ name, description, custom: false }));
+export function listCommands(ctx: Ctx, id: string) { return listCommandsAt(ctx, getProject(ctx, getSession(ctx, id).projectId).path); }
+export function listCommandsAt(ctx: Ctx, projectPath: string): { name: string; description: string; custom: boolean }[] {
+  const p = { path: projectPath }; const out = BUILTIN_COMMANDS.map(([name, description]) => ({ name, description, custom: false }));
   const seen = new Set(out.map((c) => c.name));
   const add = (name: string, description: string) => { if (!seen.has(name)) { seen.add(name); out.push({ name, description, custom: true }); } };
   const front = (file: string): string => { try { return /^description:\s*(.+)$/m.exec(readFileSync(file, 'utf8').split('---')[1] ?? '')?.[1]?.trim().slice(0, 120) ?? ''; } catch { return ''; } };

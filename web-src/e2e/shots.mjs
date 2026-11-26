@@ -17,7 +17,7 @@ const p = (await api('/code/projects', { folder: 'demo', create: true })).projec
 await api(`/code/sessions/${s.id}/send`, { text: 'hello' }); await wait(2500); await api(`/code/sessions/${s.id}/send`, { text: 'PERMISSION go' }); await wait(2500);
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/snap/bin/chromium', args: ['--no-sandbox'] });
 const pages = [['home', 'home'], ['items', 'items'], ['chat', 'chat'], ['code', 'code'], ['code-p', `code/p/${p.id}`], ['code-s', `code/s/${s.id}`], ['code-usage', 'code/u'], ['code-server', 'code/t'], ['inbox', 'inbox'], ['approvals', 'approvals'], ['connectors', 'connectors'], ['system', 'system'], ['settings', 'settings']];
-for (const [tag, w, h] of (process.env.SIZES ? [['w', 2560, 1300]] : [['d', 1300, 900], ['m', 390, 844]])) {
+for (const [tag, w, h] of (process.env.SIZES ? [['w', 1600, 900]] : [['d', 1300, 900], ['m', 390, 844]])) {
   const page = await (await browser.newContext({ viewport: { width: w, height: h } })).newPage(); await page.goto(base + '/'); await page.locator('md-outlined-text-field[label="Password"]').first().evaluate((el, v) => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); }, PW); await page.locator('md-filled-button', { hasText: 'Sign in' }).click(); await wait(1500);
   for (const [name, hash] of pages) { await page.goto(`${base}/#/${hash}`); await wait(name === 'code-usage' ? 9000 : 1800); writeFileSync(join(out, `${tag}-${name}.png`), await page.screenshot({ fullPage: true })); }
   await page.close();

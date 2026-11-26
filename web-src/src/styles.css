@@ -371,3 +371,17 @@ html:has(md-dialog[open]) { overflow: hidden; }
 .code-perm { max-height: 38vh; overflow: auto; padding: 14px 16px; } .code-perm .code-pre { max-height: 84px; font-size: .75rem; }
 .code-perm-btns md-filled-button, .code-perm-btns md-outlined-button { --md-filled-button-container-height: 36px; --md-outlined-button-container-height: 36px; }
 @media (max-width: 600px) { .code-session-head > .code-ph { flex-wrap: wrap; } .code-session-head .code-ph > div[style] { flex: 1 1 140px !important; min-width: 140px !important; } .code-perm { max-height: 45vh; } }
+
+/* ===== Redesign: one compact app bar per page, denser, uses the whole window ===== */
+main { position: relative; }
+.topbar { padding: 8px 0 0; }
+.page-head { padding: 4px 0 6px; gap: 2px; }
+.display { font-size: clamp(1.55rem, 2.1vw, 2rem); letter-spacing: -.015em; }
+.page-head .title-m { font-size: .95rem; font-weight: 500; line-height: 1.35; }
+.empty { padding: 28px 16px; } .empty-art { width: 64px; height: 64px; } .empty-art .ic { width: 30px; height: 30px; }
+.chat { height: calc(100dvh - 215px); min-height: 320px; }
+.masonry { display: block; } .masonry > * { margin-bottom: 16px; break-inside: avoid; }
+@media (min-width: 1100px) { .masonry { column-count: 2; column-gap: 16px; } .masonry > .grid.cols-3, .masonry > .toolbar { column-span: all; } }
+@media (min-width: 2000px) { .masonry { column-count: 3; } }
+.top3.cols-3 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); align-items: stretch; }
+@media (max-width: 839px) { .display { font-size: 1.5rem; } .chat { height: calc(100dvh - 350px); min-height: 200px; } }

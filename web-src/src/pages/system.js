@@ -68,7 +68,7 @@ function macAppCard(rel, clients, reload) {
 }
 
 export default async function system(view, { refreshStatus }) {
-  const body = h('div', { class: 'grid' });
+  const body = h('div', { class: 'grid masonry' });
   let level = 'all', q = '';
   const filter = h('md-outlined-text-field', { label: 'Filter the server log', 'data-primary': '', class: 'grow' }, h('span', { slot: 'leading-icon' }, icon('search')));
   let drawLogsNow = () => {}; filter.addEventListener('input', () => { q = filter.value.toLowerCase(); drawLogsNow(); });

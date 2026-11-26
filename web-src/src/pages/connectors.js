@@ -1,8 +1,9 @@
 import { api } from '../api.js';
 import { h, icon, clear, ago, empty, chip, dialog, confirmDialog, guarded, spinner, toast, page, fab } from '../ui.js';
 
+let health = {};
 export default async function connectors(view, { refreshStatus }) {
-  const list = h('div', { class: 'grid cols-2' });
+  const list = h('div', { class: 'masonry' });
   let pending = {};   // connector id -> pending approval id
   const run = async (fn, okMsg) => { const r = await guarded(fn, okMsg); load(); refreshStatus(); return r; };
   function secretDialog(c) {
@@ -37,7 +38,7 @@ export default async function connectors(view, { refreshStatus }) {
     }
     btns.push(h('md-outlined-button', { onclick: () => instructionsDialog(c) }, icon('edit'), m.instructions ? 'Edit instructions' : 'Instructions'));
     btns.push(h('md-icon-button', { 'aria-label': 'Delete', onclick: async () => { if (await confirmDialog('Delete connector?', `${m.name} will stop polling. Its past messages stay.`, 'Delete')) run(() => api('/connectors/' + c.id, { method: 'DELETE' }), 'Deleted'); } }, icon('delete')));
-    return h('div', { class: 'card high' }, h('div', { style: 'display:flex;gap:10px 14px;align-items:center;flex-wrap:wrap' }, h('div', { class: 'lead k-task' }, icon('extension')), h('div', { style: 'flex:1 1 180px;min-width:0;overflow-wrap:anywhere' }, h('div', { class: 'title-m' }, m.name), h('div', { class: 'muted' }, m.description)), h('div', { style: 'display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;margin-left:auto' }, caps, chip(c.status, tone))),
+    return h('div', { class: 'card high' }, h('div', { style: 'display:flex;gap:10px 14px;align-items:center;flex-wrap:wrap' }, h('div', { class: 'lead k-task' }, icon('extension')), h('div', { style: 'flex:1 1 180px;min-width:0;overflow-wrap:anywhere' }, h('div', { class: 'title-m', style: 'display:flex;gap:8px;align-items:center' }, c.status === 'enabled' && health[c.id] ? h('span', { class: 'dot ' + (health[c.id].ok === false ? 'bad' : 'ok'), role: 'img', 'aria-label': health[c.id].ok === false ? 'Not answering' : 'Connected', title: health[c.id].detail }) : '', m.name), h('div', { class: 'muted' }, m.description)), h('div', { style: 'display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;margin-left:auto' }, caps, chip(c.status, tone))),
       h('div', { class: 'mono muted', style: 'overflow-wrap:anywhere' }, m.mcp ? `MCP server · ${m.mcp.url}` : m.poll ? `Reads: GET ${m.baseUrl}${m.poll.path} · every ${m.poll.intervalMinutes} min` : `Writes only · ${m.baseUrl}`),
       m.actions?.length ? h('details', { class: 'acts-list' }, h('summary', {}, m.mcp ? `${m.actions.length} MCP tool${m.actions.length === 1 ? '' : 's'} — each call asks you first` : `Can do ${m.actions.length} write action${m.actions.length === 1 ? '' : 's'} — asks you first`),
         m.actions.map((a) => h('div', { class: 'actrow' },
@@ -54,6 +55,7 @@ export default async function connectors(view, { refreshStatus }) {
     if (r) toast(ok ? 'Approved — now add the key, test it, then enable' : 'Rejected'); load(); refreshStatus(); return !!r;
   }
   async function load() {
+    health = Object.fromEntries((((await api('/status/integrations').catch(() => null)) ?? { integrations: [] }).integrations).map((i) => [i.id, i]));
     pending = Object.fromEntries(((await guarded(() => api('/approvals'))) ?? { approvals: [] }).approvals.filter((a) => a.kind === 'connector').map((a) => [a.payload.id, a.id])); const { connectors: cs } = (await guarded(() => api('/connectors/full'))) ?? { connectors: [] };
     clear(list).append(...(cs.length ? cs.map(card) : [empty('extension', 'No connectors yet', 'Paste a service\'s docs and key, or an MCP server\'s URL, and I\'ll connect it for you.')])); }
   function add() {

@@ -17,7 +17,9 @@ export interface Tmux {
 /** The keys the web UI may press (nothing else is passed to tmux as a key name). */
 export const ALLOWED_KEYS = new Set(['Enter', 'Escape', 'Tab', 'BTab', 'Up', 'Down', 'Left', 'Right', 'Space', 'BSpace', 'C-c', 'C-d', 'C-l', 'C-o', 'C-t', 'C-r', 'y', 'n', ...'0123456789']);
 
-export function makeTmux(bin: string, socket: string): Tmux {
+const T = (n: string) => (n.startsWith('%') ? n : n + ':');   // a pane id (%3) is used as is; a session name needs the trailing colon
+export interface PaneInfo { session: string; pane: string; command: string; cwd: string; window: string }
+export function makeTmux(bin: string, socket: string): Tmux & { panes(): Promise<PaneInfo[]> } {
   const run = (args: string[], input?: string): Promise<string> => new Promise((resolve, reject) => {
     const p = execFile(bin, [socket.startsWith('/') ? '-S' : '-L', socket, ...args], { timeout: 15000, maxBuffer: 8 * 1024 * 1024, encoding: 'utf8' }, (err, stdout, stderr) => {
       if (err) return reject(new Error((stderr || err.message).trim().slice(0, 300)));
@@ -33,7 +35,8 @@ export function makeTmux(bin: string, socket: string): Tmux {
       try { if (!statSync(socket).isSocket()) return r(false); } catch { return r(false); }
       run(['list-sessions']).then(() => r(true), (er: Error) => r(/no sessions/i.test(er.message)));   // the host's server must answer (a dead one leaves a stale socket file)
     })),
-    has: (name) => run(['has-session', '-t', '=' + name]).then(() => true, () => false),
+    has: (name) => (name.startsWith('%') ? run(['display-message', '-p', '-t', name, '#{pane_id}']).then((o) => o.trim() === name, () => false) : run(['has-session', '-t', '=' + name]).then(() => true, () => false)),
+    panes: () => run(['list-panes', '-a', '-F', '#{session_name}\t#{pane_id}\t#{pane_current_command}\t#{pane_current_path}\t#{window_name}']).then((o) => o.split('\n').filter(Boolean).map((l) => { const [session, pane, command, cwd, window] = l.split('\t'); return { session, pane, command, cwd, window }; }), (e) => { if (noServer(e)) return []; throw e; }),
     list: () => run(['list-sessions', '-F', '#{session_name}']).then((o) => o.split('\n').filter(Boolean), (e) => { if (noServer(e)) return []; throw e; }),
     start: async (name, cwd, argv, env = {}) => {
       const e = Object.entries(env).flatMap(([k, v]) => ['-e', `${k}=${v}`]);
@@ -41,9 +44,9 @@ export function makeTmux(bin: string, socket: string): Tmux {
       await run(['set-option', '-t', name, 'history-limit', '20000']).catch(() => {});
     },
     kill: (name) => run(['kill-session', '-t', '=' + name]).then(() => {}, (e) => { if (!noServer(e)) throw e; }),
-    capture: (name, scrollback = 0) => run(['capture-pane', '-p', '-t', name + ':', ...(scrollback ? ['-S', `-${scrollback}`] : [])]),
-    literal: (name, text) => run(['send-keys', '-t', name + ':', '-l', '--', text]).then(() => {}),
-    keys: (name, keys) => run(['send-keys', '-t', name + ':', ...keys]).then(() => {}),
-    paste: async (name, text) => { await run(['load-buffer', '-b', 'cc-in', '-'], text); await run(['paste-buffer', '-p', '-d', '-b', 'cc-in', '-t', name + ':']); },
+    capture: (name, scrollback = 0) => run(['capture-pane', '-p', '-t', T(name), ...(scrollback ? ['-S', `-${scrollback}`] : [])]),
+    literal: (name, text) => run(['send-keys', '-t', T(name), '-l', '--', text]).then(() => {}),
+    keys: (name, keys) => run(['send-keys', '-t', T(name), ...keys]).then(() => {}),
+    paste: async (name, text) => { await run(['load-buffer', '-b', 'cc-in', '-'], text); await run(['paste-buffer', '-p', '-d', '-b', 'cc-in', '-t', T(name)]); },
   };
 }

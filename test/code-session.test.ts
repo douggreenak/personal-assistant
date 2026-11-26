@@ -1,7 +1,7 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, symlinkSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, symlinkSync, existsSync, readFileSync, writeFileSync, copyFileSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { makeCtx } from './helpers.ts';
@@ -87,4 +87,22 @@ test('code: a session starts in tmux, takes messages, shows tools and permission
   const ov = C.usageOverview(ctx, 7); assert.ok(ov.total.output > 0 && ov.byProject[0].key === 'Renamed' && ov.days.length === 7 && ov.sessions[0].tokens > 0);
   await C.deleteSession(ctx, s.id); assert.equal((await C.tmuxSessions(ctx)).some((t) => t.sessionId === s.id), false);
   await C.removeProject(ctx, p.id); assert.equal(C.listProjects(ctx).length, 0); assert.ok(existsSync(p.path), 'the folder is left alone');
+});
+
+test('code: Claude sessions started outside the app (in any tmux server on the host) are found and can be driven', { skip: !haveTmux }, async () => {
+  const X = await import('../src/code/external.ts'); const dir = join(base, 'ext'); mkdirSync(dir); const sock = join(dir, 'mine.sock'); const cwd = join(base, 'elsewhere'); mkdirSync(cwd);
+  copyFileSync(FAKE, join(dir, 'claude')); chmodSync(join(dir, 'claude'), 0o755);
+  process.env.CODE_TMUX_DIRS = dir;
+  try {
+    execFileSync('tmux', ['-S', sock, 'new-session', '-d', '-s', 'my-own', '-c', cwd, '-e', `CLAUDE_CONFIG_DIR=${join(base, 'cfg')}`, '-x', '120', '-y', '40', '--', join(dir, 'claude'), '--session-id', '99999999-9999-4999-8999-999999999999']);
+    execFileSync('tmux', ['-S', sock, 'new-session', '-d', '-s', 'not-claude', '-c', cwd, '--', 'sleep', '600']);
+    const found = await waitFor(async () => { const l = (await X.discover(ctx)).filter((e) => e.cwd === cwd); return l.length ? l : false; }, 10000, 'discover');   // (the machine's own tmux sessions may be listed too)
+    assert.equal(found.length, 1); assert.equal(found[0].session, 'my-own');
+    const key = found[0].key; await waitFor(async () => (await X.live(ctx, key, 0)).screen?.state === 'idle', 10000, 'idle');
+    await X.send(ctx, key, 'hi from the app'); const l = await waitFor(async () => { const r = await X.live(ctx, key, 0); return r.msgs.some((m) => m.t === 'assistant') ? r : false; }, 10000, 'reply');
+    assert.ok(l.msgs.some((m) => m.t === 'user' && m.text === 'hi from the app')); assert.equal((await X.info(ctx, key)).name, 'elsewhere');
+    await assert.rejects(X.keys(ctx, key, ['rm -rf'], new Set(['Enter'])), /not allowed/); await assert.rejects(X.info(ctx, 'bm90LWE'), /No such session/);
+    assert.ok((await X.usage(ctx, key)).output > 0); assert.ok((await X.commands(ctx, key)).some((c) => c.name === '/compact'));
+    execFileSync('tmux', ['-S', sock, 'kill-server']); assert.deepEqual((await X.discover(ctx)).filter((e) => e.cwd === cwd), []); assert.equal((await X.live(ctx, key, 0)).running, false);
+  } finally { delete process.env.CODE_TMUX_DIRS; try { execFileSync('tmux', ['-S', sock, 'kill-server'], { stdio: 'ignore' }); } catch { /* gone */ } }
 });

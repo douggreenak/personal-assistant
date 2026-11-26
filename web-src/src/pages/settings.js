@@ -97,7 +97,7 @@ export default async function settings(view) {
   loadSaved();
 
   clear(view).append(h('div', { class: 'page-head' }, h('h1', { class: 'display' }, 'Settings'), h('p', { class: 'muted title-m' }, 'Everything that used to live in the .env file. Changes apply after a restart.')),
-    h('div', { class: 'grid cols-2' }, appearance, security), backup, filter, h('div', { class: 'grid' }, cards), bar);
+    h('div', { class: 'grid cols-3 top3' }, appearance, security, backup), filter, h('div', { class: 'masonry' }, cards), bar);
   const groupOf = new Map(cards.map((c) => [c, [...c.querySelectorAll('[data-q]')]]));
   filter.addEventListener('input', () => {
     const q = filter.value.trim().toLowerCase();

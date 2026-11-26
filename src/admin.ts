@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, chmodSync } from 'node:fs';
 import type { Ctx } from './ctx.ts';
 import { nowIso } from './db.ts';
-import { listConnectors, isAutoAllowed } from './connectors.ts';
+import { applyAuth, listConnectors, isAutoAllowed } from './connectors.ts';
 
 type Row = Record<string, unknown>;
 const startedAt = Date.now();
@@ -53,6 +53,18 @@ export async function integrations(ctx: Ctx) {
   add('drive', 'Google Drive index', c.driveFolderIds.length > 0, c.driveFolderIds.length ? g : null, c.driveFolderIds.length ? `${c.driveFolderIds.length} folder(s)` : 'Not configured');
   add('ntfy', 'Phone push (ntfy)', !!c.ntfy, null, c.ntfy ? `${c.ntfy.url} / ${c.ntfy.topic}` : 'Not configured');
   add('files', 'File index', c.indexPaths.length > 0, null, c.indexPaths.length ? c.indexPaths.join(', ') : 'Not configured');
+  // Services connected from the Connectors page: a light for each, from a live check of the service itself (a connector with the built-in's id, e.g. Canopy, replaces the built-in row).
+  for (const cn of listConnectors(ctx)) {
+    if (cn.status !== 'enabled') continue;
+    const m = cn.manifest; const at = out.findIndex((o) => o.id === m.id); if (at >= 0 && out[at].configured) continue;
+    let ok: boolean, detail: string;
+    try { const u = new URL(m.mcp?.url ?? m.baseUrl); const headers: Record<string, string> = {}; applyAuth(ctx, m, u, headers);
+      const r = await fetch(u, { headers, signal: AbortSignal.timeout(3000) }); ok = r.status < 500 && r.status !== 401 && r.status !== 403; detail = r.status === 401 || r.status === 403 ? 'The service refused the key' : `Connector · HTTP ${r.status}`; }
+    catch (e) { ok = false; detail = (e as Error).message.slice(0, 80); }
+    if (cn.lastError) { ok = false; detail = cn.lastError.slice(0, 100); }
+    const row = { id: m.id, name: m.name, configured: true, ok, detail };
+    if (at >= 0) out[at] = row; else out.push(row);
+  }
   add('ingest', 'Device ingest token', c.ingestToken.length >= 16, null, c.ingestToken.length >= 16 ? 'Set' : 'Not set');
   return out;
 }

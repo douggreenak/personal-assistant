@@ -11,7 +11,7 @@ const kfmt = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3
 const usd = (n) => '$' + (n < 10 ? n.toFixed(2) : n.toFixed(0));
 const STATE = { stopped: ['Stopped', ''], idle: ['Ready', 'ok'], working: ['Working', 'warn'], permission: ['Needs you', 'bad'], dialog: ['Needs you', 'bad'], unknown: ['Running', ''] };
 const stateChip = (s, running) => { const [t, c] = running === false ? STATE.stopped : STATE[s] || STATE.unknown; return h('span', { class: 'tag code-state ' + c, 'data-state': running === false ? 'stopped' : s }, t); };
-const route = () => { const m = /^#\/code(?:\/(p|s|u|t)(?:\/([\w-]+))?)?/.exec(location.hash) || []; return { kind: m[1] || '', id: m[2] || '' }; };
+const route = () => { const m = /^#\/code(?:\/(p|s|u|t|x)(?:\/([\w-]+))?)?/.exec(location.hash) || []; return { kind: m[1] || '', id: m[2] || '' }; };
 const go = (path) => { location.hash = '#/code' + (path ? '/' + path : ''); };
 
 export default async function code(view) {
@@ -23,8 +23,9 @@ export default async function code(view) {
   // ---- layout like Claude Code on the web: sessions grouped by project on the left, the open session on the right ----
   const curProject = r.kind === 'p' ? r.id : r.kind === 's' ? projects.find((p) => p.sessions.some((s) => s.id === r.id))?.id : null;
   const side = h('aside', { class: 'code-side', 'aria-label': 'Sessions' }); const body = h('div', { class: 'code-main' });
-  const layout = h('div', { class: 'code-layout', 'data-pane': r.kind === 's' || r.kind === 'u' || r.kind === 't' ? 'main' : 'list' }, side, body);
+  const layout = h('div', { class: 'code-layout', 'data-pane': ['s', 'u', 't', 'x'].includes(r.kind) ? 'main' : 'list' }, side, body);
   clear(view).append(head(!status.tmux), layout);
+  let externals = [];
   function drawSide(list) {
     const rows = [];
     for (const p of list) {
@@ -34,14 +35,16 @@ export default async function code(view) {
       for (const s of p.sessions) rows.push(h('button', { class: 'code-srow' + (r.kind === 's' && r.id === s.id ? ' sel' : ''), 'data-session': s.id, onclick: () => go('s/' + s.id) },
         h('span', { class: 'sdot ' + (s.running ? (s.state === 'working' ? 'work' : s.state === 'permission' || s.state === 'dialog' ? 'ask' : 'on') : ''), title: (STATE[s.running ? s.state : 'stopped'] || STATE.unknown)[0] }), h('span', { class: 'stitle' }, s.aiTitle || s.title)));
     }
+    if (externals.length) { rows.push(h('div', { class: 'code-proj ext-head' }, h('span', { class: 'code-proj-name' }, icon('terminal'), h('span', {}, 'On this computer')))); for (const x of externals) rows.push(h('button', { class: 'code-srow' + (r.kind === 'x' && r.id === x.key ? ' sel' : ''), 'data-ext': x.key, title: x.cwd, onclick: () => go('x/' + x.key) }, h('span', { class: 'sdot on' }), h('span', { class: 'stitle' }, x.name + ' · ' + x.session))); }
     clear(side).append(
       h('div', { class: 'code-side-top' }, h('md-filled-tonal-button', { class: 'grow', onclick: () => (list.length === 1 ? newSessionDialog(list[0], status) : list.length ? pickProjectDialog(list) : addProjectDialog()) }, icon('add'), 'New session')),
       h('div', { class: 'code-side-list' }, ...(rows.length ? rows : [h('p', { class: 'muted s', style: 'padding:8px 12px' }, 'No projects yet. Add a folder to start.')]),
         h('button', { class: 'code-addproj', onclick: () => addProjectDialog() }, icon('add'), 'Add project')),
       h('div', { class: 'code-side-foot' }, h('button', { class: r.kind === 'u' ? 'sel' : '', 'data-nav': 'usage', onclick: () => go('u') }, icon('speed'), 'Usage'), h('button', { class: r.kind === 't' ? 'sel' : '', 'data-nav': 'server', onclick: () => go('t') }, icon('dns'), 'Server')));
   }
-  drawSide(projects);
-  timers.push(setInterval(async () => { if (document.hidden || document.querySelector('md-dialog[open]')) return; try { drawSide((await api('/code/projects')).projects); } catch { /* retry */ } }, 4000));
+  const refreshSide = async () => { try { const [pj, ex] = await Promise.all([api('/code/projects'), api('/code/external').catch(() => ({ sessions: [] }))]); externals = ex.sessions; drawSide(pj.projects); } catch { /* retry */ } };
+  drawSide(projects); refreshSide();
+  timers.push(setInterval(() => { if (!document.hidden && !document.querySelector('md-dialog[open]')) refreshSide(); }, 4000));
   function pickProjectDialog(list) {
     const sel = h('md-outlined-select', { label: 'Project' }, ...list.map((p, i) => h('md-select-option', { value: p.id, selected: i === 0 || undefined }, h('div', { slot: 'headline' }, p.name))));
     const { close } = dialog({ title: 'New session in…', content: sel, actions: [h('md-text-button', { onclick: () => close() }, 'Cancel'), h('md-filled-button', { onclick: () => { const p = list.find((x) => x.id === sel.value) || list[0]; close(); newSessionDialog(p, status); } }, 'Next')] });
@@ -50,6 +53,7 @@ export default async function code(view) {
   if (r.kind === 'u') usagePage(body, timers);
   else if (r.kind === 't') serverPage(body, status, timers);
   else if (r.kind === 's') await sessionPage(body, r.id, projects, status, timers);
+  else if (r.kind === 'x') await sessionPage(body, r.id, projects, status, timers, true);
   else {
     const pid = r.kind === 'p' ? r.id : (projects.find((p) => p.id === lsGet(LAST)) || projects[0])?.id;
     if (!pid) clear(body).append(h('div', { class: 'card' }, empty('terminal', 'No projects yet', 'A project is a folder Claude Code works in. Add one to start sessions.'), h('div', { style: 'text-align:center;margin-top:12px' }, h('md-filled-button', { onclick: () => addProjectDialog() }, icon('add'), 'Add a project'))));
@@ -140,9 +144,10 @@ export default async function code(view) {
   }
 
   // ---- a session: conversation, terminal, composer ----
-  async function sessionPage(el, sid, projects, st, tm) {
-    const info = await guarded(() => api('/code/sessions/' + sid)); if (!info) { go(''); return; }
-    const { session: s, project: p } = info; lsSet(LAST, p.id);
+  async function sessionPage(el, sid, projects, st, tm, ext = false) {
+    const base = ext ? '/code/external/' + sid : '/code/sessions/' + sid;
+    const info = await guarded(() => api(ext ? base + '/info' : '/code/sessions/' + sid)); if (!info) { go(''); return; }
+    const { session: s, project: p } = ext ? { session: { title: info.title, aiTitle: '', permissionMode: 'started outside the app', model: '' }, project: { id: '', name: info.name, path: info.path } } : info; if (!ext) lsSet(LAST, p.id);
     let pendingCmd = null, title = s.aiTitle || s.title, running = false, scr = null, after = 0, view = 'chat', started = false, hidden = 0, stick = true;
     const msgs = h('div', { class: 'msgs code-msgs', role: 'log', 'aria-live': 'polite' }); const tools = new Map();
     const stateEl = h('span', {}); const infoEl = h('div', { class: 'muted s code-info' }); const titleEl = h('h2', { class: 'code-title' }, title);
@@ -153,38 +158,38 @@ export default async function code(view) {
     const sendBtn = h('md-filled-icon-button', { 'aria-label': 'Send', onclick: () => send() }, icon('send'));
     const startBtn = h('md-filled-button', { onclick: async () => { await guarded(() => api(`/code/sessions/${sid}/start`, { method: 'POST', body: {} }), 'Starting…'); poll(); } }, icon('play_arrow'), 'Start session');
     let cmds = []; const cmdBox = h('div', { class: 'code-cmds', role: 'listbox', 'aria-label': 'Commands', hidden: true });
-    api(`/code/sessions/${sid}/commands`).then((j) => { cmds = j.commands; }).catch(() => {});
+    api(`${base}/commands`).then((j) => { cmds = j.commands; }).catch(() => {});
     const matches = () => { const v = ta.value; if (!v.startsWith('/') || /\s/.test(v)) return []; return cmds.filter((c) => c.name.startsWith(v.toLowerCase())).slice(0, 8); };
     const drawCmds = () => { const m = matches(); cmdBox.hidden = !m.length || (m.length === 1 && m[0].name === ta.value); clear(cmdBox).append(...m.map((c) => h('button', { type: 'button', role: 'option', 'data-cmd': c.name, onclick: () => { ta.value = c.name + ' '; grow(); drawCmds(); ta.focus(); } }, h('b', {}, c.name), h('span', { class: 'muted' }, c.description)))); };
     ta.addEventListener('input', drawCmds);
-    const composer = h('div', { class: 'composer code-composer' }, pics.button, ta, sendBtn);
+    const composer = h('div', { class: 'composer code-composer' }, ext ? '' : pics.button, ta, sendBtn);
 
     async function send(text) {
       text = (text ?? ta.value).trim(); const images = pics.images(); if (!text && !images.length) return; sendBtn.disabled = true;
       try {
         let full = text; for (const im of images) { const r = await fetchUpload(im); full = `${full}${full ? '\n' : ''}@${r.path}`; }
-        await api(`/code/sessions/${sid}/send`, { method: 'POST', body: { text: full } }); pendingCmd = full.startsWith('/') ? { cmd: full.split('\n')[0].trim(), at: Date.now() } : null; ta.value = ''; grow(); pics.clear(); cmdBox.hidden = true; stick = true; poll();
+        await api(`${base}/send`, { method: 'POST', body: { text: full } }); pendingCmd = full.startsWith('/') ? { cmd: full.split('\n')[0].trim(), at: Date.now() } : null; ta.value = ''; grow(); pics.clear(); cmdBox.hidden = true; stick = true; poll();
       } catch (e) { toast(e.message, { error: true }); } finally { sendBtn.disabled = false; ta.focus({ preventScroll: true }); }
     }
     async function fetchUpload(im) { const bytes = Uint8Array.from(atob(im.data), (c) => c.charCodeAt(0)); return api(`/code/sessions/${sid}/upload?name=${encodeURIComponent(im.name)}`, { method: 'POST', raw: bytes }); }
     ta.addEventListener('keydown', (e) => { if (e.key === 'Tab' && !cmdBox.hidden) { e.preventDefault(); const m = matches(); if (m[0]) { ta.value = m[0].name + ' '; drawCmds(); } return; } if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); const m = matches(); if (m.length && !m.some((c) => c.name === ta.value.trim())) { ta.value = m[0].name + ' '; drawCmds(); return; } cmdBox.hidden = true; send(); } });
-    const key = async (...keys) => { await guarded(() => api(`/code/sessions/${sid}/keys`, { method: 'POST', body: { keys } })); poll(); };
+    const key = async (...keys) => { await guarded(() => api(`${base}/keys`, { method: 'POST', body: { keys } })); poll(); };
 
     // header
     const act = (label, ic, fn, cls = 'md-outlined-button') => h(cls, { onclick: fn }, icon(ic), label);
     const headBtns = h('div', { class: 'code-head-btns' });
-    const drawHead = () => { clear(headBtns).append(running ? act('Stop', 'stop', async () => { if (await confirmDialog('Stop this session?', 'The tmux session ends. Start it again later and the conversation resumes.', 'Stop')) { await guarded(() => api(`/code/sessions/${sid}/stop`, { method: 'POST' }), 'Stopped'); poll(); } }) : startBtn,
+    const drawHead = () => { if (ext) { clear(headBtns).append(chip(running ? 'On this computer' : 'Ended')); return; } clear(headBtns).append(running ? act('Stop', 'stop', async () => { if (await confirmDialog('Stop this session?', 'The tmux session ends. Start it again later and the conversation resumes.', 'Stop')) { await guarded(() => api(`/code/sessions/${sid}/stop`, { method: 'POST' }), 'Stopped'); poll(); } }) : startBtn,
       h('md-icon-button', { id: 'sessMenu', 'aria-label': 'More' }, icon('more_horiz')));
       menu(headBtns.querySelector('#sessMenu'), [['Restart', async () => { await guarded(() => api(`/code/sessions/${sid}/restart`, { method: 'POST' }), 'Restarted'); poll(); }], ['Rename', () => renameDialog('Rename session', title, (n) => api('/code/sessions/' + sid, { method: 'PATCH', body: { title: n } }), () => { titleEl.textContent = title = ''; location.reload(); })],
         ['Delete session', async () => { if (await confirmDialog('Delete this session?', 'It is stopped and removed from the list. The conversation file stays on disk.', 'Delete')) { await guarded(() => api('/code/sessions/' + sid, { method: 'DELETE' }), 'Deleted'); go('p/' + p.id); } }]]); };
     const seg = h('div', { class: 'seg' }); const drawSeg = () => clear(seg).append(...[['chat', 'Conversation'], ['term', 'Terminal']].map(([v, l]) => h('button', { 'aria-pressed': String(view === v), 'data-view': v, onclick: () => { view = v; drawSeg(); layout(); if (v === 'term') pollTerm(); } }, l))); drawSeg();
     const chatPane = h('div', { class: 'code-chat' }, msgs, permBox);
-    const termPane = h('div', { class: 'code-term' }, term, termKeys, h('div', { class: 'code-term-send' }, (() => { const f = h('md-outlined-text-field', { label: 'Type into the terminal', class: 'grow' }); const go2 = async (enter) => { const t = f.value; f.value = ''; await guarded(() => api(`/code/sessions/${sid}/keys`, { method: 'POST', body: { text: t, keys: enter ? ['Enter'] : undefined } })); pollTerm(); }; f.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); go2(true); } }); return [f, h('md-filled-tonal-button', { onclick: () => go2(true) }, 'Send + Enter'), h('md-text-button', { onclick: () => go2(false) }, 'Type only')]; })()));
+    const termPane = h('div', { class: 'code-term' }, term, termKeys, h('div', { class: 'code-term-send' }, (() => { const f = h('md-outlined-text-field', { label: 'Type into the terminal', class: 'grow' }); const go2 = async (enter) => { const t = f.value; f.value = ''; await guarded(() => api(`${base}/keys`, { method: 'POST', body: { text: t, keys: enter ? ['Enter'] : undefined } })); pollTerm(); }; f.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); go2(true); } }); return [f, h('md-filled-tonal-button', { onclick: () => go2(true) }, 'Send + Enter'), h('md-text-button', { onclick: () => go2(false) }, 'Type only')]; })()));
     for (const [l, k] of [['Enter', 'Enter'], ['Esc', 'Escape'], ['↑', 'Up'], ['↓', 'Down'], ['←', 'Left'], ['→', 'Right'], ['Tab', 'Tab'], ['⇧Tab', 'BTab'], ['Ctrl+C', 'C-c'], ['1', '1'], ['2', '2'], ['3', '3'], ['y', 'y'], ['n', 'n']]) termKeys.append(h('md-outlined-button', { 'data-key': k, onclick: () => key(k) }, l));
     const quick = h('div', { class: 'code-quick' }, ...[['Interrupt', 'stop', () => key('Escape')], ['Cycle mode', 'sync', () => key('BTab')], ['/ Commands', 'terminal', () => { ta.value = '/'; ta.focus(); drawCmds(); }]].map(([l, ic, fn]) => h('md-assist-chip', { label: l, onclick: fn })));
     const layout = () => { chatPane.hidden = view !== 'chat'; termPane.hidden = view !== 'term'; composer.hidden = view !== 'chat' || !running; quick.hidden = view !== 'chat' || !running; if (view !== 'chat' || !running) cmdBox.hidden = true; startNote.hidden = running; };
     const startNote = h('div', { class: 'card code-stopped' }, h('b', {}, 'This session is stopped.'), h('span', { class: 'muted' }, ' Start it to continue the conversation — everything said so far is kept.'));
-    clear(el).append(h('div', { class: 'card high code-session-head' }, h('div', { class: 'code-ph' }, h('md-icon-button', { 'aria-label': 'Back to ' + p.name, onclick: () => go('p/' + p.id) }, icon('arrow_back')), h('div', { style: 'flex:1 1 180px;min-width:0' }, titleEl, h('div', { class: 'muted s' }, p.name + ' · ' + (s.permissionMode || 'default permissions') + (s.model ? ' · ' + s.model : ''))), stateEl, headBtns), h('div', { class: 'code-sub' }, seg, infoEl)),
+    clear(el).append(h('div', { class: 'card high code-session-head' }, h('div', { class: 'code-ph' }, h('md-icon-button', { 'aria-label': 'Back to ' + p.name, onclick: () => go(ext ? '' : 'p/' + p.id) }, icon('arrow_back')), h('div', { style: 'flex:1 1 180px;min-width:0' }, titleEl, h('div', { class: 'muted s' }, p.name + ' · ' + (s.permissionMode || 'default permissions') + (s.model ? ' · ' + s.model : ''))), stateEl, headBtns), h('div', { class: 'code-sub' }, seg, infoEl)),
       chatPane, termPane, startNote, quick, cmdBox, composer, pics.strip, pics.input); drawHead(); layout();
 
     // rendering the conversation
@@ -223,17 +228,17 @@ export default async function code(view) {
     async function poll() {
       if (document.hidden) return;
       try {
-        const l = await api(`/code/sessions/${sid}/live?after=${after}`); after = l.next || after; const first = !started; started = true;
+        const l = await api(`${base}/live?after=${after}`); after = l.next || after; const first = !started; started = true;
         let list = l.msgs; if (first && list.length > 300) { hidden = list.length - 300; list = list.slice(-300); msgs.append(h('div', { class: 'code-note' }, `${hidden} earlier messages are not shown here (they are in the terminal's scrollback and the conversation file).`)); }
         for (const m of list) addMsg(m); if (list.length && stick) msgs.scrollTop = msgs.scrollHeight;
         if (first && !l.msgs.length && !l.transcript) msgs.append(h('div', { class: 'code-note', id: 'emptyNote' }, l.running ? 'Session is up. Say something to Claude Code below.' : ''));
         if (l.msgs.length) msgs.querySelector('#emptyNote')?.remove();
         drawLive(l);
-        if (pendingCmd && l.screen?.state === 'idle' && Date.now() - pendingCmd.at > 900) { const c = pendingCmd; pendingCmd = null; try { const o = await api(`/code/sessions/${sid}/output?cmd=${encodeURIComponent(c.cmd)}`); if (o.text && !list.some((m) => m.t === 'note')) { msgs.append(h('pre', { class: 'code-pre code-cmdout' }, o.text)); if (stick) msgs.scrollTop = msgs.scrollHeight; } } catch { /* ignore */ } }
+        if (pendingCmd && l.screen?.state === 'idle' && Date.now() - pendingCmd.at > 900) { const c = pendingCmd; pendingCmd = null; try { const o = await api(`${base}/output?cmd=${encodeURIComponent(c.cmd)}`); if (o.text && !list.some((m) => m.t === 'note')) { msgs.append(h('pre', { class: 'code-pre code-cmdout' }, o.text)); if (stick) msgs.scrollTop = msgs.scrollHeight; } } catch { /* ignore */ } }
       } catch (e) { infoEl.textContent = e.message; }
     }
-    async function pollTerm() { if (view !== 'term' || document.hidden) return; try { const j = await api(`/code/sessions/${sid}/screen`); term.textContent = j.running ? j.text.replace(/\n{3,}/g, '\n\n') : '(stopped)'; term.scrollTop = term.scrollHeight; } catch { /* retry */ } }
-    async function usageInfo() { try { const u = await api(`/code/sessions/${sid}/usage`); if (u.messages) { chipHost.replaceChildren(chip(`context ${kfmt(u.context)}`), chip(`${kfmt(u.input + u.output)} in/out`), chip(`≈${usd(u.cost)}`)); } } catch { /* ignore */ } }
+    async function pollTerm() { if (view !== 'term' || document.hidden) return; try { const j = await api(`${base}/screen`); term.textContent = j.running ? j.text.replace(/\n{3,}/g, '\n\n') : '(stopped)'; term.scrollTop = term.scrollHeight; } catch { /* retry */ } }
+    async function usageInfo() { try { const u = await api(`${base}/usage`); if (u.messages) { chipHost.replaceChildren(chip(`context ${kfmt(u.context)}`), chip(`${kfmt(u.input + u.output)} in/out`), chip(`≈${usd(u.cost)}`)); } } catch { /* ignore */ } }
     const chipHost = h('div', { class: 'code-chips' }); infoEl.after(chipHost);
     await poll(); usageInfo(); setTimeout(() => { msgs.scrollTop = msgs.scrollHeight; }, 50);
     tm.push(setInterval(poll, 1500), setInterval(pollTerm, 1200), setInterval(() => { if (!document.hidden) usageInfo(); }, 15000));

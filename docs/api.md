@@ -98,3 +98,6 @@ Claude Code agents run in tmux sessions (dedicated tmux socket `assistant-code`)
 - `GET /code/usage?days=` token totals by day/project/model/session (estimated cost) · `GET /code/usage/plan[?force=1]` plan limits read from Claude Code's `/usage` screen (no model call, cached 5 min)
 - `GET /code/tmux` · `POST /code/tmux/:name/kill`
 Note: the agent runs as the same user as the assistant, so it can reach anything the container can (including `/data`). Keep permission mode on "manual" or "accept edits" unless you trust the task; "bypass permissions" needs `CODE_ALLOW_BYPASS=1`.
+
+### Claude sessions started outside the app
+`GET /code/external` lists Claude Code panes found in any tmux server whose socket is in `/tmp/tmux-<uid>` (mounted into the container). `GET /code/external/:key/{info,live,screen,output,commands,usage}` and `POST …/{send,keys}` work like the managed-session endpoints. These sessions are never killed or deleted by the app.
