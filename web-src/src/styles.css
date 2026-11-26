@@ -393,3 +393,5 @@ main { position: relative; }
 .code-only { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px 5px 8px; border-radius: 16px; font-size: .85rem; border: 1px solid var(--md-sys-color-outline-variant); } .code-only .ic { width: 18px; height: 18px; }
 .code-only[aria-pressed=true] { background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); border-color: transparent; } .code-only:focus-visible { outline: 2px solid var(--md-sys-color-primary); }
 .replies-only .code-tool, .replies-only .code-think, .replies-only .code-cmdout, .replies-only .code-user.cmd, .replies-only .code-note { display: none; }
+
+.code-older { all: unset; cursor: pointer; align-self: center; display: inline-flex; gap: 4px; align-items: center; padding: 6px 14px; border-radius: 16px; font-size: .85rem; background: var(--md-sys-color-surface-container-high); color: var(--md-sys-color-primary); } .code-older[hidden] { display: none; }

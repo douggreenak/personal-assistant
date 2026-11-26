@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, mkdtempSync, copyFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync, copyFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseScreen, parseUsageScreen } from '../src/code/screen.ts';
-import { readDelta, scanUsage, transcriptPath, encodeCwd, estimateCost } from '../src/code/transcript.ts';
+import { readBack, readDelta, scanUsage, transcriptPath, encodeCwd, estimateCost } from '../src/code/transcript.ts';
 
 const FX = new URL('./fixtures/code/', import.meta.url).pathname;
 const screen = (n: string) => readFileSync(FX + n, 'utf8');
@@ -46,4 +46,17 @@ test('code: a second real session (permission prompt, rejected) parses too', () 
   const dir = mkdtempSync(join(tmpdir(), 'cc-')); const f = join(dir, S2 + '.jsonl'); copyFileSync(FX + S2 + '.jsonl', f);
   const { msgs } = readDelta(f, 0); const res = msgs.filter((m) => m.t === 'result') as { isError: boolean; text: string }[];
   assert.ok(res.some((x) => x.isError || /reject|denied|doesn't want/i.test(x.text)), JSON.stringify(res));
+});
+
+test('code: a long conversation is read from the back in pages that add up to the whole thing, without gaps or repeats', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'cc-back-')); const f = join(dir, 'long.jsonl'); const lines: string[] = [];
+  for (let i = 0; i < 700; i++) {
+    lines.push(JSON.stringify({ type: 'user', uuid: 'u' + i, timestamp: '2026-01-01T00:00:00Z', message: { role: 'user', content: 'question ' + i + ' ' + 'x'.repeat(i % 7 * 300) } }));
+    lines.push(JSON.stringify({ type: 'assistant', uuid: 'a' + i, timestamp: '2026-01-01T00:00:01Z', message: { id: 'm' + i, role: 'assistant', model: 'x', content: [{ type: 'text', text: 'answer ' + i }] } }));
+  }
+  writeFileSync(f, lines.join('\n') + '\n{"type":"user","uuid":"half');   // the last line is still being written
+  const ids: string[] = []; let r = readBack(f, 40); assert.ok(r.msgs.length >= 40 && r.msgs.length <= 80); ids.unshift(...r.msgs.map((m) => m.id));
+  assert.equal(r.msgs.at(-1)!.id, 'a699'); assert.equal(readDelta(f, r.next).msgs.length, 0);   // tail ends at the last complete line; nothing new after it
+  let guard = 0; while (r.start > 0 && guard++ < 100) { r = readBack(f, 40, r.start); ids.unshift(...r.msgs.map((m) => m.id)); }
+  assert.equal(ids.length, 1400); assert.equal(new Set(ids).size, 1400); assert.equal(ids[0], 'u0'); assert.deepEqual(ids, ids.slice().sort((a, b) => (Number(a.slice(1)) - Number(b.slice(1))) || (a[0] === 'u' ? -1 : 1)));
 });

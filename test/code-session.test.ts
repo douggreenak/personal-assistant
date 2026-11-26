@@ -106,6 +106,7 @@ test('code: Claude sessions started outside the app (in any tmux server on the h
     await X.send(ctx, key, 'hi from the app'); const l = await waitFor(async () => { const r = await X.live(ctx, key, 0); return r.msgs.some((m) => m.t === 'assistant') ? r : false; }, 10000, 'reply');
     assert.ok(l.msgs.some((m) => m.t === 'user' && m.text === 'hi from the app')); assert.equal((await X.info(ctx, key)).name, 'elsewhere');
     await assert.rejects(X.keys(ctx, key, ['rm -rf'], new Set(['Enter'])), /not allowed/); await assert.rejects(X.info(ctx, 'bm90LWE'), /No such session/);
+    const up = await X.upload(ctx, key, Buffer.from('hello'), 'My Notes.PDF'); assert.ok(up.startsWith(join(cwd, '.claude-uploads') + '/') && up.endsWith('-My_Notes.pdf') && readFileSync(up, 'utf8') === 'hello');   // attach works for outside sessions too
     assert.ok((await X.usage(ctx, key)).output > 0); assert.ok((await X.commands(ctx, key)).some((c) => c.name === '/compact'));
     execFileSync('tmux', ['-S', sock, 'kill-server']); assert.deepEqual((await X.discover(ctx)).filter((e) => e.cwd === cwd), []); assert.equal((await X.live(ctx, key, 0)).running, false);
   } finally { delete process.env.CODE_TMUX_DIRS; try { execFileSync('tmux', ['-S', sock, 'kill-server'], { stdio: 'ignore' }); } catch { /* gone */ } }

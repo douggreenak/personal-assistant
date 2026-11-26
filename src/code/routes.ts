@@ -41,7 +41,8 @@ export async function codeRoutes(ctx: Ctx, path: string, method: string, query: 
       if (m[2] === 'start') await C.startSession(ctx, m[1], b.prompt ? String(b.prompt) : undefined); else if (m[2] === 'stop') await C.stopSession(ctx, m[1]); else await C.restartSession(ctx, m[1]);
       return ok({ ok: true });
     }
-    if ((m = /^\/code\/sessions\/([\w-]+)\/live$/.exec(path)) && method === 'GET') return ok(await C.live(ctx, m[1], Math.max(0, Number(query.get('after') ?? 0) || 0)));
+    if ((m = /^\/code\/sessions\/([\w-]+)\/live$/.exec(path)) && method === 'GET') return ok(await C.live(ctx, m[1], Math.max(0, Number(query.get('after') ?? 0) || 0), Math.min(100, Number(query.get('tail') ?? 0) || 0)));
+    if ((m = /^\/code\/sessions\/([\w-]+)\/history$/.exec(path)) && method === 'GET') return ok(C.history(ctx, m[1], Number(query.get('before') ?? 0) || 0, Number(query.get('limit') ?? 30) || 30));
     if ((m = /^\/code\/sessions\/([\w-]+)\/send$/.exec(path)) && method === 'POST') { await C.sendMessage(ctx, m[1], String((await h.json()).text ?? '')); return ok({ ok: true }); }
     if ((m = /^\/code\/sessions\/([\w-]+)\/interrupt$/.exec(path)) && method === 'POST') { await C.interrupt(ctx, m[1]); return ok({ ok: true }); }
     if ((m = /^\/code\/sessions\/([\w-]+)\/mode$/.exec(path)) && method === 'POST') return ok({ mode: await C.setMode(ctx, m[1], String((await h.json()).mode ?? '')) });
@@ -55,10 +56,12 @@ export async function codeRoutes(ctx: Ctx, path: string, method: string, query: 
     if (path === '/code/usage' && method === 'GET') return ok(C.usageOverview(ctx, Math.min(90, Math.max(1, Number(query.get('days') ?? 14) || 14))));
     if (path === '/code/usage/plan' && method === 'GET') return ok(await C.planUsage(ctx, query.get('force') === '1'));
     if (path === '/code/external' && method === 'GET') return ok({ sessions: (await X.discover(ctx)).map(({ socket, ...e }) => ({ ...e, socketName: socket.split('/').pop() })) });
-    if ((m = /^\/code\/external\/([\w-]+)\/(info|live|send|keys|screen|output|commands|usage)$/.exec(path))) {
+    if ((m = /^\/code\/external\/([\w-]+)\/(info|live|history|upload|send|keys|screen|output|commands|usage)$/.exec(path))) {
       const [, key, what] = m;
       if (what === 'info' && method === 'GET') return ok(await X.info(ctx, key));
-      if (what === 'live' && method === 'GET') return ok(await X.live(ctx, key, Math.max(0, Number(query.get('after') ?? 0) || 0)));
+      if (what === 'live' && method === 'GET') return ok(await X.live(ctx, key, Math.max(0, Number(query.get('after') ?? 0) || 0), Math.min(100, Number(query.get('tail') ?? 0) || 0)));
+      if (what === 'upload' && method === 'POST') return ok({ path: await X.upload(ctx, key, await h.body(51 * 1024 * 1024), query.get('name') ?? 'file') });
+      if (what === 'history' && method === 'GET') return ok(await X.history(ctx, key, Number(query.get('before') ?? 0) || 0, Number(query.get('limit') ?? 30) || 30));
       if (what === 'send' && method === 'POST') { await X.send(ctx, key, String((await h.json()).text ?? '')); return ok({ ok: true }); }
       if (what === 'keys' && method === 'POST') { const b = await h.json(); await X.keys(ctx, key, Array.isArray(b.keys) ? b.keys.map(String) : [], ALLOWED_KEYS, typeof b.text === 'string' ? b.text : undefined); return ok({ ok: true }); }
       if (what === 'screen' && method === 'GET') return ok(await X.screen(ctx, key, Number(query.get('scrollback') ?? 0) || 0));

@@ -79,6 +79,33 @@ export function readDelta(file: string, offset: number, maxBytes = 4_000_000): {
   return { msgs, next: offset + lastNl + 1, size };
 }
 
+/** The newest `limit` conversation lines that end at byte `before` (default: the end of the file), read from the back with a growing window,
+ *  so a long chat costs about the same as a short one. `start` is where the first returned line begins (0 = the beginning of the file);
+ *  `next` is where the data ended (continue with readDelta from there). */
+export function readBack(file: string, limit: number, before?: number): { msgs: Msg[]; start: number; next: number } {
+  const size = statSync(file).size; const fd = openSync(file, 'r');
+  try {
+    let end = before === undefined ? size : Math.min(before, size);
+    if (before === undefined && end > 0) {   // ignore a half-written last line
+      let p = end; end = 0;
+      while (p > 0) { const len = Math.min(65536, p); const buf = Buffer.alloc(len); readSync(fd, buf, 0, len, p - len); const i = buf.lastIndexOf(0x0a); if (i >= 0) { end = p - len + i + 1; break; } p -= len; }
+    }
+    for (let win = 128 * 1024; ; win *= 4) {
+      const from = Math.max(0, end - win); const len = end - from; const buf = Buffer.alloc(len); if (len) readSync(fd, buf, 0, len, from);
+      let first = 0; if (from > 0) { const nl = buf.indexOf(0x0a); if (nl < 0) { if (from === 0) break; continue; } first = nl + 1; }   // drop the partial first line
+      const lines: { off: number; text: string }[] = []; let o = first;
+      while (o < len) { let e = buf.indexOf(0x0a, o); if (e < 0) e = len; lines.push({ off: from + o, text: buf.subarray(o, e).toString('utf8') }); o = e + 1; }
+      const groups: { off: number; ms: Msg[] }[] = []; let count = 0, start = from + first;
+      for (let i = lines.length - 1; i >= 0 && count < limit; i--) {
+        start = lines[i].off; if (!lines[i].text.trim()) continue;
+        try { const ms = normalize(JSON.parse(lines[i].text)); if (ms.length) { groups.unshift({ off: start, ms }); if (ms.some((m) => m.t === 'user' || m.t === 'assistant')) count++; } } catch { /* skip a damaged line */ }
+      }
+      if (count >= limit || from === 0) return { msgs: groups.flatMap((g) => g.ms), start: from === 0 && count < limit ? 0 : start, next: end };
+    }
+    return { msgs: [], start: 0, next: end };
+  } finally { closeSync(fd); }
+}
+
 export interface UsageRow { day: string; model: string; input: number; output: number; cacheRead: number; cacheWrite: number; messages: number }
 /** Token usage per day and model. A message is written once per content block with the same usage: count each API message once (the last record wins). */
 export function scanUsage(file: string): { rows: UsageRow[]; lastContext: number; lastModel: string } {

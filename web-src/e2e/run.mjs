@@ -3,7 +3,7 @@
 //   usage: CHROMIUM=/usr/bin/chromium node web-src/e2e/run.mjs
 import { chromium } from 'playwright-core';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, readdirSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -441,6 +441,15 @@ try {
     await page.locator('.code-composer textarea').fill('read this'); await page.keyboard.press('Enter');
     await page.locator('.code-user', { hasText: '.claude-uploads/' }).waitFor({ timeout: 15000 }); assert.equal(await page.locator('.code-file').count(), 0);
     await page.locator('.code-state[data-state=idle]').waitFor();
+    {   // a long conversation: only the newest part loads first, older parts load when you scroll up
+      const pd = join(dir, 'claudecfg', 'projects'); const f = readdirSync(pd).flatMap((d) => readdirSync(join(pd, d)).filter((x) => x.endsWith('.jsonl')).map((x) => join(pd, d, x)))[0];
+      const old = []; for (let i = 0; i < 150; i++) { old.push(JSON.stringify({ type: 'user', uuid: 'old-u' + i, timestamp: '2026-01-01T00:00:00Z', message: { role: 'user', content: 'old question ' + i } })); old.push(JSON.stringify({ type: 'assistant', uuid: 'old-a' + i, timestamp: '2026-01-01T00:00:01Z', message: { id: 'old-m' + i, role: 'assistant', model: 'x', content: [{ type: 'text', text: 'old answer ' + i }] } })); }
+      writeFileSync(f, old.join('\n') + '\n' + readFileSync(f, 'utf8'));
+      await goto('inbox'); await goto('code'); await page.locator('.code-srow', { hasText: 'Session 1' }).first().click(); await page.locator('.code-bot', { hasText: 'Echo: hello e2e' }).waitFor();
+      const n0 = await page.locator('.code-user').count(); assert.ok(n0 < 60, 'only the newest messages are loaded first (' + n0 + ')'); assert.equal(await page.locator('.code-user', { hasText: 'old question 0' }).count(), 0);
+      await page.locator('.code-msgs').evaluate((el) => { el.scrollTop = 0; });
+      await page.waitForFunction((n) => document.querySelectorAll('.code-user').length > n, n0, { timeout: 10000 });   // scrolling to the top loaded older ones
+    }
     await page.evaluate(() => { window.__side = document.querySelector('.code-side'); });   // switching inside the Code tab must not rebuild the page or the sidebar
     await page.locator('.code-side [data-nav=usage]').click(); await page.locator('.code-main .ubar, .code-main h2, .code-main .card').first().waitFor();
     assert.equal(await page.evaluate(() => window.__side === document.querySelector('.code-side') && document.body.contains(window.__side)), true);

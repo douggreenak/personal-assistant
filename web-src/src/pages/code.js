@@ -166,11 +166,11 @@ export default async function code(view) {
     const ta = h('textarea', { rows: 1, 'data-primary': '', placeholder: 'Message Claude Code…', title: 'Enter sends · Shift+Enter adds a line · / for commands', 'aria-label': 'Message' });
     const KEY_D = 'code-draft:' + (ext ? 'x:' : '') + sid; try { ta.value = lsGet(KEY_D) || ''; } catch { /* none */ }
     ta.addEventListener('input', () => { if (ta.value) lsSet(KEY_D, ta.value); else try { localStorage.removeItem(KEY_D); } catch { /* ignore */ } });
-    const grow = () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 200) + 'px'; }; ta.addEventListener('input', grow); grow();
+    const grow = () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 200) + 'px'; }; ta.addEventListener('input', grow); if (ta.value) requestAnimationFrame(grow);   // (measuring an empty box before it is on screen made the first line jump)
     // Attachments: any file, uploaded as soon as it is picked/pasted/dropped; the message then carries @path for each.
     let files = []; const strip = h('div', { class: 'pics code-files', hidden: true }); const fin = h('input', { type: 'file', multiple: true, hidden: true, 'aria-label': 'Choose files' });
     const drawFiles = () => { strip.hidden = !files.length; clear(strip).append(...files.map((f, n) => h('div', { class: 'code-file' + (f.error ? ' bad' : '') }, icon(f.type.startsWith('image/') ? 'image' : 'description'), h('span', { class: 'fname' }, f.name), h('span', { class: 'muted s' }, f.error ? 'failed' : f.path ? (f.size >= 1e6 ? (f.size / 1e6).toFixed(1) + ' MB' : Math.max(1, Math.round(f.size / 1e3)) + ' KB') : 'uploading…'), h('button', { type: 'button', 'aria-label': 'Remove ' + f.name, onclick: () => { files.splice(n, 1); drawFiles(); } }, icon('close'))))); };
-    const addFiles = (list) => { for (const file of list) { if (files.length >= 10) { toast('At most 10 files per message.'); break; } const f = { name: file.name || 'file', type: file.type || '', size: file.size, path: '', error: false }; files.push(f); api(`/code/sessions/${sid}/upload?name=${encodeURIComponent(f.name)}`, { method: 'POST', raw: file }).then((r) => { f.path = r.path; }).catch((e) => { f.error = true; toast(e.message, { error: true }); }).finally(drawFiles); } drawFiles(); };
+    const addFiles = (list) => { for (const file of list) { if (files.length >= 10) { toast('At most 10 files per message.'); break; } const f = { name: file.name || 'file', type: file.type || '', size: file.size, path: '', error: false }; files.push(f); api(`${base}/upload?name=${encodeURIComponent(f.name)}`, { method: 'POST', raw: file }).then((r) => { f.path = r.path; }).catch((e) => { f.error = true; toast(e.message, { error: true }); }).finally(drawFiles); } drawFiles(); };
     fin.addEventListener('change', () => { addFiles([...fin.files]); fin.value = ''; });
     ta.addEventListener('paste', (e) => { const fs = [...(e.clipboardData?.files ?? [])]; if (fs.length) { e.preventDefault(); addFiles(fs); } });
     const attachBtn = h('md-icon-button', { 'aria-label': 'Attach files', title: 'Attach files (or paste / drop them)', onclick: () => fin.click() }, icon('attach_file'));
@@ -184,7 +184,7 @@ export default async function code(view) {
     const matches = () => { const v = ta.value; if (!v.startsWith('/') || /\s/.test(v)) return []; return cmds.filter((c) => c.name.startsWith(v.toLowerCase())).slice(0, 8); };
     const drawCmds = () => { const m = matches(); cmdBox.hidden = !m.length || (m.length === 1 && m[0].name === ta.value); clear(cmdBox).append(...m.map((c) => h('button', { type: 'button', role: 'option', 'data-cmd': c.name, onclick: () => { ta.value = c.name + ' '; grow(); drawCmds(); ta.focus(); } }, h('b', {}, c.name), h('span', { class: 'muted' }, c.description)))); };
     ta.addEventListener('input', drawCmds);
-    const composer = h('div', { class: 'composer code-composer' }, ext ? '' : pics.button, ta, stopBtn, sendBtn);
+    const composer = h('div', { class: 'composer code-composer' }, pics.button, ta, stopBtn, sendBtn);
 
     async function send(text) {
       text = (text ?? ta.value).trim(); if (!text && !files.length) return;
@@ -244,17 +244,17 @@ export default async function code(view) {
       if (n === 'TodoWrite') return h('ul', { class: 'code-todos' }, (i.todos || []).map((t) => h('li', { class: t.status }, (t.status === 'completed' ? '☑ ' : t.status === 'in_progress' ? '◐ ' : '☐ ') + (t.content || ''))));
       return h('pre', { class: 'code-pre' }, JSON.stringify(i, null, 2).slice(0, 2500)); };
     const toolSummary = (b) => { const i = b.input || {}; return b.name === 'Bash' ? String(i.description || i.command || '').split('\n')[0] : fileOf(i) || i.pattern || i.query || i.url || i.description || i.prompt?.slice?.(0, 80) || ''; };
-    function addMsg(m) {
-      if (m.t === 'title') { title = m.title; titleEl.textContent = title; return; }
+    function addMsg(m, into = msgs) {
+      if (m.t === 'title') { if (into !== msgs) return; title = m.title; titleEl.textContent = title; return; }
       if (m.t === 'mode') return;
-      if (m.t === 'user') return void msgs.append(h('div', { class: 'bubble me code-user' + (m.command ? ' cmd' : '') }, m.command ? h('code', {}, m.text) : md(m.text)));
-      if (m.t === 'note') return void msgs.append(h('div', { class: 'code-note' }, m.text));
+      if (m.t === 'user') return void into.append(h('div', { class: 'bubble me code-user' + (m.command ? ' cmd' : '') }, m.command ? h('code', {}, m.text) : md(m.text)));
+      if (m.t === 'note') return void into.append(h('div', { class: 'code-note' }, m.text));
       if (m.t === 'assistant') for (const b of m.blocks) {
-        if (b.type === 'text') msgs.append(h('div', { class: 'bubble bot code-bot' }, md(b.text)));
-        else if (b.type === 'thinking') msgs.append(h('details', { class: 'code-think' }, h('summary', {}, 'Thinking'), h('div', { class: 'muted' }, md(b.text))));
-        else { const out = h('div', { class: 'code-out' }); const card = h('details', { class: 'code-tool', 'data-tool': b.name }, h('summary', {}, h('span', { class: 'code-dot' }, '●'), h('b', {}, b.name), ' ', h('span', { class: 'mono muted' }, toolSummary(b).slice(0, 140))), toolBody(b), out); tools.set(b.id, out); if (b.name === 'TodoWrite') card.open = true; msgs.append(card); }
+        if (b.type === 'text') into.append(h('div', { class: 'bubble bot code-bot' }, md(b.text)));
+        else if (b.type === 'thinking') into.append(h('details', { class: 'code-think' }, h('summary', {}, 'Thinking'), h('div', { class: 'muted' }, md(b.text))));
+        else { const out = h('div', { class: 'code-out' }); const card = h('details', { class: 'code-tool', 'data-tool': b.name }, h('summary', {}, h('span', { class: 'code-dot' }, '●'), h('b', {}, b.name), ' ', h('span', { class: 'mono muted' }, toolSummary(b).slice(0, 140))), toolBody(b), out); tools.set(b.id, out); if (orphans.has(b.id)) { out.append(orphans.get(b.id)); orphans.delete(b.id); } if (b.name === 'TodoWrite') card.open = true; into.append(card); }
       }
-      if (m.t === 'result') { const out = tools.get(m.toolUseId); const pre = h('pre', { class: 'code-pre' + (m.isError ? ' err' : '') }, m.text.length > 3000 ? m.text.slice(0, 3000) + '\n…' : m.text || '(no output)'); if (out) { out.append(pre); if (m.isError) out.closest('details')?.classList.add('error'); } else msgs.append(h('details', { class: 'code-tool' }, h('summary', {}, h('b', {}, 'Result')), pre)); }
+      if (m.t === 'result') { const out = tools.get(m.toolUseId); const pre = h('pre', { class: 'code-pre' + (m.isError ? ' err' : '') }, m.text.length > 3000 ? m.text.slice(0, 3000) + '\n…' : m.text || '(no output)'); if (out) { out.append(pre); if (m.isError) out.closest('details')?.classList.add('error'); } else orphans.set(m.toolUseId, pre); }   // its tool call is further up: shown when that part is loaded
     }
     function drawLive(l) {
       const wasRunning = running; running = l.running; scr = l.screen; if (running && !wasRunning && view === 'chat') setTimeout(() => ta.focus({ preventScroll: true }), 150); const sc = l.screen?.state || 'stopped';
@@ -267,14 +267,23 @@ export default async function code(view) {
       composer.classList.toggle('busy', scr?.state === 'working'); stopBtn.hidden = scr?.state !== 'working';
     }
     // One poll at a time (two overlapping polls both used the same offset and drew every new message twice) and each message is drawn once.
-    let polling = false, again = false; const seen = new Set();
+    let polling = false, again = false; const seen = new Set(), orphans = new Map(); let oldest = 0, loadingOld = false;
+    const topNote = h('button', { class: 'code-older', type: 'button', hidden: true, onclick: () => loadOlder() }, icon('expand_less'), 'Load earlier messages');
+    msgs.prepend(topNote);
+    async function loadOlder() {
+      if (loadingOld || oldest <= 0) return; loadingOld = true; topNote.disabled = true;
+      try { const r = await api(`${base}/history?before=${oldest}&limit=30`); const frag = document.createDocumentFragment(); for (const m of r.msgs) { if (m.t !== 'title' && m.t !== 'mode') { if (seen.has(m.id)) continue; seen.add(m.id); } addMsg(m, frag); }
+        const prevH = msgs.scrollHeight, prevT = msgs.scrollTop; topNote.after(frag); msgs.scrollTop = prevT + (msgs.scrollHeight - prevH); oldest = r.start; topNote.hidden = oldest <= 0; }
+      catch (e) { toast(e.message, { error: true }); } finally { loadingOld = false; topNote.disabled = false; }
+    }
+    msgs.addEventListener('scroll', () => { if (msgs.scrollTop < 160 && oldest > 0 && !loadingOld) loadOlder(); });
     function poll() { if (polling) { again = true; return Promise.resolve(); } polling = true; return pollOnce().finally(() => { polling = false; if (again) { again = false; poll(); } }); }
     async function pollOnce() {
       if (document.hidden) return;
       try {
-        const l = await api(`${base}/live?after=${after}`); const first = !started; started = true;
-        if (l.next < after) { clear(msgs); tools.clear(); seen.clear(); hidden = 0; }   // the conversation file was replaced (e.g. /clear): start over
-        after = l.next || after;
+        const l = await api(started ? `${base}/live?after=${after}` : `${base}/live?tail=40`); const first = !started;
+        if (started && l.next < after) { clear(msgs); msgs.prepend(topNote); topNote.hidden = true; tools.clear(); seen.clear(); orphans.clear(); oldest = 0; started = false; after = 0; again = true; return; }   // the conversation file was replaced (e.g. /clear): start over
+        started = true; after = l.next || after; if (first) { oldest = l.start || 0; topNote.hidden = oldest <= 0; }
         let list = l.msgs.filter((m) => { if (m.t === 'title' || m.t === 'mode') return true; const k = m.id; if (seen.has(k)) return false; seen.add(k); return true; }); if (first && list.length > 300) { hidden = list.length - 300; list = list.slice(-300); msgs.append(h('div', { class: 'code-note' }, `${hidden} earlier messages are not shown here (they are in the terminal's scrollback and the conversation file).`)); }
         for (const m of list) addMsg(m); if (list.length && stick) msgs.scrollTop = msgs.scrollHeight;
         if (first && !l.msgs.length && !l.transcript) msgs.append(h('div', { class: 'code-note', id: 'emptyNote' }, l.running ? 'Session is up. Say something to Claude Code below.' : ''));

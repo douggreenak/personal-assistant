@@ -6,7 +6,7 @@ import type { Ctx } from '../ctx.ts';
 import { sniffImage } from '../images.ts';
 import { ALLOWED_KEYS, makeTmux, type Tmux } from './tmux.ts';
 import { parseScreen, parseUsageScreen, type ScreenInfo } from './screen.ts';
-import { estimateCost, readDelta, scanUsage, transcriptPath, type Msg, type UsageRow } from './transcript.ts';
+import { estimateCost, readBack, readDelta, scanUsage, transcriptPath, type Msg, type UsageRow } from './transcript.ts';
 
 export const PERMISSION_MODES = ['manual', 'acceptEdits', 'auto', 'plan', 'dontAsk', 'bypassPermissions'] as const;
 export class CodeError extends Error { status = 400; constructor(m: string, status = 400) { super(m); this.status = status; } }
@@ -169,18 +169,19 @@ export async function screenText(ctx: Ctx, id: string, scrollback = 0): Promise<
   return { running: true, text: await t.capture(name, Math.min(2000, Math.max(0, scrollback))) };
 }
 
-export interface Live { dialogText?: string; running: boolean; screen: ScreenInfo | null; msgs: Msg[]; next: number; title: string; transcript: boolean; lastActivity: string | null }
-export async function live(ctx: Ctx, id: string, after: number): Promise<Live> {
+export interface Live { dialogText?: string; running: boolean; screen: ScreenInfo | null; msgs: Msg[]; next: number; start?: number; title: string; transcript: boolean; lastActivity: string | null }
+export async function live(ctx: Ctx, id: string, after: number, tail = 0): Promise<Live> {
   const t = await needTmux(ctx); const s = getSession(ctx, id); const p = getProject(ctx, s.projectId);
   const name = tmuxName(id); const running = await t.has(name);
   const raw = running ? await t.capture(name).catch(() => '') : '';
   const screen = running ? parseScreen(raw) : null;
   const file = transcriptPath(ctx.cfg.code.configDir, p.path, id);
   let msgs: Msg[] = [], next = 0, last: string | null = null;
-  if (file) { const d = readDelta(file, after); msgs = d.msgs; next = d.next; last = new Date(statSync(file).mtimeMs).toISOString(); }
+  let start = 0;
+  if (file) { const d = tail ? readBack(file, tail) : readDelta(file, after); msgs = d.msgs; next = d.next; if ('start' in d) start = d.start; last = new Date(statSync(file).mtimeMs).toISOString(); }
   const title = [...msgs].reverse().find((m) => m.t === 'title') as { title: string } | undefined;
   if (title && title.title !== s.aiTitle) ctx.db.prepare('UPDATE code_sessions SET ai_title = ? WHERE id = ?').run(title.title, id);
-  return { dialogText: screen && (screen.state === 'dialog' || screen.state === 'unknown') ? raw.replace(/\n{3,}/g, '\n\n').trimEnd().slice(-3000) : undefined, running, screen, msgs, next, title: title?.title ?? s.aiTitle, transcript: !!file, lastActivity: last };
+  return { dialogText: screen && (screen.state === 'dialog' || screen.state === 'unknown') ? raw.replace(/\n{3,}/g, '\n\n').trimEnd().slice(-3000) : undefined, running, screen, msgs, next, start, title: title?.title ?? s.aiTitle, transcript: !!file, lastActivity: last };
 }
 
 export async function sessionSummaries(ctx: Ctx): Promise<{ id: string; running: boolean; state: string }[]> {
@@ -203,6 +204,12 @@ export async function commandOutputOf(t: Tmux, name: string, cmd: string): Promi
   if (at < 0) return '';
   const out: string[] = []; for (let i = at + 1; i < lines.length; i++) { const l = lines[i]; if (/^[─╌━]{8,}/.test(l.trim()) || /^❯/.test(l)) break; out.push(l.replace(/^\s*⎿\s{0,2}/, '').trimEnd()); }
   return out.join('\n').replace(/^\n+|\s+$/g, '').slice(0, 6000);
+}
+
+/** Older conversation lines (for "scroll up to load more"): the `limit` lines before byte offset `before`. */
+export function history(ctx: Ctx, id: string, before: number, limit = 30): { msgs: Msg[]; start: number } {
+  const s = getSession(ctx, id); const p = getProject(ctx, s.projectId); const file = transcriptPath(ctx.cfg.code.configDir, p.path, id);
+  if (!file || before <= 0) return { msgs: [], start: 0 }; const r = readBack(file, Math.min(100, Math.max(1, limit)), before); return { msgs: r.msgs, start: r.start };
 }
 
 // ---------- slash commands ----------
@@ -234,10 +241,12 @@ export async function bootResume(ctx: Ctx): Promise<number> {
 // ---------- pictures ----------
 /** Files attached in the Code tab land in <project>/.claude-uploads/ (inside the project, so Claude can read them without a permission prompt). Any file type. */
 export function saveUpload(ctx: Ctx, id: string, data: Buffer, nameIn: string): string {
-  const s = getSession(ctx, id); const p = getProject(ctx, s.projectId);
+  const s = getSession(ctx, id); return writeUpload(join(getProject(ctx, s.projectId).path, '.claude-uploads'), data, nameIn);
+}
+export function writeUpload(dir: string, data: Buffer, nameIn: string): string {
   if (!data.length) throw new CodeError('That file is empty.'); if (data.length > 50 * 1024 * 1024) throw new CodeError('Files can be up to 50 MB.');
   const raw = String(nameIn || 'file').split(/[\\/]/).pop()!; const m = /\.([A-Za-z0-9]{1,8})$/.exec(raw); const ext = m ? m[1].toLowerCase() : 'bin';
-  const dir = join(p.path, '.claude-uploads'); mkdirSync(dir, { recursive: true });
+  mkdirSync(dir, { recursive: true });
   const file = join(dir, `${Date.now()}-${raw.replace(/\.[^.]*$/, '').replace(/[^\w-]+/g, '_').slice(0, 50) || 'file'}.${ext}`); writeFileSync(file, data); return file;
 }
 

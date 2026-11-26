@@ -3,8 +3,8 @@ import { basename, join } from 'node:path';
 import type { Ctx } from '../ctx.ts';
 import { makeTmux } from './tmux.ts';
 import { parseScreen, type ScreenInfo } from './screen.ts';
-import { encodeCwd, readDelta, scanUsage, estimateCost, type Msg } from './transcript.ts';
-import { CodeError, listCommandsAt, commandOutputOf } from './manager.ts';
+import { encodeCwd, readBack, readDelta, scanUsage, estimateCost, type Msg } from './transcript.ts';
+import { CodeError, listCommandsAt, commandOutputOf, writeUpload } from './manager.ts';
 
 /** Claude Code sessions that were started outside this app: any tmux server on the host whose socket the container can see
  *  (the app's own is skipped; its sessions are managed). Found by looking for a pane running `claude`. */
@@ -54,12 +54,12 @@ function newestTranscript(ctx: Ctx, cwd: string): string | null {
 }
 
 export async function info(ctx: Ctx, key: string) { const x = await target(ctx, key); return { title: x.session, name: basename(x.cwd) || x.cwd, path: x.cwd }; }
-export async function live(ctx: Ctx, key: string, after: number): Promise<{ running: boolean; screen: ScreenInfo | null; dialogText?: string; msgs: Msg[]; next: number; title: string; transcript: boolean; lastActivity: string | null }> {
+export async function live(ctx: Ctx, key: string, after: number, tail = 0): Promise<{ start?: number; running: boolean; screen: ScreenInfo | null; dialogText?: string; msgs: Msg[]; next: number; title: string; transcript: boolean; lastActivity: string | null }> {
   let x; try { x = await target(ctx, key); } catch { return { running: false, screen: null, msgs: [], next: 0, title: '', transcript: false, lastActivity: null }; }
   const raw = await x.t.capture(x.pane).catch(() => ''); const screen = parseScreen(raw); const file = newestTranscript(ctx, x.cwd);
-  let msgs: Msg[] = [], next = 0, last: string | null = null; if (file) { const d = readDelta(file, after); msgs = d.msgs; next = d.next; last = new Date(statSync(file).mtimeMs).toISOString(); }
+  let msgs: Msg[] = [], next = 0, last: string | null = null; let start = 0; if (file) { const d = tail ? readBack(file, tail) : readDelta(file, after); msgs = d.msgs; next = d.next; if ('start' in d) start = d.start; last = new Date(statSync(file).mtimeMs).toISOString(); }
   const title = [...msgs].reverse().find((m) => m.t === 'title') as { title: string } | undefined;
-  return { running: true, screen, dialogText: screen.state === 'dialog' || screen.state === 'unknown' ? raw.replace(/\n{3,}/g, '\n\n').trimEnd().slice(-3000) : undefined, msgs, next, title: title?.title ?? x.session, transcript: !!file, lastActivity: last };
+  return { running: true, screen, dialogText: screen.state === 'dialog' || screen.state === 'unknown' ? raw.replace(/\n{3,}/g, '\n\n').trimEnd().slice(-3000) : undefined, msgs, next, start, title: title?.title ?? x.session, transcript: !!file, lastActivity: last };
 }
 export async function send(ctx: Ctx, key: string, textIn: string): Promise<void> {
   const x = await target(ctx, key); const text = String(textIn ?? '').replace(/\r\n?/g, '\n').replace(/\u0000/g, '').trim();
@@ -82,3 +82,8 @@ export async function usage(ctx: Ctx, key: string) {
   const u = scanUsage(f); const t = u.rows.reduce((a, r) => ({ input: a.input + r.input, output: a.output + r.output, cacheRead: a.cacheRead + r.cacheRead, cacheWrite: a.cacheWrite + r.cacheWrite, messages: a.messages + r.messages, cost: a.cost + estimateCost(r) }), { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, messages: 0, cost: 0 });
   return { ...t, context: u.lastContext, model: u.lastModel };
 }
+export async function history(ctx: Ctx, key: string, before: number, limit = 30) {
+  const x = await target(ctx, key); const f = newestTranscript(ctx, x.cwd); if (!f || before <= 0) return { msgs: [], start: 0 };
+  const r = readBack(f, Math.min(100, Math.max(1, limit)), before); return { msgs: r.msgs, start: r.start };
+}
+export async function upload(ctx: Ctx, key: string, data: Buffer, name: string): Promise<string> { const x = await target(ctx, key); return writeUpload(join(x.cwd, '.claude-uploads'), data, name); }
