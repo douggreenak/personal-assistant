@@ -276,7 +276,7 @@ test('search + Q&A: indexes files and messages, answers with citations, refuses 
 test('chat commands: open, approvals, ack/snooze/done by short id, questions vs captures', async () => {
   const { ctx } = makeCtx((req) => (/Question:/.test(req.prompt) ? { answer: 'ok', cited: [] } : { actions: [{ op: 'create', kind: 'reminder', title: 'Order SDI cables', dueAt: '2026-11-26T09:00', confidence: 0.9, flags: [], why: '' }] }));
   const reply = await handleOwnerText(ctx, 'remind me to order SDI cables tomorrow morning');
-  assert.match(reply, /✅ Reminder: Order SDI cables/);
+  assert.match(reply, /Done: Reminder: Order SDI cables/);
   const list = await handleOwnerText(ctx, "what's open");
   const id = /\[([0-9a-f]{6})\]/.exec(list)![1];
   assert.match(list, /Reminders/);

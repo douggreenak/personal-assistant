@@ -1,6 +1,7 @@
+import { noEmoji, icon } from './ui.js';
 // Small, safe Markdown → DOM renderer. It never uses innerHTML: everything is built from text nodes and elements,
 // links are limited to http(s)/mailto, and external images are shown as links (nothing is fetched from a third party).
-const el = (tag, props, ...kids) => { const e = document.createElement(tag); if (props) for (const [k, v] of Object.entries(props)) e.setAttribute(k, v); e.append(...kids.flat()); return e; };
+const el = (tag, props, ...kids) => { const e = document.createElement(tag); if (props) for (const [k, v] of Object.entries(props)) e.setAttribute(k, v); e.append(...kids.flat().map((k) => (typeof k === 'string' ? noEmoji(k) : k))); return e; };
 const safeUrl = (u) => { try { const x = new URL(u, 'https://x.invalid'); return /^(https?:|mailto:)$/.test(x.protocol) && x.hostname !== 'x.invalid' || x.protocol === 'mailto:' ? u : null; } catch { return null; } };
 const link = (text, url) => { const u = safeUrl(url); return u ? el('a', { href: u, target: '_blank', rel: 'noopener noreferrer nofollow' }, text) : document.createTextNode(text); };
 
@@ -60,7 +61,7 @@ export function md(text) {
         const first = lines[i++].replace(/^\s*([-*+]|\d+[.)])\s+/, ''); const more = [];
         while (i < lines.length && /^\s{2,}\S/.test(lines[i]) && !/^\s*([-*+]|\d+[.)])\s+/.test(lines[i])) more.push(lines[i++].trim());
         const task = /^\[( |x|X)\]\s+(.*)$/.exec(first);
-        list.append(el('li', null, ...(task ? [el('span', { class: 'md-check', 'aria-hidden': 'true' }, task[1] === ' ' ? '☐ ' : '☑ ')] : []), ...withBreaks([task ? task[2] : first, ...more])));
+        list.append(el('li', null, ...(task ? [el('span', { class: 'md-check', 'aria-hidden': 'true' }, icon(task[1] === ' ' ? 'check_box_outline_blank' : 'check_box'), ' ')] : []), ...withBreaks([task ? task[2] : first, ...more])));
       }
       root.append(list); continue;
     }

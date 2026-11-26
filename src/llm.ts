@@ -1,3 +1,4 @@
+import { noEmojiDeep, NO_EMOJI_RULE } from './text.ts';
 import { spawn } from 'node:child_process';
 
 export interface LlmImage { mediaType: string; data: string /* base64 */ }
@@ -15,7 +16,8 @@ export class ClaudeCliLlm implements Llm {
   constructor(o: { bin?: string; model?: string; timeoutMs?: number } = {}) {
     this.bin = o.bin ?? 'claude'; this.model = o.model; this.timeoutMs = o.timeoutMs ?? 180000;
   }
-  json(req: LlmRequest): Promise<unknown> {
+  async json(req: LlmRequest): Promise<unknown> { return noEmojiDeep(await this.run({ ...req, system: req.system + NO_EMOJI_RULE })); }
+  private run(req: LlmRequest): Promise<unknown> {
     const withImages = !!req.images?.length;
     const common = ['--tools', '', '--no-session-persistence', '--setting-sources', '', '--system-prompt', req.system, '--json-schema', JSON.stringify(req.schema)];
     // Images travel as content blocks over stdin (stream-json); plain prompts keep the simple form.

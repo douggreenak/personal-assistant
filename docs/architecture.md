@@ -24,7 +24,7 @@ Every source (voice, texts, Gmail, Chat, connectors, your own typing) is reduced
 6. **Validate** (`parseActions` in `src/actions.ts`): drop bad ops, ids not in the candidate list, stages not in the pipeline; clamp confidence; cap lengths.
 7. **Decide** (`src/policy.ts`): `apply` or `ask` per action.
 8. **Apply** (`applyAction`) or **queue an approval** (`src/approvals.ts`). A backend failure parks the action in the approval queue instead of losing it.
-9. **Announce**: non-chat sources send "✅ …" to Chat; chat replies include the summary directly.
+9. **Announce**: non-chat sources send "Done: …" to Chat; chat replies include the summary directly.
 
 ## Policy table (`src/policy.ts`)
 | Action | Flags | Result |

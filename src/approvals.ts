@@ -29,7 +29,7 @@ export const getApproval = (ctx: Ctx, id: number): Approval | undefined => {
 export async function announcePending(ctx: Ctx): Promise<number> {
   const fresh = (ctx.db.prepare('SELECT * FROM approvals WHERE status = ? AND notified = 0 ORDER BY id').all('pending') as Row[]).map(toApproval);
   for (const a of fresh) {
-    await ctx.notify.send(`❓ #${a.id} needs your OK: ${a.summary}\n   (${a.reason}) — reply "approve ${a.id}" or "reject ${a.id}"`, { approvalId: a.id });
+    await ctx.notify.send(`Approval #${a.id} needs your OK: ${a.summary}\n   (${a.reason}) — reply "approve ${a.id}" or "reject ${a.id}"`, { approvalId: a.id });
     ctx.db.prepare('UPDATE approvals SET notified = 1 WHERE id = ?').run(a.id);
   }
   return fresh.length;

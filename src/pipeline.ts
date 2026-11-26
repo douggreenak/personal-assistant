@@ -121,7 +121,7 @@ export async function processNextReport(ctx: Ctx): Promise<{ msg: MessageRow; re
     const err = (e as Error).message.slice(0, 300);
     const backoff = Math.min(30 * 2 ** (msg.attempts - 1), 600) * 1000;     // 30s, 60s, 2m, 4m, 8m
     ctx.db.prepare('UPDATE messages SET error = ?, retry_at = ? WHERE id = ?').run(err, new Date(ctx.now().getTime() + backoff).toISOString(), msg.id);
-    if (msg.attempts >= 5) await ctx.notify.send(`⚠️ Couldn't process a ${msg.source} message after 5 tries: ${err}`);
+    if (msg.attempts >= 5) await ctx.notify.send(`Couldn't process a ${msg.source} message after 5 tries: ${err}`);
     return { msg, report: { applied: [], queued: [], rejected: [], skipped: `error: ${err}` } };
   }
 }
@@ -130,5 +130,5 @@ export async function processNext(ctx: Ctx): Promise<boolean> { return (await pr
 async function announce(ctx: Ctx, msg: MessageRow, r: ProcessReport): Promise<void> {
   if (!r.applied.length) return;  // queued items are announced by the approvals loop
   const who = msg.source === 'voice' ? '' : ` (from ${msg.sender || msg.source})`;
-  await ctx.notify.send(`✅ ${r.applied.map((s) => `• ${s}`).join('\n')}${who}`);
+  await ctx.notify.send(`Done: ${r.applied.map((s) => `• ${s}`).join('\n')}${who}`);
 }

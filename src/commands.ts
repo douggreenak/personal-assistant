@@ -15,7 +15,7 @@ const wantsAction = (ctx: Ctx, t: string): boolean => ACTION_REQUEST.test(t) && 
 const QUESTION = /^(what|when|who|where|how|which|why|show|list|find|did|do|does|is|are|any)\b|\?\s*$/i;
 
 function formatItems(items: Item[], tz: string): string {
-  if (!items.length) return 'Nothing open. 🎉';
+  if (!items.length) return 'Nothing open.';
   const groups: Record<string, Item[]> = { ticket: [], reminder: [], task: [] };
   for (const i of items) groups[i.kind].push(i);
   const fmt = (i: Item) => {
@@ -91,9 +91,9 @@ async function capture(ctx: Ctx, text: string, sourceId: string, images: Upload[
 
 function summarize(r: { applied: string[]; queued: string[]; rejected: string[]; failed?: string[]; skipped?: string }): string {
   const lines: string[] = [];
-  if (r.applied.length) lines.push(...r.applied.map((s) => `✅ ${s}`));
-  if (r.queued.length) lines.push(...r.queued.map((s) => `❓ Needs your OK: ${s}`));
-  if (r.failed?.length) lines.push(...r.failed.map((s) => `⚠️ That didn't work: ${s}`));
-  if (r.skipped?.startsWith('error')) lines.push(`⚠️ I couldn't process that yet (${r.skipped}). I'll retry.`);
+  if (r.applied.length) lines.push(...r.applied.map((s) => `Done: ${s}`));
+  if (r.queued.length) lines.push(...r.queued.map((s) => `Needs your OK: ${s}`));
+  if (r.failed?.length) lines.push(...r.failed.map((s) => `That didn't work: ${s}`));
+  if (r.skipped?.startsWith('error')) lines.push(`I couldn't process that yet (${r.skipped}). I'll retry.`);
   return lines.length ? lines.join('\n\n') : "I didn't find anything to do in that.";
 }

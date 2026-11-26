@@ -55,7 +55,7 @@ The server picks the newest non-draft, non-prerelease release whose tag starts w
 - **Sync loop:** one timer, every 60 s. Order: connection check → Messages → Calendar → Reminders. A failure in one source never stops the others; the menu and Settings show each source's last result.
 - **Messages:** read-only SQLite on `~/Library/Messages/chat.db`, the same query and wire format as the agent (`POST /ingest/mac`, decoding on the server). The saved row id advances only after the server confirms, so nothing is lost or repeated.
 - **Calendar / Reminders / Capture** go through `POST /ingest/message` with sources `calendar`, `reminders` and `mac-app` (see [API](api.md)); the server de-duplicates on the id the app sends. Reminders-inbox and Capture items are sent as `sender: "me"` — your own words, so "call Sam Friday" becomes a task, not something to reply to.
-- **Mirror:** `GET /items` + `POST /items/{id}/complete`. A map of item ↔ reminder is kept in `~/Library/Application Support/Assistant/`. Delete a mirrored reminder in Reminders and it stays gone (the item itself is unaffected). Tickets are not mirrored.
+- **Mirror:** `GET /items` + `POST /items/{id}/complete`. A map of item-to-reminder is kept in `~/Library/Application Support/Assistant/`. Delete a mirrored reminder in Reminders and it stays gone (the item itself is unaffected). Tickets are not mirrored.
 - **Privacy:** the app talks only to your server. It contains no analytics and never sends anything on its own — it never replies to or contacts anyone.
 
 ## Source layout (`mac-app/`)

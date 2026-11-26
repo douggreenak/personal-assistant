@@ -1,5 +1,8 @@
 import icons from './icons.generated.js';
 
+/** No emoji anywhere in the UI: stripped from every piece of text shown (symbols come from the Material icon set instead). */
+const EMOJI = /(?![\u00a9\u00ae\u2122])\p{Extended_Pictographic}|[\u{FE0F}\u{200D}\u{20E3}\u{1F3FB}-\u{1F3FF}]/gu;
+export const noEmoji = (s) => String(s).replace(EMOJI, '').replace(/^ +(?=\S)/, (m) => m);
 /** Tiny DOM helper: h('div', {class:'x', onclick}, child, 'text'). Text is always added as text nodes (never HTML). */
 export function h(tag, props = {}, ...kids) {
   const e = document.createElement(tag);
@@ -16,7 +19,7 @@ function add(e, kids) {
   const btn = /^MD-(FILLED|FILLED-TONAL|OUTLINED|TEXT)-BUTTON$/.test(e.tagName);       // icons inside Material buttons belong in the icon slot
   for (const c of kids.flat(Infinity)) if (c != null && c !== false) {
     if (btn && c.nodeType && c.namespaceURI === 'http://www.w3.org/2000/svg') c.setAttribute('slot', 'icon');
-    e.append(c.nodeType ? c : document.createTextNode(String(c)));
+    e.append(c.nodeType ? c : document.createTextNode(noEmoji(c)));
   }
 }
 /** Per-page hooks for the keyboard layer: the page sets `page.newAction`; main.js resets it on every navigation. */
@@ -145,7 +148,7 @@ export async function prepareImage(file) {
   return { name: (file.name || 'picture').replace(/\.[^.]+$/, '') + (png ? '.png' : '.jpg'), data: full.split(',')[1], url: full, thumb };
 }
 /**
- * Picture attaching for a text box: a 📎 button, paste and drag-and-drop. `onError(msg)` reports problems.
+ * Picture attaching for a text box: an attach button, paste and drag-and-drop. `onError(msg)` reports problems.
  * Returns {button, strip, images(), clear()}: put `button` and `strip` wherever they fit; send `images()` with the text.
  */
 export function pictureAttach(target, onError = () => {}) {

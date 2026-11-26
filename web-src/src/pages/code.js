@@ -1,5 +1,5 @@
 import { api, getToken } from '../api.js';
-import { page, h, icon, clear, spinner, empty, chip, dialog, confirmDialog, toast, guarded, ago, fmtDate, pictureAttach, menu as uiMenu } from '../ui.js';
+import { page, h, icon, clear, spinner, empty, chip, dialog, confirmDialog, toast, guarded, ago, fmtDate, pictureAttach, noEmoji, menu as uiMenu } from '../ui.js';
 /** Attaches a ⋯ menu of [label, action] pairs to its button (the menu element has to be in the page to show). */
 const menu = (btn, pairs) => { const m = uiMenu(btn, pairs.map(([label, onclick]) => ({ label, onclick }))); btn.after(m); return m; };
 import { md } from '../markdown.js';
@@ -281,7 +281,7 @@ export default async function code(view) {
       if (n === 'Bash') return h('pre', { class: 'code-pre' }, i.command || '');
       if (n === 'Edit' || n === 'MultiEdit') { const eds = n === 'Edit' ? [i] : i.edits || []; return h('div', {}, eds.slice(0, 6).map((e) => h('pre', { class: 'code-pre diff' }, ...String(e.old_string ?? '').split('\n').slice(0, 40).map((l) => h('div', { class: 'del' }, '- ' + l)), ...String(e.new_string ?? '').split('\n').slice(0, 40).map((l) => h('div', { class: 'add' }, '+ ' + l))))); }
       if (n === 'Write') return h('pre', { class: 'code-pre' }, String(i.content ?? '').split('\n').slice(0, 60).join('\n'));
-      if (n === 'TodoWrite') return h('ul', { class: 'code-todos' }, (i.todos || []).map((t) => h('li', { class: t.status }, (t.status === 'completed' ? '☑ ' : t.status === 'in_progress' ? '◐ ' : '☐ ') + (t.content || ''))));
+      if (n === 'TodoWrite') return h('ul', { class: 'code-todos' }, (i.todos || []).map((t) => h('li', { class: t.status }, icon(t.status === 'completed' ? 'check_box' : t.status === 'in_progress' ? 'timelapse' : 'check_box_outline_blank'), ' ' + (t.content || ''))));
       return h('pre', { class: 'code-pre' }, JSON.stringify(i, null, 2).slice(0, 2500)); };
     const toolSummary = (b) => { const i = b.input || {}; return b.name === 'Bash' ? String(i.description || i.command || '').split('\n')[0] : fileOf(i) || i.pattern || i.query || i.url || i.description || i.prompt?.slice?.(0, 80) || ''; };
     function addMsg(m, into = msgs) {
@@ -341,7 +341,7 @@ export default async function code(view) {
         if (pendingCmd && l.screen?.state === 'idle' && Date.now() - pendingCmd.at > 900) { const c = pendingCmd; pendingCmd = null; try { const o = await api(`${base}/output?cmd=${encodeURIComponent(c.cmd)}`); if (o.text && !list.some((m) => m.t === 'note')) { msgs.append(h('pre', { class: 'code-pre code-cmdout' }, o.text)); if (stick) msgs.scrollTop = msgs.scrollHeight; } } catch { /* ignore */ } }
       } catch (e) { infoEl.textContent = e.message; }
     }
-    async function pollTerm() { if (view !== 'term' || document.hidden) return; try { const j = await api(`${base}/screen`); term.textContent = j.running ? j.text.replace(/\n{3,}/g, '\n\n') : '(stopped)'; term.scrollTop = term.scrollHeight; } catch { /* retry */ } }
+    async function pollTerm() { if (view !== 'term' || document.hidden) return; try { const j = await api(`${base}/screen`); term.textContent = j.running ? noEmoji(j.text.replace(/\n{3,}/g, '\n\n')) : '(stopped)'; term.scrollTop = term.scrollHeight; } catch { /* retry */ } }
     async function usageInfo() { try { const u = await api(`${base}/usage`); if (u.messages) { chipHost.replaceChildren(chip(`context ${kfmt(u.context)}`), chip(`${kfmt(u.input + u.output)} in/out`), chip(`≈${usd(u.cost)}`)); } } catch { /* ignore */ } }
     const chipHost = h('div', { class: 'code-chips' }); infoEl.after(chipHost);
     await poll(); usageInfo(); setTimeout(() => { msgs.scrollTop = msgs.scrollHeight; }, 50);

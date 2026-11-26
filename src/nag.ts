@@ -34,7 +34,7 @@ export async function nagTick(ctx: Ctx): Promise<number> {
 }
 
 const nagText = (it: Item, n: number): string =>
-  `${n === 1 ? '🔔' : n < 4 ? '🔔🔔' : '🚨'} ${it.title}${n > 1 ? ` (reminder #${n})` : ''}\n   reply "ack ${shortId(it.id)}" when handled, or "snooze ${shortId(it.id)} 1h"`;
+  `${n === 1 ? 'Reminder:' : n < 4 ? 'Reminder, again:' : 'URGENT:'} ${it.title}${n > 1 ? ` (reminder #${n})` : ''}\n   reply "ack ${shortId(it.id)}" when handled, or "snooze ${shortId(it.id)} 1h"`;
 
 export function ack(ctx: Ctx, it: Item, by = 'owner'): Item {
   return ctx.items.patch(it.id, { ackedAt: nowIso(), nextNagAt: null, ...(it.kind === 'reminder' ? { state: 'done' as const } : {}) }, by, { type: 'acknowledged' });

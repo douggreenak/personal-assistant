@@ -10,7 +10,7 @@ Base URL `http://<server>:8090`. Every endpoint except `/healthz` needs `Authori
 Handle one line exactly as if typed in Google Chat (commands, questions, or something to capture).
 ```bash
 curl -H "authorization: Bearer $T" -H 'content-type: application/json' -d '{"text":"remind me to call Sam tomorrow 9am"}' $BASE/chat
-# {"reply":"✅ Reminder: call Sam (due 2026-11-26 18:00Z)"}
+# {"reply":"Done: Reminder: call Sam (due 2026-11-26 18:00Z)"}
 ```
 **Pictures.** `/chat` (`{text, images}`) and `/ask` (`{question, images}`) accept up to 5 pictures: `images: [{name, data}]` with `data` = base64 (or a `data:` URL) of a PNG, JPEG, GIF or WebP, each ≤ 5 MB; the type is taken from the file's bytes. The model sees them with the text: a question is answered using them, anything else is captured with the pictures saved alongside the message (table `attachments`). These two routes take bodies up to 30 MB; every other JSON route stays at 1 MB.
 

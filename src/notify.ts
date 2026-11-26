@@ -1,3 +1,4 @@
+import { noEmoji } from './text.ts';
 export interface NotifyOpts { urgent?: boolean; approvalId?: number; itemId?: string }
 export interface Notifier { send(text: string, opts?: NotifyOpts): Promise<void> }
 
@@ -9,6 +10,7 @@ export class MultiNotifier implements Notifier {
   targets: Notifier[];
   constructor(targets: Notifier[]) { this.targets = targets; }
   async send(text: string, opts?: NotifyOpts): Promise<void> {
+    text = noEmoji(text);
     await Promise.all(this.targets.map((t) => t.send(text, opts).catch((e) => console.error('notify failed:', (e as Error).message))));
   }
 }
