@@ -1,5 +1,5 @@
 import { api, getToken } from '../api.js';
-import { h, icon, clear, ago, fmtDate, empty, chip, confirmDialog, guarded, toast, spinner } from '../ui.js';
+import { h, icon, clear, ago, fmtDate, empty, chip, confirmDialog, guarded, toast, spinner, copyText } from '../ui.js';
 
 const dur = (s) => (s < 3600 ? `${Math.round(s / 60)} min` : s < 86400 ? `${(s / 3600).toFixed(1)} h` : `${(s / 86400).toFixed(1)} days`);
 
@@ -25,16 +25,45 @@ async function downloadMacApp(btn, rel) {
   } catch (e) { toast(e.message, { error: true }); } finally { btn.disabled = false; }
 }
 
-function macAppCard(rel, reload) {
+/** Everything the Mac app needs to connect: this server's address and the token this browser is signed in with. */
+const macConfig = () => 'assistant-config:' + btoa(JSON.stringify({ v: 1, url: location.origin, token: getToken() }));
+async function copyMacConfig() {
+  if (await copyText(macConfig())) toast('Config copied — in the Mac app choose “Paste config”');
+  else toast('Could not copy to the clipboard', { error: true });
+}
+
+function macClientsList(clients, rel, reload) {
+  const ask = async (id, label) => {
+    const r = await guarded(() => api(`/app/mac/clients/${id}/update`, { method: 'POST' }));
+    if (r) { toast(r.asked ? `${label} will update within a minute` : 'Already up to date'); reload(); }
+  };
+  const behind = clients.filter((c) => c.updateAvailable && !c.updatePending && c.online);
+  const rows = clients.map((c) => {
+    const status = c.updatePending ? chip('updating…', 'warn') : c.updateAvailable ? chip('v' + c.version + ' · update available', 'warn') : chip('v' + c.version + ' · up to date', 'ok');
+    return h('div', { class: 'row static', style: 'grid-template-columns:auto 1fr auto auto' },
+      h('span', { class: 'dot ' + (c.online ? 'ok' : ''), title: c.online ? 'Online' : 'Not seen recently' }),
+      h('div', {}, h('div', { class: 't' }, c.name), h('div', { class: 's' }, [c.os, c.online ? 'online' : 'last seen ' + ago(c.lastSeen)].filter(Boolean).join(' · ')), c.updateError && h('div', { class: 's', style: 'color:var(--md-sys-color-error)' }, 'Update failed: ' + c.updateError)),
+      status,
+      h('div', { style: 'display:flex;gap:4px' },
+        c.updateAvailable && h('md-text-button', { disabled: c.updatePending || !c.online, title: c.online ? '' : 'The app must be running to update', onclick: () => ask(c.id, c.name) }, icon('system_update_alt'), 'Update'),
+        !c.online && h('md-icon-button', { 'aria-label': 'Forget this Mac', title: 'Forget this Mac', onclick: async () => { if (await guarded(() => api('/app/mac/clients/' + c.id, { method: 'DELETE' }))) reload(); } }, icon('delete'))));
+  });
+  return h('div', {}, h('h3', { class: 'title-m', style: 'display:flex;align-items:center;gap:10px' }, h('span', { class: 'grow' }, 'Connected Macs'),
+    behind.length > 1 && h('md-text-button', { onclick: () => ask('all', 'Every Mac') }, icon('system_update_alt'), 'Update all')),
+    clients.length ? h('div', { class: 'list' }, rows) : h('div', { class: 'muted' }, 'No Mac has connected yet. Download the app, then use “Copy config” here and “Paste config” in the app.'));
+}
+
+function macAppCard(rel, clients, reload) {
   const body = [];
+  const copyBtn = h('md-filled-tonal-button', { onclick: copyMacConfig, title: 'Copies this server\'s address and your token so the Mac app can connect with one paste' }, icon('content_copy'), 'Copy config');
   if (rel.available) {
     const btn = h('md-filled-button', { onclick: () => downloadMacApp(btn, rel) }, icon('download'), `Download v${rel.version}`);
     body.push(h('p', { class: 'muted' }, `Version ${rel.version} · ${size(rel.size)} · released ${fmtDate(rel.publishedAt, { dateStyle: 'medium' })}`),
       rel.notes && h('p', { class: 'muted', style: 'white-space:pre-wrap' }, rel.notes.split('\n').slice(0, 6).join('\n')),
-      h('div', { style: 'display:flex;gap:10px;flex-wrap:wrap' }, btn, h('md-text-button', { href: rel.releaseUrl, target: '_blank', rel: 'noopener' }, 'Release notes')));
-  } else body.push(h('div', { class: 'muted' }, rel.error || 'No Mac app has been released yet.'));
+      h('div', { style: 'display:flex;gap:10px;flex-wrap:wrap' }, btn, copyBtn, h('md-text-button', { href: rel.releaseUrl, target: '_blank', rel: 'noopener' }, 'Release notes')));
+  } else body.push(h('div', { class: 'muted' }, rel.error || 'No Mac app has been released yet.'), h('div', {}, copyBtn));
   if (rel.available && rel.error) body.push(h('div', { class: 'muted' }, rel.error));
-  body.push(h('div', { class: 'muted' }, 'Unzip, drag Assistant.app to Applications, open it (first time: right-click → Open), then enter this server\'s address and a token. See docs/mac-app.md.'));
+  body.push(h('div', { class: 'muted' }, 'Unzip, drag Assistant.app to Applications, open it (first time: right-click → Open), then click “Paste config” in the app after pressing Copy config here. The config holds your access token — paste it only into your own Mac. See docs/mac-app.md.'), macClientsList(clients, rel, reload));
   return h('div', { class: 'card' }, h('h2', {}, icon('laptop_mac'), h('span', { class: 'grow' }, 'Mac app'), h('md-text-button', { onclick: reload }, icon('refresh'), 'Check again')), ...body.filter(Boolean));
 }
 
@@ -44,7 +73,7 @@ export default async function system(view, { refreshStatus }) {
   const filter = h('md-outlined-text-field', { label: 'Filter the server log', 'data-primary': '', class: 'grow' }, h('span', { slot: 'leading-icon' }, icon('search')));
   let drawLogsNow = () => {}; filter.addEventListener('input', () => { q = filter.value.toLowerCase(); drawLogsNow(); });
   async function load() {
-    const [s, integ, logs, act, mac] = await Promise.all([api('/status'), api('/status/integrations'), api('/logs?limit=250'), api('/activity?limit=25'), api('/app/mac/latest').catch((e) => ({ release: { available: false, error: e.message } }))]);
+    const [s, integ, logs, act, mac, macClients] = await Promise.all([api('/status'), api('/status/integrations'), api('/logs?limit=250'), api('/activity?limit=25'), api('/app/mac/latest').catch((e) => ({ release: { available: false, error: e.message } })), api('/app/mac/clients').catch(() => ({ clients: [] }))]);
     const stat = (label, v, ic) => h('div', { class: 'card flat' }, h('div', { class: 'label' }, label), h('div', { class: 'title-l' }, v));
     const logBox = h('div', { class: 'logs mono' });
     const drawLogs = () => { clear(logBox).append(...logs.lines.filter((l) => (level === 'all' || l.level === 'error') && (!q || l.text.toLowerCase().includes(q))).map((l) => h('div', { class: l.level === 'error' ? 'e' : '' }, h('span', { class: 'at' }, fmtDate(l.at, { timeStyle: 'medium' }) + '  '), l.text))); logBox.scrollTop = logBox.scrollHeight; };
@@ -55,7 +84,7 @@ export default async function system(view, { refreshStatus }) {
       h('div', { class: 'grid cols-2' },
         h('div', { class: 'card' }, h('h2', {}, icon('inbox'), 'Where messages come from'), s.bySource.length ? h('div', { class: 'list' }, s.bySource.map((r) => h('div', { class: 'row static', style: 'grid-template-columns:1fr auto' }, h('div', { class: 't' }, r.source), chip(String(r.n))))) : h('div', { class: 'muted' }, 'No messages yet.')),
         h('div', { class: 'card' }, h('h2', {}, icon('history'), 'Recent changes'), act.events.length ? h('div', { class: 'timeline' }, act.events.slice(0, 10).map((e) => h('div', {}, h('div', { class: 't' }, `${e.type} · ${e.title}`), h('div', { class: 'muted' }, `${e.actor} · ${ago(e.at)}`)))) : h('div', { class: 'muted' }, 'Nothing yet.'))),
-      macAppCard(mac.release, async () => { if (await guarded(() => api('/app/mac/latest?refresh=1'))) load(); }),
+      macAppCard(mac.release, macClients.clients, async () => { if (await guarded(() => api('/app/mac/latest?refresh=1'))) load(); }),
       h('div', { class: 'card' }, h('h2', {}, icon('terminal'), h('span', { class: 'grow' }, 'Server log'), levels), logBox),
       h('div', { class: 'card' }, h('h2', {}, icon('tune'), 'Maintenance'), h('div', { style: 'display:flex;gap:10px;flex-wrap:wrap' },
         h('md-filled-tonal-button', { onclick: async () => { const r = await guarded(() => api('/admin/reindex', { method: 'POST' })); if (r) toast(`Indexed ${r.indexed} file(s), skipped ${r.skipped}`); load(); } }, icon('folder'), 'Re-index files'),

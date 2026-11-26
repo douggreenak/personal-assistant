@@ -1,6 +1,6 @@
 # HTTP API
 
-Base URL `http://<server>:8090`. Every endpoint except `/healthz` and `/hooks/ticketing` needs `Authorization: Bearer $ASSISTANT_TOKEN`. The three `/ingest/*` endpoints also accept `INGEST_TOKEN`, which is valid for nothing else. Bodies are JSON unless stated. Errors are `{ "error": "…" }` with the status below. JSON bodies are limited to 1 MB; audio to 60 MB.
+Base URL `http://<server>:8090`. Every endpoint except `/healthz` and `/hooks/ticketing` needs `Authorization: Bearer $ASSISTANT_TOKEN`. The three `/ingest/*` endpoints, `/app/mac/heartbeat` and `/app/mac/download` also accept `INGEST_TOKEN`, which is valid for nothing else. Bodies are JSON unless stated. Errors are `{ "error": "…" }` with the status below. JSON bodies are limited to 1 MB; audio to 60 MB.
 
 ## Web UI
 `GET /` serves a small web UI (no auth for the page itself; it asks for `ASSISTANT_TOKEN` and calls the endpoints below).
@@ -32,7 +32,13 @@ Used by the [Mac agent](mac-agent.md). Body `{"rows":[{rowid,guid,text,attr_hex,
 ## Mac app
 ### `GET /app/mac/latest` (full token) → `{"release":{available,version,tag,name,publishedAt,notes,size,assetName,releaseUrl,error?}}`
 The newest Mac app release on GitHub (`GITHUB_REPO`), cached 10 minutes; `?refresh=1` bypasses the cache. `available:false` + `error` when nothing is released or GitHub can't be reached.
-### `GET /app/mac/download` (full token) → the `Assistant-Mac.zip` file
+### `POST /app/mac/heartbeat` (either token) `{id, name?, version?, os?, updateError?}` → `{updateRequested, latest:{available, version?}}`
+The Mac app's check-in (id = 8–64 chars `[A-Za-z0-9-]`). `updateRequested` is true when someone pressed Update for this Mac and it is behind the newest release; `updateError` reports a failed self-update and stops the requests. Macs not seen for 90 days are forgotten.
+### `GET /app/mac/clients` (full token) → `{"clients":[{id,name,version,os,firstSeen,lastSeen,online,updateAvailable,updatePending,updateError?}]}`
+### `POST /app/mac/clients/{id|all}/update` (full token) → `{"asked":N}`
+Asks that Mac (or every Mac that is behind) to update on its next check-in. `409` if nothing is released or the id is unknown.
+### `DELETE /app/mac/clients/{id}` (full token) → forgets a Mac.
+### `GET /app/mac/download` (full token, or the ingest token) → the `Assistant-Mac.zip` file
 Streams the newest release asset through the server (so a private repo works with `GITHUB_TOKEN`). `404` if nothing is released, `502` if GitHub refuses.
 
 ## Items

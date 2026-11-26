@@ -13,7 +13,7 @@ Built in Material 3 Expressive: a palette generated from one seed color (change 
 | Inbox | every message received and what happened to it; retry, skip, add one by hand |
 | Approvals | approve or reject what the assistant asked about (history too) |
 | Connectors | propose, approve, set credentials, dry-run, enable, disable, delete |
-| System | version, integration health, **Mac app download** (newest GitHub release), message sources, logs, re-index files, restart |
+| System | version, integration health, **Mac app** (download the newest release, **Copy config** for one-paste setup, list of connected Macs with update status and an Update button), message sources, logs, re-index files, restart |
 | Settings | every setting that used to live in `.env` (saved to `data/settings.json`; applied on restart), Google service-account upload |
 
 Search (top bar) runs the keyword search over messages, items and files.

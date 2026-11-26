@@ -23,7 +23,7 @@ import { indexPaths } from './index/indexer.ts';
 import { activity, connectorsFull, deleteConnector, integrations, listMessages, retryMessage, saveServiceAccount, setConnectorStatus, setSecret, skipMessage, status } from './admin.ts';
 import { saveSettings, viewSettings } from './settings.ts';
 import { getLogs } from './logs.ts';
-import { latestMacRelease, openMacDownload, publicRelease } from './macapp.ts';
+import { latestMacRelease, openMacDownload, publicRelease, macHeartbeat, listMacClients, requestMacUpdate, forgetMacClient } from './macapp.ts';
 
 class HttpError extends Error { status: number; constructor(status: number, m: string) { super(m); this.status = status; } }
 const BACKUP_LIMIT = 400 * 1024 * 1024, IMAGE_BODY_LIMIT = 30 * 1024 * 1024, JSON_LIMIT = 1024 * 1024, AUDIO_LIMIT = 60 * 1024 * 1024;
@@ -111,7 +111,7 @@ export function createHttp(ctx: Ctx, deps: HttpDeps): Server {
     }
     // Two credentials: the full token, and an optional ingest-only token for devices (Mac agent, phone) that only ever need to send input.
     const full = tokenOk(req.headers.authorization, ctx.cfg.token);
-    const ingestOnly = !full && ctx.cfg.ingestToken.length >= 16 && path.startsWith('/ingest/') && tokenOk(req.headers.authorization, ctx.cfg.ingestToken);
+    const ingestOnly = !full && ctx.cfg.ingestToken.length >= 16 && (path.startsWith('/ingest/') || path === '/app/mac/heartbeat' || path === '/app/mac/download') && tokenOk(req.headers.authorization, ctx.cfg.ingestToken);
     if (!full && !ingestOnly) throw new HttpError(401, 'Missing or invalid bearer token.');
     let m: RegExpExecArray | null;
 
@@ -143,6 +143,17 @@ export function createHttp(ctx: Ctx, deps: HttpDeps): Server {
 
     // ---- management API used by the web UI ----
     if (path === '/app/mac/latest' && method === 'GET') return send(res, 200, { release: publicRelease(await latestMacRelease(ctx, deps.fetchImpl, url.searchParams.get('refresh') === '1')) });
+    if (path === '/app/mac/heartbeat' && method === 'POST') {          // the Mac app checks in (either token): version in, "update now?" out
+      const b = await readJson(req);
+      try { return send(res, 200, macHeartbeat(ctx, b, await latestMacRelease(ctx, deps.fetchImpl))); } catch (e) { throw new HttpError(400, (e as Error).message); }
+    }
+    if (path === '/app/mac/clients' && method === 'GET' && full) return send(res, 200, { clients: listMacClients(ctx, await latestMacRelease(ctx, deps.fetchImpl)) });
+    if ((m = /^\/app\/mac\/clients\/([\w-]{1,64})\/update$/.exec(path)) && method === 'POST' && full) {
+      try { return send(res, 200, { asked: requestMacUpdate(ctx, m[1], await latestMacRelease(ctx, deps.fetchImpl)) }); } catch (e) { throw new HttpError(409, (e as Error).message); }
+    }
+    if ((m = /^\/app\/mac\/clients\/([\w-]{1,64})$/.exec(path)) && method === 'DELETE' && full) {
+      if (!forgetMacClient(ctx, m[1])) throw new HttpError(404, 'No such Mac.'); return send(res, 200, { ok: true });
+    }
     if (path === '/app/mac/download' && method === 'GET') {
       let dl: Awaited<ReturnType<typeof openMacDownload>>;
       try { dl = await openMacDownload(ctx, deps.fetchImpl); } catch (e) { throw new HttpError(502, (e as Error).message); }

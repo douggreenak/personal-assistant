@@ -97,6 +97,12 @@ export function menu(anchorBtn, entries) {
   anchorBtn.addEventListener('click', (ev) => { ev.stopPropagation(); m.open = !m.open; });
   return m;
 }
+/** Copies text to the clipboard. The async API only exists on https/localhost; the server is often plain http on a tailnet, so fall back to a hidden textarea. */
+export async function copyText(text) {
+  try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); return true; } } catch { /* fall through */ }
+  const t = h('textarea', { style: 'position:fixed;opacity:0;top:0;left:0' }); t.value = text; document.body.append(t); t.select();
+  let ok = false; try { ok = document.execCommand('copy'); } catch { /* ignore */ } t.remove(); return ok;
+}
 export const debounce = (fn, ms = 250) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 
 /** "in 3 days", "yesterday", "5 hours ago" — the exact date goes in a tooltip next to it. */

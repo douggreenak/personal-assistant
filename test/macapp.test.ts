@@ -86,3 +86,53 @@ test('download: 404 when nothing is released, 502 when GitHub refuses the asset'
   s = await boot(flaky);
   try { assert.equal((await s.get('/app/mac/download')).status, 502); } finally { s.close(); }
 });
+
+// ---- connected Macs: check-ins, version comparison, update requests ----
+const ID = 'mac-aaaa-1111';
+const post = (s: Awaited<ReturnType<typeof boot>>, p: string, body: object = {}, token = TOKEN) =>
+  fetch(s.base + p, { method: 'POST', headers: { authorization: 'Bearer ' + token, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+
+test('heartbeat: registers a Mac, lists it online with an update notice, and the web UI can ask it to update', async () => {
+  const s = await boot(fakeGithub([release('mac-v1.10.0')]));
+  try {
+    let j = await (await post(s, '/app/mac/heartbeat', { id: ID, name: 'Studio Mac', version: '1.9.2', os: 'macOS 15' })).json() as any;
+    assert.deepEqual(j, { updateRequested: false, latest: { available: true, version: '1.10.0' } });
+    const list = async () => (await (await s.get('/app/mac/clients')).json() as any).clients;
+    let [c] = await list();
+    assert.equal(c.name, 'Studio Mac'); assert.equal(c.online, true); assert.equal(c.updateAvailable, true, '1.9.2 < 1.10.0 numerically'); assert.equal(c.updatePending, false);
+    assert.equal((await (await post(s, `/app/mac/clients/${ID}/update`)).json() as any).asked, 1);
+    assert.equal((await list())[0].updatePending, true);
+    j = await (await post(s, '/app/mac/heartbeat', { id: ID, version: '1.9.2' })).json() as any; assert.equal(j.updateRequested, true, 'handed to the app on its next check-in');
+    j = await (await post(s, '/app/mac/heartbeat', { id: ID, version: '1.10.0' })).json() as any; assert.equal(j.updateRequested, false);
+    [c] = await list(); assert.equal(c.updatePending, false); assert.equal(c.updateAvailable, false); assert.equal(c.name, 'Studio Mac', 'name is kept when a check-in omits it');
+  } finally { s.close(); }
+});
+
+test('heartbeat: a failed update is reported and not retried; "all" only asks Macs that are behind; forget removes one', async () => {
+  const s = await boot(fakeGithub([release('mac-v2.0.0')]));
+  try {
+    await post(s, '/app/mac/heartbeat', { id: ID, version: '1.0.0' });
+    await post(s, '/app/mac/heartbeat', { id: 'mac-bbbb-2222', version: '2.0.0' });
+    assert.equal((await (await post(s, '/app/mac/clients/all/update')).json() as any).asked, 1);
+    const j = await (await post(s, '/app/mac/heartbeat', { id: ID, version: '1.0.0', updateError: 'Not allowed to write to /Applications' })).json() as any;
+    assert.equal(j.updateRequested, false);
+    const clients = (await (await s.get('/app/mac/clients')).json() as any).clients;
+    const c = clients.find((x: any) => x.id === ID); assert.match(c.updateError, /Not allowed/); assert.equal(c.updatePending, false);
+    assert.equal((await post(s, '/app/mac/clients/nope-nope-nope/update')).status, 409);
+    assert.equal((await fetch(s.base + `/app/mac/clients/${ID}`, { method: 'DELETE', headers: { authorization: 'Bearer ' + TOKEN } })).status, 200);
+    assert.equal((await (await s.get('/app/mac/clients')).json() as any).clients.length, 1);
+  } finally { s.close(); }
+});
+
+test('heartbeat: validates the id, needs a token, and the ingest-only token may check in and download but not list or update', async () => {
+  const ING = 'i'.repeat(32);
+  const s = await boot(fakeGithub([release('mac-v1.0.0')]), { INGEST_TOKEN: ING });
+  try {
+    assert.equal((await post(s, '/app/mac/heartbeat', { id: 'x' })).status, 400);
+    assert.equal((await post(s, '/app/mac/heartbeat', { id: ID }, 'wrong-token-wrong-token')).status, 401);
+    assert.equal((await post(s, '/app/mac/heartbeat', { id: ID, version: '1.0.0' }, ING)).status, 200);
+    assert.equal((await fetch(s.base + '/app/mac/download', { headers: { authorization: 'Bearer ' + ING } })).status, 200);
+    assert.equal((await fetch(s.base + '/app/mac/clients', { headers: { authorization: 'Bearer ' + ING } })).status, 401);
+    assert.equal((await post(s, `/app/mac/clients/${ID}/update`, {}, ING)).status, 401);
+  } finally { s.close(); }
+});

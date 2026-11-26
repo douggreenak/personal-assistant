@@ -40,6 +40,7 @@ struct MenuView: View {
     @State private var text = ""
     @State private var sending = false
     @State private var note: String?
+    @State private var updateNote: String?
     @Environment(\.openURL) private var openURL
 
     var body: some View {
@@ -47,7 +48,10 @@ struct MenuView: View {
             if engine.needsSetup {
                 Text("Connect to your assistant").font(.headline)
                 Text("Enter the server address and token to start.").font(.callout).foregroundStyle(.secondary)
-                SettingsLink { Text("Open Settings…") }.buttonStyle(.borderedProminent)
+                Button("Paste config from clipboard") { Task { note = await engine.applyConfig(NSPasteboard.general.string(forType: .string) ?? "") } }.buttonStyle(.borderedProminent)
+                Text("In the web UI: System → Mac app → Copy config.").font(.caption).foregroundStyle(.secondary)
+                if let note { Text(note).font(.caption).foregroundStyle(note.hasPrefix("✓") ? Color.green : Color.red) }
+                SettingsLink { Text("Enter address and token manually…") }.buttonStyle(.link).font(.caption)
             } else {
                 HStack {
                     TextField("Tell the assistant something…", text: $text).textFieldStyle(.roundedBorder).onSubmit(send)
@@ -65,9 +69,10 @@ struct MenuView: View {
             }
             if let u = engine.update {
                 Divider()
-                Button { Task { note = await engine.downloadUpdate() ?? "Update downloaded — unzip and replace the app." } } label: {
-                    Label("Version \(u.version) is available — download", systemImage: "arrow.down.circle")
-                }
+                Button { Task { updateNote = await engine.installUpdate() } } label: {
+                    Label(engine.updating ? "Updating… the app will reopen" : "Version \(u.version) is available — update now", systemImage: "arrow.down.circle")
+                }.disabled(engine.updating)
+                if let updateNote { Text(updateNote).font(.caption).foregroundStyle(.red) }
             }
             Divider()
             HStack {
@@ -100,6 +105,7 @@ struct SettingsView: View {
     @State private var token = Prefs.token
     @State private var testResult: String?
     @State private var testing = false
+    @State private var updateNote: String?
     @State private var launchAtLogin = SyncEngine.launchAtLogin
     @AppStorage(Prefs.messagesKey) private var messages = true
     @AppStorage(Prefs.calendarKey) private var calendar = false
@@ -113,6 +119,10 @@ struct SettingsView: View {
                 Section("Server") {
                     TextField("Address", text: $address, prompt: Text("http://your-server.tailnet-name.ts.net:8090"))
                     SecureField("Token", text: $token, prompt: Text("INGEST_TOKEN or ASSISTANT_TOKEN"))
+                    HStack {
+                        Button("Paste config") { Task { await pasteConfig() } }.disabled(testing)
+                        Text("from the web UI: System → Mac app → Copy config").font(.caption).foregroundStyle(.secondary)
+                    }
                     HStack {
                         Button("Save & test") { Task { await saveAndTest() } }.disabled(testing)
                         if testing { ProgressView().controlSize(.small) }
@@ -152,7 +162,14 @@ struct SettingsView: View {
             Form {
                 Section("About") {
                     LabeledContent("Version", value: SyncEngine.appVersion)
-                    if let u = engine.update { LabeledContent("Update", value: "\(u.version) available") }
+                    if let u = engine.update {
+                        LabeledContent("Update", value: "\(u.version) available")
+                        HStack {
+                            Button(engine.updating ? "Updating…" : "Update now") { Task { updateNote = await engine.installUpdate() } }.disabled(engine.updating)
+                            if let updateNote { Text(updateNote).font(.caption).foregroundStyle(.red) }
+                        }
+                    } else { LabeledContent("Update", value: "Up to date") }
+                    Text("You can also update from the web UI (System → Mac app → Connected Macs); the app downloads the new version, replaces itself and reopens. Settings and permissions are kept.").font(.caption).foregroundStyle(.secondary)
                     Text("Shortcuts and Siri: open the Shortcuts app and search for “Assistant” to find Capture to Assistant and Ask Assistant.").font(.caption).foregroundStyle(.secondary)
                 }
             }.formStyle(.grouped).tabItem { Label("About", systemImage: "info.circle") }
@@ -161,6 +178,12 @@ struct SettingsView: View {
     }
 
     private func resync() { Task { await engine.syncNow() } }
+
+    private func pasteConfig() async {
+        testing = true; testResult = nil; defer { testing = false }
+        testResult = await engine.applyConfig(NSPasteboard.general.string(forType: .string) ?? "")
+        address = Prefs.baseURL?.absoluteString ?? address; token = Prefs.token
+    }
 
     private func saveAndTest() async {
         guard let url = URL.serverAddress(address) else { testResult = "That isn't a valid address."; return }

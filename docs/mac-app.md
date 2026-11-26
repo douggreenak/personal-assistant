@@ -17,7 +17,7 @@ Every source except Messages is **off until you switch it on** (Settings → Sou
 1. Open the assistant's web UI → **System → Mac app → Download**. (The button asks GitHub for the newest release through your server; it works with any browser that can reach the UI.)
 2. Unzip, drag **Assistant.app** to **Applications**.
 3. The app is signed ad-hoc, not notarized by Apple, so the first time: **right-click → Open → Open** (or run `xattr -dr com.apple.quarantine /Applications/Assistant.app`).
-4. Click the menu-bar icon → **Settings**: enter the server address (`http://<server-tailnet-name>:8090`) and a token → **Save & test**. Tailscale must be running on the Mac.
+4. In the web UI open **System → Mac app → Copy config**, then in the app click the menu-bar icon → **Paste config from clipboard** (or Settings → Connection → **Paste config**). That fills in the server address and token and tests the connection. Tailscale must be running on the Mac. (Manual entry still works: Settings → Connection → address and token → **Save & test**.)
 5. **Messages:** System Settings → Privacy & Security → **Full Disk Access** → add **Assistant** (the menu shows a shortcut button), then it syncs within a minute.
 6. Turn on Calendar / Reminders / Contacts in **Settings → Sources** as you like. Optionally switch on **Open at login**.
 
@@ -34,8 +34,15 @@ The token is stored in the macOS Keychain. Rebuilt/updated copies of the app are
 ### Replacing the old agent
 Run it on only one: `launchctl unload ~/Library/LaunchAgents/com.assistant.agent.plist && rm ~/Library/LaunchAgents/com.assistant.agent.plist`. (If both run, nothing is duplicated — messages are stored once by their id — but the work is.)
 
-## Updates
-The web UI's System page always offers the newest release. With the full token the app also notices a newer version (checked every 6 hours) and the menu offers **Download** → the zip lands in Downloads and is revealed in Finder; replace the app in Applications and reopen it. Settings and permissions are kept.
+### The config
+**Copy config** puts `assistant-config:` + base64 of `{"v":1,"url":"<the address you opened the web UI at>","token":"<the token you're signed in with>"}` on the clipboard. That is the full `ASSISTANT_TOKEN`, so paste it only into your own Mac and don't share it. Open the web UI at the address the Mac can reach (the Tailscale name), since that is the address it copies.
+
+## Connected Macs and updates
+Each app checks in with the server once a minute (`POST /app/mac/heartbeat`, works with either token) with a per-Mac id, its name, macOS and app version. **System → Mac app → Connected Macs** lists them: online or last seen, version, and **update available** when the newest release is newer. Press **Update** on one Mac (or **Update all**) and the request is handed to that app on its next check-in. **Forget** removes a Mac that is offline.
+
+The app updates itself: it downloads the newest zip through your server, unpacks it, checks it is the Assistant app with a valid signature, quits, swaps the bundle in its current location and reopens. The old copy is only removed once the new one is in place. The same is available from the menu (**update now**) and Settings → About. Settings and permissions are kept. If it can't (app running from a quarantined Downloads folder, or an install location your user can't write to) it says why, and the web UI shows the error. Move the app to Applications once and open it from there.
+
+macOS may ask once to allow Keychain access again after an update (the build is ad-hoc signed); choose **Always Allow**. An update started from the web UI on an unattended Mac waits at that prompt.
 
 ## Publishing a release (maintainers)
 Releases are built by GitHub Actions ([`.github/workflows/mac-app.yml`](../.github/workflows/mac-app.yml)) on a macOS runner:

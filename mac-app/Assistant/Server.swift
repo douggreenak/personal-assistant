@@ -50,6 +50,21 @@ struct Server {
     /// Works with either token, so it's the connection test: a batch of zero Mac rows.
     func ping() async throws { try await send("POST", "/ingest/mac", json: ["rows": [Any]()], timeout: 10) }
 
+    struct CheckIn { let updateRequested: Bool, latestVersion: String? }
+
+    /// Tells the server this Mac is alive and which version it runs; the answer says whether someone asked it to update.
+    /// Works with either token. A server too old to know the route just yields nil.
+    func checkIn(updateError: String?) async -> CheckIn? {
+        let host = Host.current().localizedName ?? ProcessInfo.processInfo.hostName
+        let v = ProcessInfo.processInfo.operatingSystemVersion
+        var body: [String: Any] = ["id": Prefs.clientId, "name": host, "version": SyncEngine.appVersion, "os": "macOS \(v.majorVersion).\(v.minorVersion)"]
+        if let updateError { body["updateError"] = updateError }
+        guard let data = try? await send("POST", "/app/mac/heartbeat", json: body, timeout: 15),
+              let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        let latest = (o["latest"] as? [String: Any]).flatMap { $0["available"] as? Bool == true ? $0["version"] as? String : nil }
+        return CheckIn(updateRequested: o["updateRequested"] as? Bool ?? false, latestVersion: latest)
+    }
+
     /// Free text from you (Capture box, Shortcuts, "Assistant Inbox" reminders): treated as your own words.
     func ingest(source: String, sourceId: String, sender: String, subject: String = "", body: String, receivedAt: Date = Date()) async throws {
         try await send("POST", "/ingest/message", json: [

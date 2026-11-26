@@ -18,6 +18,7 @@ struct UpdateInfo: Equatable { let version: String, notes: String }
     @Published var connection = SourceStatus()
     @Published var update: UpdateInfo?
     @Published var syncing = false
+    @Published var updating = false
 
     private let store = EKEventStore()
     private lazy var calendarSync = CalendarSync(store: store)
@@ -25,11 +26,11 @@ struct UpdateInfo: Equatable { let version: String, notes: String }
     private var contacts: ContactsResolver?
     private var contactsLoadedAt = Date.distantPast
     private var timer: Timer?
-    private var lastUpdateCheck = Date.distantPast
 
-    static var appVersion: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0" }
+    nonisolated static var appVersion: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0" }
 
     func start() {
+        Updater.collectFailure()
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in Task { @MainActor in await self?.syncNow() } }
         Task { await syncNow() }
@@ -61,7 +62,7 @@ struct UpdateInfo: Equatable { let version: String, notes: String }
             if Prefs.mirrorItems { let n = try await self.remindersSync.mirror(server: server); if n > 0 { parts.append("updated \(n) in “\(RemindersSync.mirrorName)”") } }
             return parts.isEmpty ? "Up to date" : parts.joined(separator: ", ").capitalizedFirst
         }
-        await checkForUpdate(server: server)
+        await checkIn(server: server)
     }
 
     private struct PermissionError: LocalizedError { let errorDescription: String?; init(_ m: String) { errorDescription = m } }
@@ -84,32 +85,37 @@ struct UpdateInfo: Equatable { let version: String, notes: String }
         return contacts
     }
 
-    // MARK: updates
+    // MARK: connecting
 
-    private func checkForUpdate(server: Server) async {
-        guard Date().timeIntervalSince(lastUpdateCheck) > 6 * 3600 else { return }
-        lastUpdateCheck = Date()
-        guard let data = try? await server.get("/app/mac/latest"),
-              let rel = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["release"] as? [String: Any],
-              rel["available"] as? Bool == true, let v = rel["version"] as? String else { return }   // ingest-only token: no update notice, no problem
-        update = v.compare(Self.appVersion, options: .numeric) == .orderedDescending ? UpdateInfo(version: v, notes: rel["notes"] as? String ?? "") : nil
+    /// Applies what the web UI's "Copy config" put on the clipboard: address + token, then tests the connection.
+    func applyConfig(_ text: String) async -> String {
+        guard let cfg = ConnectionConfig.parse(text) else { return "The clipboard doesn't hold a config. In the web UI open System → Mac app → Copy config." }
+        Prefs.baseURL = cfg.url; Prefs.token = cfg.token
+        do { try await Server.current().ping() } catch { return error.localizedDescription }
+        await syncNow()
+        return "✓ Connected to \(cfg.url.host ?? cfg.url.absoluteString)"
     }
 
-    /// Downloads the newest zip through your server into Downloads and reveals it in Finder.
-    func downloadUpdate() async -> String? {
-        do {
-            let server = try Server.current()
-            var req = URLRequest(url: URL(string: "/app/mac/download", relativeTo: server.base)!.absoluteURL, timeoutInterval: 120)
-            req.setValue("Bearer \(server.token)", forHTTPHeaderField: "authorization")
-            let (tmp, resp) = try await URLSession.shared.download(for: req)
-            guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return "The server couldn't fetch the update." }
-            let dir = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]
-            var dest = dir.appendingPathComponent("Assistant-Mac.zip"), i = 1
-            while FileManager.default.fileExists(atPath: dest.path) { dest = dir.appendingPathComponent("Assistant-Mac \(i).zip"); i += 1 }
-            try FileManager.default.moveItem(at: tmp, to: dest)
-            NSWorkspace.shared.activateFileViewerSelecting([dest])
-            return nil
-        } catch { return error.localizedDescription }
+    // MARK: updates
+
+    /// Each minute: tell the server we're alive and which version this is. The answer says what the newest version is
+    /// and whether someone pressed Update in the web UI for this Mac (then we do it; but not again within 15 minutes if the last attempt left this version unchanged without reporting an error, so a bad release can't loop).
+    private func checkIn(server: Server) async {
+        let err = Prefs.updateError
+        guard let r = await server.checkIn(updateError: err) else { return }     // old server: no update notice, no problem
+        if err != nil { Prefs.updateError = nil }
+        if let v = r.latestVersion, v.compare(Self.appVersion, options: .numeric) == .orderedDescending { update = UpdateInfo(version: v, notes: "") } else { update = nil }
+        let justFailed = Prefs.lastUpdateFrom == Self.appVersion && Date().timeIntervalSince(Prefs.lastUpdateAttempt) < 900
+        if r.updateRequested, !updating, !justFailed { _ = await installUpdate() }
+    }
+
+    /// Downloads the newest version, swaps it in for this app and reopens. Returns an error message, or nil (the app is about to quit).
+    func installUpdate() async -> String? {
+        guard !updating else { return nil }
+        updating = true; defer { updating = false }
+        Prefs.lastUpdateAttempt = Date(); Prefs.lastUpdateFrom = Self.appVersion
+        do { try await Updater.install(server: try Server.current()); return nil }
+        catch { Prefs.updateError = error.localizedDescription; Prefs.lastUpdateFrom = nil; return error.localizedDescription }   // reported failures don't block a retry
     }
 
     // MARK: launch at login

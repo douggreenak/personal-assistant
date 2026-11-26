@@ -26,6 +26,26 @@ enum Prefs {
         set { d.set(newValue, forKey: "lastRowid") }
     }
 
+    /// Identifies this Mac to the server (the "Connected Macs" list). Made once, kept in preferences.
+    static var clientId: String {
+        if let id = d.string(forKey: "clientId") { return id }
+        let id = UUID().uuidString.lowercased(); d.set(id, forKey: "clientId"); return id
+    }
+    /// Why the last self-update failed; reported to the server on the next check-in, then cleared.
+    static var updateError: String? {
+        get { d.string(forKey: "updateError") }
+        set { d.set(newValue, forKey: "updateError") }
+    }
+    /// The app version that last tried to update; an attempt that left the version unchanged failed, so don't repeat it for a while.
+    static var lastUpdateFrom: String? {
+        get { d.string(forKey: "lastUpdateFrom") }
+        set { d.set(newValue, forKey: "lastUpdateFrom") }
+    }
+    static var lastUpdateAttempt: Date {
+        get { d.object(forKey: "lastUpdateAttempt") as? Date ?? .distantPast }
+        set { d.set(newValue, forKey: "lastUpdateAttempt") }
+    }
+
     private static let account = "assistant-token"
     static var token: String {
         get {
@@ -63,5 +83,26 @@ extension URL {
         if !s.contains("://") { s = "http://" + s }
         guard let u = URL(string: s), let scheme = u.scheme, ["http", "https"].contains(scheme), u.host != nil else { return nil }
         return u
+    }
+}
+
+/// What the web UI's "Copy config" puts on the clipboard: `assistant-config:` + base64 of {"v":1,"url":…,"token":…}.
+struct ConnectionConfig {
+    let url: URL, token: String
+
+    static func parse(_ raw: String) -> ConnectionConfig? {
+        var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if s.hasPrefix("assistant-config:") { s.removeFirst("assistant-config:".count) }
+        let data: Data?
+        if s.hasPrefix("{") { data = Data(s.utf8) }
+        else {
+            var b = s.filter { !$0.isWhitespace }.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+            while b.count % 4 != 0 { b += "=" }
+            data = Data(base64Encoded: b)
+        }
+        guard let data, let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let u = o["url"] as? String, let url = URL.serverAddress(u),
+              let t = (o["token"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty else { return nil }
+        return ConnectionConfig(url: url, token: t)
     }
 }
