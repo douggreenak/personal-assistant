@@ -3,7 +3,7 @@ import { h, icon, clear, chip, guarded, toast, dialog, confirmDialog, page, fmtD
 import { PRESETS, prefs, applyTheme } from '../theme.js';
 import { restartServer } from './system.js';
 
-const GROUP_ICON = { General: 'tune', Brain: 'smart_toy', Ticketing: 'confirmation_number', Canopy: 'public', Google: 'mail', Notifications: 'notifications', 'Files & voice': 'folder', Access: 'key', Backup: 'inventory_2', Code: 'terminal' };
+const GROUP_ICON = { General: 'tune', Brain: 'smart_toy', Ticketing: 'confirmation_number', Canopy: 'public', Google: 'mail', Notifications: 'notifications', 'Files & voice': 'folder', Access: 'key', Backup: 'inventory_2', Code: 'terminal', 'Mac app': 'computer' };
 
 export default async function settings(view) {
   const { settings: defs } = await api('/settings');
@@ -32,8 +32,7 @@ export default async function settings(view) {
   }
   const filter = h('md-outlined-text-field', { label: 'Filter settings', 'data-primary': '' }, h('span', { slot: 'leading-icon' }, icon('search')));
   const groups = [...new Set(defs.map((d) => d.group))];
-  const cards = groups.map((g, i) => h('details', { class: 'card high', open: i === 0 }, h('summary', { class: 'title-m', style: 'display:flex;align-items:center;gap:10px' }, icon(GROUP_ICON[g] || 'tune'), g,
-    g === 'Google' && h('span', { style: 'flex:1' })), h('div', { class: 'form', style: 'margin-top:14px' }, defs.filter((d) => d.group === g).map(control),
+  const cards = groups.map((g) => h('div', { class: 'card high set-card', 'data-group': g }, h('div', { class: 'form set-form' }, defs.filter((d) => d.group === g).map(control),
     g === 'Google' && h('div', {}, h('div', { class: 'label', style: 'margin-bottom:6px' }, 'Chat service-account key'), (() => { const inp = h('input', { type: 'file', accept: '.json,application/json', class: 'sr', onchange: async (e) => { const t = await e.target.files[0]?.text(); if (!t) return; const r = await guarded(() => api('/admin/service-account', { method: 'POST', raw: t }), 'Key uploaded — restart to apply'); if (r) route(); } }); return h('div', {}, inp, h('md-outlined-button', { onclick: () => inp.click() }, icon('upload'), 'Upload key file')); })()))));
 
   // appearance + security (browser-side and password)
@@ -96,14 +95,34 @@ export default async function settings(view) {
     h('h3', { class: 'label', style: 'margin-top:16px' }, 'Saved on the server'), status, saved);
   loadSaved();
 
-  clear(view).append(h('div', { class: 'page-head' }, h('h1', { class: 'display' }, 'Settings'), h('p', { class: 'muted title-m' }, 'Everything that used to live in the .env file. Changes apply after a restart.')),
-    h('div', { class: 'grid cols-3 top3' }, appearance, security, backup), filter, h('div', { class: 'masonry' }, cards), bar);
-  const groupOf = new Map(cards.map((c) => [c, [...c.querySelectorAll('[data-q]')]]));
-  filter.addEventListener('input', () => {
+  // ---- layout: a list of sections on the left, one section at a time on the right ----
+  const cardOf = (g) => cards.find((c) => c.dataset.group === g);
+  const ORDER = ['General', 'Appearance', 'Brain', 'Notifications', 'Google', 'Canopy', 'Files & voice', 'Mac app', 'Code', 'Backup', 'Security & access'];
+  const secs = new Map([
+    ['Appearance', { icon: 'palette', blurb: 'Theme and colour — saved in this browser.', nodes: [appearance] }],
+    ['Backup', { icon: 'inventory_2', blurb: 'Download, restore and schedule backups.', nodes: [backup, cardOf('Backup')] }],
+    ['Security & access', { icon: 'lock_reset', blurb: 'Web password and the tokens scripts and devices use.', nodes: [security, cardOf('Access')] }]]);
+  for (const g of groups) if (g !== 'Backup' && g !== 'Access') secs.set(g, { icon: GROUP_ICON[g] || 'tune', blurb: '', nodes: [cardOf(g)] });
+  const names = [...ORDER.filter((n) => secs.has(n)), ...[...secs.keys()].filter((n) => !ORDER.includes(n))];
+  let cur = names.includes(localStorage.getItem('settings_section')) ? localStorage.getItem('settings_section') : names[0];
+  const nav = h('nav', { class: 'set-nav', 'aria-label': 'Settings sections' }); const panes = new Map();
+  for (const n of names) { const sec = secs.get(n); panes.set(n, h('section', { class: 'set-pane', 'data-section': n }, h('h2', { class: 'title-l set-title' }, icon(sec.icon), n), sec.blurb && h('p', { class: 'muted' }, sec.blurb), ...sec.nodes.filter(Boolean))); }
+  const content = h('div', { class: 'set-content' }, [...panes.values()]);
+  const show = (n) => { cur = n; try { localStorage.setItem('settings_section', n); } catch { /* ignore */ } filter.value = ''; applyFilter(); };
+  const drawNav = () => clear(nav).append(...names.map((n) => h('button', { type: 'button', class: 'set-nav-item', 'aria-current': String(n === cur && !filter.value.trim()), onclick: () => show(n) }, icon(secs.get(n).icon), h('span', {}, n))));
+  const fieldsOf = (pane) => [...pane.querySelectorAll('[data-q]')];
+  function applyFilter() {
     const q = filter.value.trim().toLowerCase();
-    for (const [card, fields] of groupOf) {
-      let any = false; for (const f of fields) { const hit = !q || f.dataset.q.includes(q); f.hidden = !hit; any ||= hit; }
-      card.hidden = !!q && !any; if (q && any) card.open = true;
+    for (const [n, pane] of panes) {
+      if (!q) { pane.hidden = n !== cur; for (const f of fieldsOf(pane)) f.hidden = false; for (const c of pane.querySelectorAll('.set-card')) c.hidden = false; continue; }
+      let any = false; for (const f of fieldsOf(pane)) { const hit = f.dataset.q.includes(q); f.hidden = !hit; any ||= hit; }
+      for (const c of pane.querySelectorAll('.set-card')) c.hidden = ![...c.querySelectorAll('[data-q]')].some((f) => !f.hidden);
+      pane.hidden = !any;                                                  // while searching, only sections with a match show
     }
-  });
+    drawNav();
+  }
+  filter.addEventListener('input', applyFilter);
+  clear(view).append(h('div', { class: 'page-head' }, h('h1', { class: 'display' }, 'Settings'), h('p', { class: 'muted title-m' }, 'Changes apply after a restart.')),
+    filter, h('div', { class: 'set-layout' }, nav, content), bar);
+  applyFilter();
 }
