@@ -93,7 +93,9 @@ function userText(id: string, ts: string, text: string): Msg[] {
   if (cmd) { const args = /<command-args>([\s\S]*?)<\/command-args>/.exec(t)?.[1]?.trim(); return [{ t: 'user', id, ts, text: args ? `${cmd[1]} ${args}` : cmd[1], command: cmd[1] }]; }
   const out = /<local-command-stdout>([\s\S]*?)<\/local-command-stdout>/.exec(t); if (out) return out[1].trim() ? [{ t: 'note', id, ts, text: out[1].trim().slice(0, 1500) }] : [];
   if (/^<(system-reminder|local-command-caveat|task-notification)/.test(t)) return [];
-  return [{ t: 'user', id, ts, text: t }];
+  // Claude Code wraps bracketed pastes (every multi-line message we send) in <pasted_content id="…"> tags: show only what the person typed.
+  const shown = t.replace(/<\\?\/?pasted_content\b[^>]*>/gi, '').trim();
+  return shown ? [{ t: 'user', id, ts, text: shown }] : [];
 }
 
 /** Reads complete lines from byte `offset`; returns the messages and the offset to continue from. */
