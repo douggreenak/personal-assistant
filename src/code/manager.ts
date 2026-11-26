@@ -129,7 +129,7 @@ export async function sendMessage(ctx: Ctx, id: string, textIn: string): Promise
   const name = tmuxName(id); if (!(await t.has(name))) throw new CodeError('This session is stopped. Start it first.');
   const sc = parseScreen(await t.capture(name)); if (sc.state === 'permission' || sc.state === 'dialog') throw new CodeError('Claude is waiting for an answer (see the buttons above the message box).');
   if (text.includes('\n')) await t.paste(name, text); else await t.literal(name, text);
-  await sleep(text.startsWith('/') ? 400 : 150); await t.keys(name, ['Enter']);
+  await sleep(text.startsWith('/') ? 300 : text.includes('\n') ? 90 : 30); await t.keys(name, ['Enter']);
 }
 export async function pressKeys(ctx: Ctx, id: string, keys: unknown): Promise<void> {
   const t = await needTmux(ctx); getSession(ctx, id);
@@ -209,11 +209,13 @@ export async function bootResume(ctx: Ctx): Promise<number> {
 }
 
 // ---------- pictures ----------
+/** Files attached in the Code tab land in <project>/.claude-uploads/ (inside the project, so Claude can read them without a permission prompt). Any file type. */
 export function saveUpload(ctx: Ctx, id: string, data: Buffer, nameIn: string): string {
-  const s = getSession(ctx, id); const p = getProject(ctx, s.projectId); const type = sniffImage(data);
-  if (!type) throw new CodeError('That is not a PNG, JPEG, GIF or WebP picture.'); if (data.length > 10 * 1024 * 1024) throw new CodeError('Pictures can be up to 10 MB.');
-  const ext = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' }[type]; const dir = join(p.path, '.claude-uploads'); mkdirSync(dir, { recursive: true });
-  const file = join(dir, `${Date.now()}-${String(nameIn || 'picture').replace(/\.[^.]*$/, '').replace(/[^\w-]+/g, '_').slice(0, 40)}.${ext}`); writeFileSync(file, data); return file;
+  const s = getSession(ctx, id); const p = getProject(ctx, s.projectId);
+  if (!data.length) throw new CodeError('That file is empty.'); if (data.length > 50 * 1024 * 1024) throw new CodeError('Files can be up to 50 MB.');
+  const raw = String(nameIn || 'file').split(/[\\/]/).pop()!; const m = /\.([A-Za-z0-9]{1,8})$/.exec(raw); const ext = m ? m[1].toLowerCase() : 'bin';
+  const dir = join(p.path, '.claude-uploads'); mkdirSync(dir, { recursive: true });
+  const file = join(dir, `${Date.now()}-${raw.replace(/\.[^.]*$/, '').replace(/[^\w-]+/g, '_').slice(0, 50) || 'file'}.${ext}`); writeFileSync(file, data); return file;
 }
 
 // ---------- usage ----------

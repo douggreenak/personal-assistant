@@ -154,7 +154,15 @@ export default async function code(view) {
     const permBox = h('div', {}); const term = h('pre', { class: 'term', 'aria-label': 'Terminal' }, ''); const termKeys = h('div', { class: 'term-keys' });
     const ta = h('textarea', { rows: 1, 'data-primary': '', placeholder: 'Message Claude Code…', title: 'Enter sends · Shift+Enter adds a line · / for commands', 'aria-label': 'Message' });
     const grow = () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 200) + 'px'; }; ta.addEventListener('input', grow);
-    const pics = pictureAttach(ta, (m) => toast(m)); pics.input.accept = 'image/*';
+    // Attachments: any file, uploaded as soon as it is picked/pasted/dropped; the message then carries @path for each.
+    let files = []; const strip = h('div', { class: 'pics code-files', hidden: true }); const fin = h('input', { type: 'file', multiple: true, hidden: true, 'aria-label': 'Choose files' });
+    const drawFiles = () => { strip.hidden = !files.length; clear(strip).append(...files.map((f, n) => h('div', { class: 'code-file' + (f.error ? ' bad' : '') }, icon(f.type.startsWith('image/') ? 'image' : 'description'), h('span', { class: 'fname' }, f.name), h('span', { class: 'muted s' }, f.error ? 'failed' : f.path ? (f.size >= 1e6 ? (f.size / 1e6).toFixed(1) + ' MB' : Math.max(1, Math.round(f.size / 1e3)) + ' KB') : 'uploading…'), h('button', { type: 'button', 'aria-label': 'Remove ' + f.name, onclick: () => { files.splice(n, 1); drawFiles(); } }, icon('close'))))); };
+    const addFiles = (list) => { for (const file of list) { if (files.length >= 10) { toast('At most 10 files per message.'); break; } const f = { name: file.name || 'file', type: file.type || '', size: file.size, path: '', error: false }; files.push(f); api(`/code/sessions/${sid}/upload?name=${encodeURIComponent(f.name)}`, { method: 'POST', raw: file }).then((r) => { f.path = r.path; }).catch((e) => { f.error = true; toast(e.message, { error: true }); }).finally(drawFiles); } drawFiles(); };
+    fin.addEventListener('change', () => { addFiles([...fin.files]); fin.value = ''; });
+    ta.addEventListener('paste', (e) => { const fs = [...(e.clipboardData?.files ?? [])]; if (fs.length) { e.preventDefault(); addFiles(fs); } });
+    const attachBtn = h('md-icon-button', { 'aria-label': 'Attach files', title: 'Attach files (or paste / drop them)', onclick: () => fin.click() }, icon('attach_file'));
+    const dropHost = () => composer; setTimeout(() => { composer.addEventListener('dragover', (e) => { if ([...(e.dataTransfer?.types ?? [])].includes('Files')) { e.preventDefault(); composer.classList.add('drop'); } }); composer.addEventListener('dragleave', () => composer.classList.remove('drop')); composer.addEventListener('drop', (e) => { composer.classList.remove('drop'); if (e.dataTransfer?.files?.length) { e.preventDefault(); addFiles([...e.dataTransfer.files]); } }); });
+    const pics = { button: attachBtn, strip, input: fin };
     const sendBtn = h('md-filled-icon-button', { 'aria-label': 'Send', onclick: () => send() }, icon('send'));
     const startBtn = h('md-filled-button', { onclick: async () => { await guarded(() => api(`/code/sessions/${sid}/start`, { method: 'POST', body: {} }), 'Starting…'); poll(); } }, icon('play_arrow'), 'Start session');
     let cmds = []; const cmdBox = h('div', { class: 'code-cmds', role: 'listbox', 'aria-label': 'Commands', hidden: true });
@@ -165,10 +173,12 @@ export default async function code(view) {
     const composer = h('div', { class: 'composer code-composer' }, ext ? '' : pics.button, ta, sendBtn);
 
     async function send(text) {
-      text = (text ?? ta.value).trim(); const images = pics.images(); if (!text && !images.length) return; sendBtn.disabled = true;
+      text = (text ?? ta.value).trim(); if (!text && !files.length) return;
+      if (files.some((f) => !f.path && !f.error)) { toast('Still uploading — one moment.'); return; }
+      const ok = files.filter((f) => f.path); if (!text && !ok.length) { files = []; drawFiles(); return; } sendBtn.disabled = true;
       try {
-        let full = text; for (const im of images) { const r = await fetchUpload(im); full = `${full}${full ? '\n' : ''}@${r.path}`; }
-        await api(`${base}/send`, { method: 'POST', body: { text: full } }); pendingCmd = full.startsWith('/') ? { cmd: full.split('\n')[0].trim(), at: Date.now() } : null; ta.value = ''; grow(); pics.clear(); cmdBox.hidden = true; stick = true; poll();
+        let full = text; for (const f of ok) full = `${full}${full ? '\n' : ''}@${f.path}`;
+        await api(`${base}/send`, { method: 'POST', body: { text: full } }); pendingCmd = full.startsWith('/') ? { cmd: full.split('\n')[0].trim(), at: Date.now() } : null; ta.value = ''; grow(); files = []; drawFiles(); cmdBox.hidden = true; stick = true; poll(); setTimeout(poll, 250); setTimeout(poll, 700);
       } catch (e) { toast(e.message, { error: true }); } finally { sendBtn.disabled = false; ta.focus({ preventScroll: true }); }
     }
     async function fetchUpload(im) { const bytes = Uint8Array.from(atob(im.data), (c) => c.charCodeAt(0)); return api(`/code/sessions/${sid}/upload?name=${encodeURIComponent(im.name)}`, { method: 'POST', raw: bytes }); }
@@ -241,7 +251,7 @@ export default async function code(view) {
     async function usageInfo() { try { const u = await api(`${base}/usage`); if (u.messages) { chipHost.replaceChildren(chip(`context ${kfmt(u.context)}`), chip(`${kfmt(u.input + u.output)} in/out`), chip(`≈${usd(u.cost)}`)); } } catch { /* ignore */ } }
     const chipHost = h('div', { class: 'code-chips' }); infoEl.after(chipHost);
     await poll(); usageInfo(); setTimeout(() => { msgs.scrollTop = msgs.scrollHeight; }, 50);
-    tm.push(setInterval(poll, 1500), setInterval(pollTerm, 1200), setInterval(() => { if (!document.hidden) usageInfo(); }, 15000));
+    tm.push(setInterval(poll, 800), setInterval(pollTerm, 1200), setInterval(() => { if (!document.hidden) usageInfo(); }, 15000));
     if (running) setTimeout(() => ta.focus({ preventScroll: true }), 100);
   }
 }

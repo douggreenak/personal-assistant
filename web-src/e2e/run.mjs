@@ -436,6 +436,11 @@ try {
     await page.locator('.code-bot', { hasText: 'Echo: hello e2e' }).waitFor({ timeout: 15000 });
     assert.ok(await page.locator('.code-user', { hasText: 'hello e2e' }).count());
     await page.locator('.code-state[data-state=idle]').waitFor();
+    await page.locator('input[aria-label="Choose files"]').setInputFiles({ name: 'notes.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 hello') });   // any file type is attached, uploaded, and sent as @path
+    await page.locator('.code-file', { hasText: 'notes.pdf' }).waitFor(); await page.locator('.code-file', { hasText: 'KB' }).waitFor();
+    await page.locator('.code-composer textarea').fill('read this'); await page.keyboard.press('Enter');
+    await page.locator('.code-user', { hasText: '.claude-uploads/' }).waitFor({ timeout: 15000 }); assert.equal(await page.locator('.code-file').count(), 0);
+    await page.locator('.code-state[data-state=idle]').waitFor();
     await page.locator('.code-composer textarea').fill('/co'); await page.locator('.code-cmds [data-cmd="/context"]').waitFor(); assert.ok(await page.locator('.code-cmds [data-cmd="/compact"]').count());
     await page.keyboard.press('Tab'); assert.equal(await page.locator('.code-composer textarea').inputValue(), '/compact ');   // Tab completes the first match
     await page.locator('.code-composer textarea').fill('/context'); await page.keyboard.press('Enter');
