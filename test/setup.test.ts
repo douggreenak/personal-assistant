@@ -13,7 +13,6 @@ test('setup: pasted text for a connection is turned into settings (labelled line
   const o = () => readOverrides(ctx.cfg.dataDir);
   let r = applySetup(ctx, 'canopy', 'Canopy URL: https://canopy.example.com\nread token: abcdefghijklmnop1234\nwrite: zzzzzzzzzzzzzzzzzzzz');
   assert.deepEqual(r.missing, []); assert.equal(o().CANOPY_URL, 'https://canopy.example.com'); assert.equal(o().CANOPY_READ_TOKEN, 'abcdefghijklmnop1234'); assert.equal(o().CANOPY_WRITE_TOKEN, 'zzzzzzzzzzzzzzzzzzzz');
-  r = applySetup(ctx, 'ticketing', 'http://ticketing:8080\nsupersecrettokenvalue123'); assert.equal(o().TICKETING_URL, 'http://ticketing:8080'); assert.equal(o().TICKETING_TOKEN, 'supersecrettokenvalue123');   // unlabelled: recognised by shape
   applySetup(ctx, 'drive', 'https://drive.google.com/drive/folders/1AbCdEfGhIjK?usp=sharing\n1ZzYyXxWwVv'); assert.equal(o().DRIVE_FOLDER_IDS, '1AbCdEfGhIjK,1ZzYyXxWwVv');
   applySetup(ctx, 'ntfy', 'NTFY_URL=https://ntfy.sh\nassistant-7f3k9'); assert.equal(o().NTFY_TOPIC, 'assistant-7f3k9');
   applySetup(ctx, 'ingest', 'generate'); assert.ok(o().INGEST_TOKEN.length >= 32);

@@ -52,7 +52,7 @@ Flags describe the *consequence of the action*, not its topic: "remind me to pay
 Migrations are an ordered array applied at startup, versioned by `PRAGMA user_version`.
 
 ## Backends
-- **Ticketing** (`src/backends/ticketing.ts`): HTTP client; idempotent creates; stages by id. [Details](ticketing.md).
+- **Tickets** (`src/tickets/`): the built-in tracker, called in-process via `LocalTicketing`; idempotent creates; stages by id. [Details](ticketing.md).
 - **Canopy** (`src/backends/canopy.ts`, `src/sync/canopy.ts`): two-token client; fuzzy class resolution; periodic alert sync. [Details](canopy.md).
 - **Local**: reminders and plain tasks are rows in `items`.
 

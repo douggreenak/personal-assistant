@@ -11,12 +11,12 @@ import { initShortcuts, showHelp } from './shortcuts.js';
 import { itemDialog } from './pages/items.js';
 import { applyTheme, prefs, isDark } from './theme.js';
 import home from './pages/home.js'; import items from './pages/items.js'; import chat from './pages/chat.js'; import inbox from './pages/inbox.js';
-import code from './pages/code.js';
+import code from './pages/code.js'; import tickets from './pages/tickets.js';
 import approvals from './pages/approvals.js'; import connectors from './pages/connectors.js'; import system from './pages/system.js'; import settings from './pages/settings.js';
 
 applyTheme();
 const PAGES = [
-  { id: 'home', label: 'Home', icon: 'home', fn: home }, { id: 'items', label: 'Items', icon: 'checklist', fn: items }, { id: 'chat', label: 'Chat', icon: 'chat', fn: chat }, { id: 'code', label: 'Code', icon: 'code', fn: code },
+  { id: 'home', label: 'Home', icon: 'home', fn: home }, { id: 'items', label: 'Items', icon: 'checklist', fn: items }, { id: 'tickets', label: 'Tickets', icon: 'confirmation_number', fn: tickets }, { id: 'chat', label: 'Chat', icon: 'chat', fn: chat }, { id: 'code', label: 'Code', icon: 'code', fn: code },
   { id: 'inbox', label: 'Inbox', icon: 'inbox', fn: inbox }, { id: 'approvals', label: 'Approvals', icon: 'task_alt', fn: approvals },
   { id: 'connectors', label: 'Connect', icon: 'extension', fn: connectors }, { id: 'system', label: 'System', icon: 'monitor_heart', fn: system }, { id: 'settings', label: 'Settings', icon: 'settings', fn: settings },
 ];

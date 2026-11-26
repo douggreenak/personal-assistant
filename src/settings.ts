@@ -19,9 +19,6 @@ export const SETTINGS: SettingDef[] = [
   { key: 'CLAUDE_MODEL', label: 'Claude model', group: 'Brain', type: 'text', help: 'Model used to understand messages. Leave blank for the Claude Code default.' },
   { key: 'CLAUDE_TIMEOUT_MS', label: 'Model timeout (ms)', group: 'Brain', type: 'number', placeholder: '180000' },
 
-  { key: 'TICKETING_URL', label: 'Ticketing URL', group: 'Ticketing', type: 'text', help: 'Where the ticket tracker lives (inside Docker: http://ticketing:8080).' },
-  { key: 'TICKETING_TOKEN', label: 'Ticketing token', group: 'Ticketing', type: 'secret' },
-  { key: 'TICKETING_WEBHOOK_SECRET', label: 'Webhook secret', group: 'Ticketing', type: 'secret', help: 'Mirrors stage changes made in the Ticketing UI back here.' },
 
   { key: 'CANOPY_URL', label: 'Canopy URL', group: 'Canopy', type: 'text' },
   { key: 'CANOPY_READ_TOKEN', label: 'Read-only token', group: 'Canopy', type: 'secret' },

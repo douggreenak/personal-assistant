@@ -422,3 +422,13 @@ body { overscroll-behavior-y: none; }
   body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
   textarea, input, .msgs, .code-msgs, .term, pre, .mono, .logs, .bubble, .code-pre { -webkit-user-select: text; user-select: text; }   /* chrome is not selectable, text still is */
 }
+
+/* ---- Tickets: package-tracker style stage bar ---- */
+.track { display: flex; align-items: flex-start; margin: 8px 0 4px; max-width: 100%; overflow-x: auto; padding-bottom: 2px; }
+.track .step { display: grid; justify-items: center; gap: 4px; min-width: 64px; font-size: .72rem; color: var(--md-sys-color-on-surface-variant); text-align: center; }
+.track .dot { all: unset; box-sizing: border-box; width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--md-sys-color-outline-variant); display: grid; place-items: center; background: var(--md-sys-color-surface); }
+.track button.dot { cursor: pointer; } .track button.dot:hover { border-color: var(--md-sys-color-primary); }
+.track .dot .ic { width: 14px; height: 14px; }
+.track .reached .dot { background: var(--md-sys-color-primary); border-color: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); }
+.track .current { color: var(--md-sys-color-on-surface); font-weight: 650; }
+.track .bridge { flex: 1; min-width: 16px; height: 2px; margin-top: 10px; background: var(--md-sys-color-outline-variant); } .track .bridge.filled { background: var(--md-sys-color-primary); }

@@ -1,4 +1,4 @@
-# Assistant + Ticketing + local speech-to-text, on your Linux server. Nothing is published to the internet:
+# Assistant (ticket tracker built in) + local speech-to-text, on your Linux server. Nothing is published to the internet:
 # set BIND_ADDR to the server's Tailscale IP (tailscale ip -4) so only your tailnet can reach it.
 services:
   assistant:
@@ -12,8 +12,6 @@ services:
       CODE_CLAUDE_BIN: ${CODE_CLAUDE_BIN:-claude}
       CODE_CONFIG_DIR: ${CODE_CONFIG_DIR:-/home/node/.claude}
       CODE_GLOBAL_CONFIG: ${CODE_GLOBAL_CONFIG:-/home/node/.claude.json}
-      TICKETING_URL: http://ticketing:8080
-      TICKETING_TOKEN: ${TICKETS_TOKEN:?set TICKETS_TOKEN in .env}
       TRANSCRIBE_URL: http://whisper:8000/v1/audio/transcriptions
       INDEX_PATHS: ${INDEX_PATHS:-}
     volumes:
@@ -25,14 +23,7 @@ services:
       - ${CODE_DIR:-./workspace}:${CODE_MOUNT:-/workspace}
       # - /mnt/smb/share:/index/share:ro          # your SMB share, mounted on the host, read-only; then INDEX_PATHS=/index
     ports: ["${BIND_ADDR:-127.0.0.1}:8090:8090"]
-    depends_on: [ticketing, whisper]
-  ticketing:
-    build: ../ticketing
-    restart: unless-stopped
-    environment:
-      TICKETS_TOKEN: ${TICKETS_TOKEN:?set TICKETS_TOKEN in .env}
-    volumes: ["./ticketing-data:/data"]
-    ports: ["${BIND_ADDR:-127.0.0.1}:${TICKETING_PORT:-8080}:8080"]
+    depends_on: [whisper]
   whisper:                                       # OpenAI-compatible speech-to-text, CPU, local. Verify the image name when you first pull it.
     image: ghcr.io/speaches-ai/speaches:latest-cpu
     restart: unless-stopped

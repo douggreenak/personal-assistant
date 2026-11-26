@@ -6,21 +6,16 @@ Do the first four steps and you can already talk to it with `curl`; the rest add
 ## 0. What you need
 - A Linux server with Docker + Docker Compose, and [Tailscale](https://tailscale.com) installed and signed in.
 - A Claude account that can use Claude Code (the assistant's "brain" runs `claude -p` on your login; no API key, no per-token bill beyond your plan).
-- The two repos side by side (compose builds the ticket tracker from the sibling folder):
-  ```
-  ~/apps/personal-assistant/
-  ~/apps/ticketing/
-  ```
+- The repo (the ticket tracker is built in):
   ```bash
   cd ~/apps
   git clone https://github.com/douggreenak/personal-assistant
-  git clone https://github.com/douggreenak/ticketing
   ```
 
 ## 1. Configure
 ```bash
 cd personal-assistant
-mkdir -p data claude-home ticketing-data whisper-cache   # create these yourself, or Docker makes them root-owned and the containers can't write to them
+mkdir -p data claude-home whisper-cache   # create these yourself, or Docker makes them root-owned and the containers can't write to them
 cp .env.example .env
 chmod 600 .env
 openssl rand -hex 32        # → ASSISTANT_TOKEN
@@ -73,4 +68,4 @@ Google Chat notifications are the default. For louder pushes on iPhone/Watch, ru
 | `./data/assistant.db` | the SQLite database — **back this up** |
 | `./data/secrets.json` | connector credentials you stored (mode 600) |
 | `./claude-home/` | your Claude Code login |
-| `./ticketing-data/tickets.db` | the ticket tracker's database — back this up too |
+| `./data/tickets.db` | the built-in ticket tracker's database |

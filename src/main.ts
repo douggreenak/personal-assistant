@@ -5,7 +5,10 @@ import { openDb } from './db.ts';
 import { ItemStore } from './items.ts';
 import { ClaudeCliLlm } from './llm.ts';
 import { ConsoleNotifier, MultiNotifier, NtfyNotifier, type Notifier } from './notify.ts';
-import { TicketingClient } from './backends/ticketing.ts';
+import { join } from 'node:path';
+import { LocalTicketing } from './tickets/local.ts';
+import { openDb as openTicketsDb } from './tickets/db.ts';
+import { applyTicketingEvent } from './sync/ticketing.ts';
 import { CanopyClient } from './backends/canopy.ts';
 import { ServiceAccount, UserOAuth } from './google/auth.ts';
 import { pollGmail } from './google/gmail.ts';
@@ -35,9 +38,10 @@ const user = cfg.google.oauth?.refreshToken ? new UserOAuth(cfg.google.oauth.cli
 // ctx.notify is swapped in below once the chat bot (which needs ctx) exists.
 const ctx: Ctx = {
   cfg, db, items: new ItemStore(db), llm: new ClaudeCliLlm(cfg.claude), now: () => new Date(), notify: new ConsoleNotifier(),
-  ticketing: cfg.ticketing ? new TicketingClient(cfg.ticketing.url, cfg.ticketing.token) : undefined,
+  ticketing: new LocalTicketing(openTicketsDb(join(cfg.dataDir, 'tickets.db'))),   // the ticket tracker is built in
   canopy: cfg.canopy ? new CanopyClient(cfg.canopy.url, cfg.canopy.readToken, cfg.canopy.writeToken) : undefined,
 };
+ctx.ticketing!.onChange = (type, data) => { try { applyTicketingEvent(ctx, { type, data: data as Record<string, unknown> }); } catch (e) { console.error('[tickets] mirror failed', (e as Error).message); } };   // edits made in the Tickets tab reach the item list
 const bot = sa ? new ChatBot(ctx, sa) : null;
 const targets: Notifier[] = [new ConsoleNotifier()];
 if (bot) targets.push(bot);
@@ -71,6 +75,6 @@ if (bot && cfg.chat.pubsubSubscription) {
   (async () => { for (;;) { try { await bot.pullOnce(); } catch (e) { console.error('[chat]', (e as Error).message); await new Promise((r) => setTimeout(r, 10000)); } } })();
 }
 
-const server = createHttp(ctx, { wake, ticketingSecret: env.TICKETING_WEBHOOK_SECRET });
+const server = createHttp(ctx, { wake });
 server.listen(cfg.port, cfg.host, () => console.log(`assistant listening on :${cfg.port}`));
 for (const sig of ['SIGINT', 'SIGTERM'] as const) process.on(sig, () => server.close(() => { db.close(); process.exit(0); }));

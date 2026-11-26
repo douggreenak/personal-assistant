@@ -40,11 +40,7 @@ async function probe(url: string, headers: Record<string, string> = {}): Promise
 export async function integrations(ctx: Ctx) {
   const c = ctx.cfg; const out: { id: string; name: string; configured: boolean; ok: boolean | null; detail: string }[] = [];
   const add = (id: string, name: string, configured: boolean, ok: boolean | null, detail: string) => out.push({ id, name, configured, ok, detail });
-  if (c.ticketing) {
-    let ok = false, d = '';
-    try { const p = await Promise.race([ctx.ticketing!.defaultPipeline(), new Promise<never>((_, r) => setTimeout(() => r(new Error('timeout')), 3000))]); ok = true; d = `${p.name} · ${p.stages.length} stages`; } catch (e) { d = (e as Error).message.slice(0, 80); }
-    add('ticketing', 'Ticketing', true, ok, d);
-  } else add('ticketing', 'Ticketing', false, null, 'Not configured');
+  add('ticketing', 'Tickets', true, true, 'Built in');
   if (c.canopy) { const p = await probe(c.canopy.url); add('canopy', 'Canopy', true, p.ok, p.detail); } else add('canopy', 'Canopy', false, null, 'Not configured');
   if (c.transcribeUrl) { const p = await probe(new URL(c.transcribeUrl).origin + '/health'); add('whisper', 'Speech-to-text', true, p.ok, p.detail); } else add('whisper', 'Speech-to-text', false, null, 'Not configured');
   const g = !!c.google.oauth?.refreshToken;

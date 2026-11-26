@@ -11,7 +11,7 @@ It runs on your own Linux server (Docker), is reachable only over [Tailscale](ht
 ## What it does
 - **Understands messy input** — long, rambling speech or text becomes separate items; updates match existing items instead of duplicating.
 - **Reads your world** — texts (from a Mac), Gmail, Google Chat, plus anything you connect later by pasting its API docs.
-- **Right place for each thing** — IT-style **tickets** with stages ([Ticketing](https://github.com/douggreenak/ticketing), a standalone app), **reminders** that keep nagging, plain **tasks**, and school work into [Canopy](https://github.com/douggreenak/Canopy-School-Planner).
+- **Right place for each thing** — IT-style **tickets** with stages (a built-in [Tickets](docs/ticketing.md) tab), **reminders** that keep nagging, plain **tasks**, and school work into [Canopy](https://github.com/douggreenak/Canopy-School-Planner).
 - **A Mac app** — download it from the web UI; it reads your texts and talks to Calendar, Reminders, Contacts and Shortcuts.
 - **Voice from anywhere** — iPhone and Apple Watch record offline and upload when connected.
 - **Talk to it in Google Chat** — "what's open?", approvals, snoozes, and questions answered from your own messages and files (SMB share, Drive) with citations.
@@ -20,7 +20,7 @@ It runs on your own Linux server (Docker), is reachable only over [Tailscale](ht
 
 ```
  iPhone / Watch voice ─► local Whisper ─┐
- Mac texts (tiny script) ───────────────┤                         ┌─► Ticketing app (stages)
+ Mac texts (tiny script) ───────────────┤                         ┌─► Tickets tab (stages)
  Gmail ─────────────────────────────────┼─► messages ─► Claude ─► typed ─► policy ─┼─► Canopy (school)
  Google Chat (read + talk) ─────────────┤   (queue)    Code     actions   apply/ask └─► reminders & tasks (nag)
  Connectors / your own typing ──────────┘            (no tools)                │
@@ -44,7 +44,7 @@ Start with **[Getting started](docs/getting-started.md)**. Everything is in [`do
 
 ## Quick start
 ```bash
-git clone https://github.com/douggreenak/personal-assistant && git clone https://github.com/douggreenak/ticketing
+git clone https://github.com/douggreenak/personal-assistant
 cd personal-assistant && cp .env.example .env     # set ASSISTANT_TOKEN, INGEST_TOKEN, TICKETS_TOKEN, BIND_ADDR
 docker compose run --rm assistant claude          # one-time Claude Code login, then /exit
 docker compose up -d --build
@@ -61,7 +61,7 @@ scripts/    one-time helpers (Google OAuth token, connector secrets)
 docs/       full documentation
 Dockerfile, docker-compose.yml, .env.example
 ```
-Companion projects: **[Ticketing](https://github.com/douggreenak/ticketing)** (standalone ticket tracker) and **[Canopy](https://github.com/douggreenak/Canopy-School-Planner)** (school planner; its API now exposes task stages for this project).
+Companion projects: **[Canopy](https://github.com/douggreenak/Canopy-School-Planner)** (school planner; its API now exposes task stages for this project).
 
 ## What is and isn't verified
 **Tested (25 automated tests + live runs):** extraction → typed actions → policy → approvals; the real Claude Code model end-to-end against the real Ticketing app (the example sentence above splits correctly, updates match, injection text is ignored, money updates ask); atomic message leasing and retry backoff; nagging, quiet hours and snoozing; Alaska time handling; the Mac agent against a synthetic `chat.db` including `attributedBody` decoding; Gmail parsing and history; the Chat allow-list and event shapes; service-account JWT signing; connector validation and SSRF guards; Canopy sync logic; search and Q&A; HTTP auth (full vs ingest-only token) and idempotent voice upload; the Swift sources type-check against the iOS 27 / watchOS 27 SDKs.

@@ -14,7 +14,6 @@ import { ingestMacRows, type MacRow } from './mac.ts';
 import { ack, parseSnooze, snooze } from './nag.ts';
 import { storeMessage } from './pipeline.ts';
 import { ask } from './qa.ts';
-import { applyTicketingEvent, verifySignature } from './sync/ticketing.ts';
 import { ingestVoice } from './voice.ts';
 import { listConnectors, proposeConnector, testConnector, enableConnector, setAutoAllowed, setConnectorInstructions } from './connectors.ts';
 import { startAutoConnect, continueWithKey, getJob, type AutoJob } from './autoconnect.ts';
@@ -27,7 +26,7 @@ import { GUIDES, applySetup } from './setup.ts';
 import { getLogs } from './logs.ts';
 import { latestMacRelease, openMacDownload, publicRelease, macHeartbeat, listMacClients, requestMacUpdate, forgetMacClient } from './macapp.ts';
 
-class HttpError extends Error { status: number; constructor(status: number, m: string) { super(m); this.status = status; } }
+import { HttpError } from './tickets/errors.ts';
 const BACKUP_LIMIT = 400 * 1024 * 1024, IMAGE_BODY_LIMIT = 30 * 1024 * 1024, JSON_LIMIT = 1024 * 1024, AUDIO_LIMIT = 60 * 1024 * 1024;
 
 async function readBody(req: IncomingMessage, limit: number): Promise<Buffer> {
@@ -83,7 +82,7 @@ function setPassword(ctx: Ctx, pw: string): void {
   writeFileSync(pwFile(ctx), JSON.stringify({ salt: salt.toString('hex'), hash: scryptSync(pw, salt, 32).toString('hex') }), { mode: 0o600 });
 }
 
-export interface HttpDeps { wake: () => void; restart?: () => void; ticketingSecret?: string; fetchImpl?: typeof fetch }
+export interface HttpDeps { wake: () => void; restart?: () => void; fetchImpl?: typeof fetch }
 
 export function createHttp(ctx: Ctx, deps: HttpDeps): Server {
   if (ctx.cfg.token.length < 16) throw new Error('ASSISTANT_TOKEN must be at least 16 chars.');
@@ -109,11 +108,6 @@ export function createHttp(ctx: Ctx, deps: HttpDeps): Server {
         throw new HttpError(401, 'Wrong password.');
       }
       failures = 0; return send(res, 200, { token: ctx.cfg.token });
-    }
-    if (path === '/hooks/ticketing' && method === 'POST') {          // authenticated by HMAC, not the bearer token
-      const raw = (await readBody(req, JSON_LIMIT)).toString('utf8');
-      if (!verifySignature(deps.ticketingSecret ?? '', raw, req.headers['x-tickets-signature'] as string | undefined)) throw new HttpError(401, 'Bad signature.');
-      return send(res, 200, { applied: applyTicketingEvent(ctx, JSON.parse(raw)) });
     }
     // Two credentials: the full token, and an optional ingest-only token for devices (Mac agent, phone) that only ever need to send input.
     const full = tokenOk(req.headers.authorization, ctx.cfg.token);
@@ -177,6 +171,21 @@ export function createHttp(ctx: Ctx, deps: HttpDeps): Server {
       if (!ctx.ticketing) return send(res, 200, { stages: [] });
       try { return send(res, 200, { stages: (await ctx.ticketing.defaultPipeline()).stages }); } catch { return send(res, 200, { stages: [] }); }
     }
+    // ---- the built-in ticket tracker (the Tickets tab) ----
+    if (path === '/tickets/pipelines' && method === 'GET') return send(res, 200, { pipelines: ctx.ticketing!.service.listPipelines() });
+    if (path === '/tickets' && method === 'GET') {
+      const q = url.searchParams; const g = (k: string) => q.get(k) ?? undefined;
+      return send(res, 200, { tickets: ctx.ticketing!.service.listTickets({ status: g('status'), q: g('q'), stage: g('stage'), priority: g('priority'), pipeline: g('pipeline'), limit: q.has('limit') ? Number(q.get('limit')) : undefined }) });
+    }
+    if (path === '/tickets' && method === 'POST') { const r = ctx.ticketing!.service.createTicket({ ...(await readJson(req)), source: 'ui' }, 'ui'); return send(res, r.created ? 201 : 200, r); }
+    if ((m = /^\/tickets\/(\d+)$/.exec(path))) {
+      const sv = ctx.ticketing!.service; const id = Number(m[1]);
+      if (method === 'GET') return send(res, 200, { ticket: sv.getTicket(id), events: sv.listEvents(id) });
+      if (method === 'PATCH') return send(res, 200, { ticket: sv.updateTicket(id, await readJson(req), 'ui') });
+      if (method === 'DELETE') { sv.deleteTicket(id); return send(res, 200, { ok: true }); }
+    }
+    if ((m = /^\/tickets\/(\d+)\/stage$/.exec(path)) && method === 'POST') { const b = await readJson(req); if (typeof b.stageId !== 'string') throw new HttpError(400, 'stageId is required.'); return send(res, 200, { ticket: ctx.ticketing!.service.setStage(Number(m[1]), b.stageId, 'ui') }); }
+    if ((m = /^\/tickets\/(\d+)\/comments$/.exec(path)) && method === 'POST') return send(res, 201, { event: ctx.ticketing!.service.addComment(Number(m[1]), (await readJson(req)).body, 'ui') });
     if (path === '/messages' && method === 'GET') return send(res, 200, { messages: listMessages(ctx, { filter: url.searchParams.get('filter') ?? 'all', q: url.searchParams.get('q') ?? undefined, limit: Number(url.searchParams.get('limit') ?? 100) }) });
     if ((m = /^\/messages\/(\d+)\/(retry|skip)$/.exec(path)) && method === 'POST') {
       const ok = m[2] === 'retry' ? retryMessage(ctx, Number(m[1])) : skipMessage(ctx, Number(m[1]));

@@ -293,7 +293,7 @@ test('HTTP: bearer auth, ingest, idempotent voice upload, webhook signature, app
   const transcribeCalls: number[] = [];
   const stt = (async () => { transcribeCalls.push(1); return json({ text: 'order SDI cables' }); }) as unknown as typeof fetch;
   const { ctx } = makeCtx([], { env: { ASSISTANT_TOKEN: 'a'.repeat(32), INGEST_TOKEN: 'i'.repeat(32), TRANSCRIBE_URL: 'http://stt.test/v1/audio/transcriptions' } });
-  const server = createHttp(ctx, { wake: () => {}, ticketingSecret: 'whsec', fetchImpl: stt });
+  const server = createHttp(ctx, { wake: () => {}, fetchImpl: stt });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const H = { authorization: 'Bearer ' + 'a'.repeat(32), 'content-type': 'application/json' };
@@ -309,10 +309,6 @@ test('HTTP: bearer auth, ingest, idempotent voice upload, webhook signature, app
     const v2 = await (await voice()).json() as { duplicate: boolean }; assert.equal(v2.duplicate, true);
     assert.equal(transcribeCalls.length, 1);                                       // the retry never re-transcribes
     assert.equal((await fetch(base + '/ingest/voice', { method: 'POST', headers: { authorization: H.authorization }, body: new Uint8Array([1]) })).status, 400);
-    const body = JSON.stringify({ type: 'ticket.closed', data: { id: 5 } });
-    const sig = 'sha256=' + createHmac('sha256', 'whsec').update(body).digest('hex');
-    assert.equal((await fetch(base + '/hooks/ticketing', { method: 'POST', body, headers: { 'x-tickets-signature': sig } })).status, 200);
-    assert.equal((await fetch(base + '/hooks/ticketing', { method: 'POST', body, headers: { 'x-tickets-signature': 'sha256=00' } })).status, 401);
     assert.equal((await fetch(base + '/approvals', { headers: H })).status, 200);
     // the ingest-only token can send input but cannot read items, approve, or chat
     const IH = { authorization: 'Bearer ' + 'i'.repeat(32), 'content-type': 'application/json' };

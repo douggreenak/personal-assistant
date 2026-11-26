@@ -29,12 +29,7 @@ All settings are environment variables (put them in `.env`; Docker Compose passe
 | `IGNORE_SENDERS` | `no-?reply,mailer-daemon,notifications?@` | Comma-separated regexes; messages from matching senders are skipped without calling the model. Messages from you are never skipped. |
 
 ## Ticketing
-| Variable | Meaning |
-|---|---|
-| `TICKETING_URL` | e.g. `http://ticketing:8080` (set by compose). Unset → tickets become plain local tasks. |
-| `TICKETING_TOKEN` | The ticket tracker's `TICKETS_TOKEN`. |
-| `TICKETING_WEBHOOK_SECRET` | Optional. Secret of a webhook you create in the tracker pointing at `http://assistant:8090/hooks/ticketing`, so stage changes made in its UI show up here. |
-| `TICKETS_TOKEN` | (compose) shared token given to both containers. |
+Built in — nothing to configure. Tickets are stored in `data/tickets.db`.
 
 ## Canopy
 | Variable | Meaning |

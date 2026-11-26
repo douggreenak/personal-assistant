@@ -3,7 +3,7 @@
 ## Logs
 ```bash
 docker compose logs -f assistant          # everything: worker, pollers, nags, notifications
-docker compose logs -f ticketing whisper
+docker compose logs -f assistant whisper
 ```
 Notifications are also echoed to the log as `[notify] …`, so you can see what it tried to send even if Chat is misconfigured.
 
@@ -12,7 +12,7 @@ The database is one SQLite file. Take a consistent copy while running:
 ```bash
 docker compose exec assistant node -e "const {DatabaseSync}=require('node:sqlite');const d=new DatabaseSync('/data/assistant.db');d.exec(\"VACUUM INTO '/data/backup-\"+Date.now()+\".db'\")"
 ```
-(or stop the container and copy `data/assistant.db*`). Do the same for `ticketing-data/tickets.db`. Also keep `.env`, `data/secrets.json` and `data/chat-service-account.json` somewhere safe (they're not in git). `claude-home/` is only your login — you can recreate it with `claude` again.
+(or stop the container and copy `data/assistant.db*`). (`data/tickets.db` is the ticket database.) Also keep `.env`, `data/secrets.json` and `data/chat-service-account.json` somewhere safe (they're not in git). `claude-home/` is only your login — you can recreate it with `claude` again.
 
 ## Upgrading
 ```bash

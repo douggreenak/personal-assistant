@@ -1,6 +1,6 @@
 # HTTP API
 
-Base URL `http://<server>:8090`. Every endpoint except `/healthz` and `/hooks/ticketing` needs `Authorization: Bearer $ASSISTANT_TOKEN`. The three `/ingest/*` endpoints, `/app/mac/heartbeat` and `/app/mac/download` also accept `INGEST_TOKEN`, which is valid for nothing else. Bodies are JSON unless stated. Errors are `{ "error": "…" }` with the status below. JSON bodies are limited to 1 MB; audio to 60 MB.
+Base URL `http://<server>:8090`. Every endpoint except `/healthz` needs `Authorization: Bearer $ASSISTANT_TOKEN`. The three `/ingest/*` endpoints, `/app/mac/heartbeat` and `/app/mac/download` also accept `INGEST_TOKEN`, which is valid for nothing else. Bodies are JSON unless stated. Errors are `{ "error": "…" }` with the status below. JSON bodies are limited to 1 MB; audio to 60 MB.
 
 ## Web UI
 `GET /` serves a small web UI (no auth for the page itself; it asks for `ASSISTANT_TOKEN` and calls the endpoints below).
@@ -62,8 +62,8 @@ Approving applies the stored action exactly once (a second call says it was alre
 ## Other
 ### `GET /connectors` → `{"connectors":[{id,status,name,lastError}]}`
 ### `GET /healthz` → `{"ok":true}` (no auth)
-### `POST /hooks/ticketing`
-Called by the ticket tracker's webhooks. No bearer token; authenticated by the `X-Tickets-Signature: sha256=<hmac>` header using `TICKETING_WEBHOOK_SECRET`. `401` on a bad signature.
+### Tickets
+`GET /tickets?status=open|closed|all&q=&stage=&priority=&pipeline=&limit=`, `POST /tickets` (`title`, `description`, `priority`, `dueAt`, `requester`, `pipelineId`), `GET /tickets/{id}` (ticket + events), `PATCH /tickets/{id}`, `DELETE /tickets/{id}`, `POST /tickets/{id}/stage` (`{stageId}`), `POST /tickets/{id}/comments` (`{body}`), `GET /tickets/pipelines`.
 
 ### Connect a service in one step
 `POST /connectors/auto` (full token) `{input, apiKey?}` → `202 {job}`. `input` is pasted API docs or an `https://` docs URL; `apiKey` is optional: keys inside `input` (labelled values, `Bearer …`, `?key=…`, well-known prefixes) are detected, stored in `secrets.json` and replaced by `<API_KEY_n>` before the model sees the text. Auth styles: bearer, header, basic, or `query` (key in a URL parameter).

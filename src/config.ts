@@ -4,7 +4,6 @@ export interface Config {
   port: number; host: string; token: string; ingestToken: string; webPassword: string; dbPath: string; dataDir: string; tz: string;
   quietHours: { start: number; end: number };           // local hours; nagging is held inside [start, end)
   nagMinutes: number[];                                  // gaps between nags: 0th = after first notice, last repeats
-  ticketing: { url: string; token: string } | null;
   canopy: { url: string; readToken: string; writeToken: string } | null;
   canopyGradeDropPct: number;
   google: { serviceAccountFile?: string; oauth?: { clientId: string; clientSecret: string; refreshToken: string } } ;
@@ -30,7 +29,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     dbPath: env.ASSISTANT_DB ?? `${dataDir}/assistant.db`, dataDir, tz: env.TZ_NAME ?? 'America/Anchorage',
     quietHours: { start: qs, end: qe },
     nagMinutes: list(env.NAG_MINUTES ?? '15,15,30,60').map(Number),
-    ticketing: env.TICKETING_URL ? { url: env.TICKETING_URL.replace(/\/$/, ''), token: env.TICKETING_TOKEN ?? '' } : null,
     canopy: env.CANOPY_URL ? { url: env.CANOPY_URL.replace(/\/$/, ''), readToken: env.CANOPY_READ_TOKEN ?? '', writeToken: env.CANOPY_WRITE_TOKEN ?? '' } : null,
     canopyGradeDropPct: Number(env.CANOPY_GRADE_DROP_PCT ?? 2),
     google: {

@@ -20,7 +20,7 @@ const H = { authorization: 'Bearer ' + TOKEN, 'content-type': 'application/json'
 
 async function boot(env: Record<string, string> = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'assistant-web-'));
-  const made = makeCtx([], { env: { ASSISTANT_TOKEN: TOKEN, INGEST_TOKEN: INGEST, ASSISTANT_DATA: dir, TICKETING_URL: 'http://tickets.test', ...env } });
+  const made = makeCtx([], { env: { ASSISTANT_TOKEN: TOKEN, INGEST_TOKEN: INGEST, ASSISTANT_DATA: dir, ...env } });
   let restarts = 0, wakes = 0;
   const server = createHttp(made.ctx, { wake: () => { wakes++; }, restart: () => { restarts++; } });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
@@ -95,9 +95,9 @@ test('password login: disabled without WEB_PASSWORD; wrong/right; lockout; chang
 
 test('settings: secrets never leave the server; validation; overrides win over env and "" falls back', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'assistant-set-'));
-  const env = { TZ_NAME: 'America/Denver', TICKETING_TOKEN: 'super-secret-token', GMAIL_ENABLED: '1' } as NodeJS.ProcessEnv;
+  const env = { TZ_NAME: 'America/Denver', CANOPY_READ_TOKEN: 'super-secret-token', GMAIL_ENABLED: '1' } as NodeJS.ProcessEnv;
   let v = viewSettings(dir, env);
-  const tok = v.find((d) => d.key === 'TICKETING_TOKEN')!;
+  const tok = v.find((d) => d.key === 'CANOPY_READ_TOKEN')!;
   assert.equal(tok.value, ''); assert.equal(tok.isSet, true); assert.ok(!JSON.stringify(v).includes('super-secret-token'));
   assert.equal(v.find((d) => d.key === 'TZ_NAME')!.value, 'America/Denver');
   assert.equal(v.find((d) => d.key === 'GMAIL_SKIP_BULK')!.value, '1');            // documented default shows as on
@@ -114,8 +114,8 @@ test('settings: secrets never leave the server; validation; overrides win over e
   assert.equal(cfg.tz, 'America/Anchorage'); assert.deepEqual(cfg.quietHours, { start: 23, end: 6 }); assert.deepEqual(cfg.nagMinutes, [5, 10]); assert.equal(cfg.ingestToken, 'abc');
   assert.ok(!('NOT_A_SETTING' in readOverrides(dir)));
 
-  saveSettings(dir, { TICKETING_TOKEN: '' });                                     // blank secret = keep
-  assert.equal(viewSettings(dir, env).find((d) => d.key === 'TICKETING_TOKEN')!.isSet, true);
+  saveSettings(dir, { CANOPY_READ_TOKEN: '' });                                     // blank secret = keep
+  assert.equal(viewSettings(dir, env).find((d) => d.key === 'CANOPY_READ_TOKEN')!.isSet, true);
   saveSettings(dir, { TZ_NAME: '' });                                              // '' removes the override -> env value again
   assert.equal(loadConfig({ ...env, ...readOverrides(dir) }).tz, 'America/Denver');
   saveSettings(dir, { INGEST_TOKEN: '__clear__' }); assert.ok(!('INGEST_TOKEN' in readOverrides(dir)));
@@ -205,7 +205,7 @@ test('integrations report what is configured and whether it answers', async () =
   try {
     const list = (await s.call('GET', '/status/integrations')).json.integrations as { id: string; configured: boolean; ok: boolean | null }[];
     const by = Object.fromEntries(list.map((i) => [i.id, i]));
-    assert.equal(by.ticketing.configured, true); assert.equal(by.ticketing.ok, true);   // the fake ticketing app answers
+    assert.equal(by.ticketing.configured, true); assert.equal(by.ticketing.ok, true);   // built in
     for (const id of ['canopy', 'whisper', 'gmail', 'chat', 'drive', 'ntfy', 'files']) assert.equal(by[id].configured, false, id);
     assert.equal(by.ingest.configured, true);
   } finally { s.close(); }
@@ -330,5 +330,22 @@ test('home-screen app: manifest, icons, service worker and the iOS meta tags are
     for (const i of mf.json.icons) { const r = await fetch(s.base + i.src); assert.equal(r.status, 200, i.src); assert.equal(r.headers.get('content-type'), i.type, i.src); }
     const ap = await fetch(s.base + '/apple-touch-icon.png'); assert.equal(ap.status, 200); assert.equal((await ap.arrayBuffer()).byteLength > 500, true);
     const sw = await s.call('GET', '/sw.js', undefined, none); assert.equal(sw.status, 200); assert.match(sw.headers.get('content-type')!, /javascript/); assert.match(sw.text, /fetch/); assert.doesNotMatch(sw.text, /\/api|Authorization/i);
+  } finally { s.close(); }
+});
+
+test('tickets tab: create, move through stages, comment, delete', async () => {
+  const s = await boot();
+  try {
+    const made = await s.call('POST', '/tickets', { title: 'Encoder dropping frames', priority: 'high' }); assert.equal(made.status, 201);
+    const id = made.json.ticket.id; assert.equal(made.json.ticket.stageId, 'reported');
+    assert.equal((await s.call('GET', '/tickets/pipelines')).json.pipelines[0].stages.length, 6);
+    assert.equal((await s.call('POST', `/tickets/${id}/stage`, { stageId: 'diagnosing' })).json.ticket.stageLabel, 'Diagnosing');
+    assert.equal((await s.call('POST', `/tickets/${id}/comments`, { body: 'Swapped the cable' })).status, 201);
+    const one = (await s.call('GET', '/tickets/' + id)).json; assert.deepEqual(one.events.map((e: { type: string }) => e.type), ['created', 'stage_changed', 'comment']);
+    assert.equal((await s.call('GET', '/tickets?status=open')).json.tickets.length, 1);
+    assert.equal((await s.call('POST', `/tickets/${id}/stage`, { stageId: 'closed' })).json.ticket.open, false);
+    assert.equal((await s.call('GET', '/tickets?status=open')).json.tickets.length, 0);
+    assert.equal((await s.call('POST', `/tickets/${id}/stage`, { stageId: 'nope' })).status, 400);
+    assert.equal((await s.call('DELETE', '/tickets/' + id)).status, 200); assert.equal((await s.call('GET', '/tickets/' + id)).status, 404);
   } finally { s.close(); }
 });

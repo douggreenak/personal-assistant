@@ -1,12 +1,4 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Ctx } from '../ctx.ts';
-
-export function verifySignature(secret: string, body: string, header: string | undefined): boolean {
-  if (!secret || !header) return false;
-  const want = Buffer.from('sha256=' + createHmac('sha256', secret).update(body).digest('hex'));
-  const got = Buffer.from(header);
-  return want.length === got.length && timingSafeEqual(want, got);
-}
 
 /** Mirrors changes made in the Ticketing UI (stage moves, closes) into the Assistant's item list. */
 export function applyTicketingEvent(ctx: Ctx, ev: { type: string; data: Record<string, any> }): boolean { // eslint-disable-line @typescript-eslint/no-explicit-any

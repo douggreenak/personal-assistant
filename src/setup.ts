@@ -8,9 +8,6 @@ export interface SetupField { key: string; label: string; hint: string; secret?:
 export interface SetupGuide { id: string; name: string; summary: string; steps: string[]; fields: SetupField[]; note?: string }
 
 export const GUIDES: SetupGuide[] = [
-  { id: 'ticketing', name: 'Ticketing', summary: 'The ticket tracker that real tickets are created in and moved through stages.',
-    steps: ['Open the Ticketing web page (by default http://192.168.1.95:8081) and sign in.', 'In its settings, create an API token (any name, e.g. "assistant") and copy it.', 'If the Ticketing app runs in the same Docker setup, the URL below is http://ticketing:8080; otherwise use the address you open it at.', 'Optional: copy its webhook secret so stage changes made there show up here.'],
-    fields: [{ key: 'TICKETING_URL', label: 'Ticketing URL', hint: 'http://ticketing:8080', aliases: ['url', 'address', 'host'] }, { key: 'TICKETING_TOKEN', label: 'API token', hint: 'the token you created', secret: true, aliases: ['token', 'apitoken', 'key'] }, { key: 'TICKETING_WEBHOOK_SECRET', label: 'Webhook secret', hint: 'optional', secret: true, optional: true, aliases: ['webhook', 'secret'] }] },
   { id: 'canopy', name: 'Canopy', summary: 'Your school planner: classes, assignments and grades.',
     steps: ['Open Canopy and go to its settings → API access.', 'Create a read-only token (needed) and, if you want the assistant to add tasks, a read/write token.', 'Copy Canopy\'s address (the URL you open it at).'],
     fields: [{ key: 'CANOPY_URL', label: 'Canopy URL', hint: 'https://…', aliases: ['url', 'address', 'host'] }, { key: 'CANOPY_READ_TOKEN', label: 'Read-only token', hint: 'required', secret: true, aliases: ['read', 'readtoken', 'token'] }, { key: 'CANOPY_WRITE_TOKEN', label: 'Read/write token', hint: 'optional, lets it add tasks', secret: true, optional: true, aliases: ['write', 'writetoken'] }] },
