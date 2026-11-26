@@ -51,7 +51,6 @@ export async function addProject(ctx: Ctx, o: { name?: string; folder: string; c
   enabled(ctx);
   const folder = String(o.folder ?? '').trim(); if (!folder) throw new CodeError('Choose a folder.');
   const dir = resolveInRoot(ctx, folder);
-  if (dir === rootDir(ctx)) throw new CodeError('Pick a folder inside the projects folder, not the folder itself.');
   if (ctx.db.prepare('SELECT 1 FROM code_projects WHERE path = ?').get(dir)) throw new CodeError('That folder is already a project.');
   if (o.cloneUrl) {
     if (!/^https:\/\/[^\s]+$/.test(o.cloneUrl)) throw new CodeError('Only https:// repository URLs can be cloned.');
@@ -61,7 +60,7 @@ export async function addProject(ctx: Ctx, o: { name?: string; folder: string; c
     if (!o.create) throw new CodeError('That folder does not exist. Tick “create it” to make it.');
     mkdirSync(dir, { recursive: true });
   } else if (!statSync(dir).isDirectory()) throw new CodeError('That is a file, not a folder.');
-  const id = randomUUID().slice(0, 8); const name = String(o.name ?? '').trim().slice(0, 60) || basename(dir);
+  const id = randomUUID().slice(0, 8); const name = String(o.name ?? '').trim().slice(0, 60) || (dir === rootDir(ctx) ? 'Home folder' : basename(dir));
   ctx.db.prepare('INSERT INTO code_projects (id, name, path, created_at) VALUES (?,?,?,?)').run(id, name, dir, new Date().toISOString());
   return getProject(ctx, id);
 }

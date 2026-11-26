@@ -77,12 +77,12 @@ export default async function code(view) {
   // ---- add project ----
   function addProjectDialog() {
     let cwd = ''; const list = h('div', { class: 'list code-folders' }); const where = h('div', { class: 'mono muted' });
-    const folder = h('md-outlined-text-field', { label: 'Folder (inside the projects folder)', 'data-primary': '', placeholder: 'my-app', 'supporting-text': `Projects live under ${status.root}` });
+    const folder = h('md-outlined-text-field', { label: 'Folder (inside the projects folder)', 'data-primary': '', placeholder: 'my-app', 'supporting-text': `Projects live under ${status.root} — type . for the folder itself` });
     const name = h('md-outlined-text-field', { label: 'Name (optional)' }); const clone = h('md-outlined-text-field', { label: 'Clone from a Git URL (optional, https://…)', placeholder: 'https://github.com/you/repo.git' });
     const create = h('md-switch', { selected: true, 'aria-label': 'Create the folder if it does not exist' });
     async function browse(rel) { const j = await guarded(() => api('/code/folders?path=' + encodeURIComponent(rel))); if (!j) return; cwd = j.path; where.textContent = '/' + (j.path || '');
       clear(list).append(...(j.parent !== null ? [h('div', { class: 'row static code-dir', onclick: () => browse(j.parent) }, icon('arrow_back'), ' ..')] : []), ...j.dirs.map((d) => h('div', { class: 'row static code-dir', 'data-dir': d.rel, onclick: () => { folder.value = d.rel; browse(d.rel); } }, icon('folder'), ' ', d.name)), ...(j.dirs.length ? [] : [h('div', { class: 'muted s', style: 'padding:8px' }, 'No sub-folders here.')])); }
-    const { close } = dialog({ title: 'Add a project', content: h('div', { class: 'form' }, folder, h('div', { class: 'field-row' }, h('div', {}, h('div', { class: 't' }, 'Create the folder if it does not exist')), create), name, clone, h('div', { class: 'label' }, 'Or pick an existing folder'), where, list),
+    const { close } = dialog({ title: 'Add a project', content: h('div', { class: 'form' }, folder, h('div', { class: 'field-row' }, h('div', {}, h('div', { class: 't' }, 'Create the folder if it does not exist')), create), name, clone, h('div', {}, h('md-text-button', { onclick: () => { folder.value = '.'; name.value ||= 'Home folder'; } }, icon('home'), 'Use the home folder itself (' + status.root + ')')), h('div', { class: 'label' }, 'Or pick an existing folder'), where, list),
       actions: [h('md-text-button', { onclick: () => close() }, 'Cancel'), h('md-filled-button', { onclick: async () => {
         const j = await guarded(() => api('/code/projects', { method: 'POST', body: { folder: folder.value, name: name.value, create: create.selected, cloneUrl: clone.value.trim() || undefined } }), 'Project added'); if (j) { close(); lsSet(LAST, j.project.id); go('p/' + j.project.id); } } }, 'Add')] });
     browse('');

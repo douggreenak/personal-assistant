@@ -19,6 +19,8 @@ const state = async (id: string) => (await C.live(ctx, id, 0)).screen?.state;
 test('code: folders stay inside the projects folder; projects and sessions are validated', { skip: !haveTmux }, async () => {
   const p = await C.addProject(ctx, { name: 'Demo', folder: 'demo', create: true }); assert.equal(p.rel, 'demo'); assert.ok(existsSync(join(root, 'demo')));
   await assert.rejects(C.addProject(ctx, { folder: 'demo' }), /already a project/);
+  const home = await C.addProject(ctx, { folder: '.' }); assert.equal(home.rel, '.'); assert.equal(home.name, 'Home folder');   // the projects folder itself may be a project
+  await assert.rejects(C.addProject(ctx, { folder: '.' }), /already a project/); await C.removeProject(ctx, home.id);
   await assert.rejects(C.addProject(ctx, { folder: '../escape', create: true }), /outside the projects folder/);
   await assert.rejects(C.addProject(ctx, { folder: '/etc', create: true }), /outside/);
   mkdirSync(join(base, 'secret')); symlinkSync(join(base, 'secret'), join(root, 'link')); await assert.rejects(C.addProject(ctx, { folder: 'link/inner', create: true }), /outside/);
