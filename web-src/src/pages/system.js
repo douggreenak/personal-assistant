@@ -1,3 +1,4 @@
+import { helpChat } from './helpchat.js';
 import { api, getToken } from '../api.js';
 import { h, icon, clear, ago, fmtDate, empty, chip, confirmDialog, dialog, guarded, toast, spinner, copyText } from '../ui.js';
 
@@ -19,7 +20,7 @@ async function setupDialog(integ, done) {
     g.links?.length ? h('div', { class: 'setup-links' }, h('h3', { class: 'title-m' }, 'Go here'), ...g.links.map((l) => h('a', { class: 'setup-link', href: l.url, target: '_blank', rel: 'noopener noreferrer' }, icon('open_in_new'), l.label))) : '',
     h('h3', { class: 'title-m' }, 'What to do'), h('ol', { class: 'setup-steps' }, g.steps.map((t) => h('li', {}, t))),
     h('h3', { class: 'title-m' }, 'What I need from you'), h('ul', { class: 'setup-fields' }, g.fields.map((f) => h('li', {}, h('b', {}, f.label), f.optional ? h('span', { class: 'muted' }, ' (optional)') : '', h('span', { class: 'muted' }, ' — ' + f.hint)))),
-    box, result);
+    box, result, helpChat(g.id));
   const save = h('md-filled-button', { onclick: async () => {
     const r = await guarded(() => api(`/integrations/${g.id}/setup`, { method: 'POST', body: { text: box.value } })); if (!r) return;
     save.hidden = true; box.hidden = true;

@@ -7,6 +7,7 @@ import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import type { Ctx } from './ctx.ts';
 import { decide, listApprovals } from './approvals.ts';
 import { handleOwnerText } from './commands.ts';
+import { helpAnswer, type HelpTurn } from './help.ts';
 import { parseUploads, prepareImages, toLlmImages } from './images.ts';
 import { codeRoutes } from './code/routes.ts';
 import { createBackup, restoreBackup, listBackups, backupPath, saveBackupFile, lastBackup } from './backup.ts';
@@ -274,6 +275,10 @@ export function createHttp(ctx: Ctx, deps: HttpDeps): Server {
       send(res, 200, { ok: true }); setTimeout(() => (deps.restart ?? (() => process.exit(0)))(), 400); return;
     }
     if (path === '/chat' && method === 'POST') { const b = await readJson(req, IMAGE_BODY_LIMIT); let images; try { images = await prepareImages(parseUploads(b.images)); } catch (e) { throw new HttpError(400, (e as Error).message); } { const text = String(b.text ?? ''); const reply = await handleOwnerText(ctx, text, undefined, images); logChat(ctx, { kind: 'chat', text, reply, pictures: images.length }); return send(res, 200, { reply }); } }
+    if (path === '/help' && method === 'POST') {   // the setup helper: a question + optional screenshots about connecting a service
+      const b = await readJson(req, IMAGE_BODY_LIMIT); let images; try { images = await prepareImages(parseUploads(b.images)); } catch (e) { throw new HttpError(400, (e as Error).message); }
+      return send(res, 200, { answer: await helpAnswer(ctx, { question: String(b.question ?? ''), topic: b.topic ? String(b.topic) : undefined, history: Array.isArray(b.history) ? b.history as HelpTurn[] : [], images: toLlmImages(images) }) });
+    }
     if (path === '/ask' && method === 'POST') { const b = await readJson(req, IMAGE_BODY_LIMIT); let images; try { images = await prepareImages(parseUploads(b.images)); } catch (e) { throw new HttpError(400, (e as Error).message); } { const text = String(b.question ?? ''); const answer = await ask(ctx, text, toLlmImages(images)); logChat(ctx, { kind: 'ask', text, reply: answer, pictures: images.length }); return send(res, 200, { answer }); } }
 
     if (path === '/items' && method === 'GET') return send(res, 200, { items: ctx.items.list({ state: url.searchParams.get('state') ?? 'open', kind: url.searchParams.get('kind') ?? undefined, limit: Number(url.searchParams.get('limit') ?? 200), hidePowerSchool: true }) });

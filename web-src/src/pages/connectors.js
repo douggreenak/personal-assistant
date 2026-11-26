@@ -1,3 +1,4 @@
+import { helpChat } from './helpchat.js';
 import { api } from '../api.js';
 import { h, icon, clear, ago, empty, chip, dialog, confirmDialog, guarded, spinner, toast, page, fab } from '../ui.js';
 
@@ -88,7 +89,7 @@ export default async function connectors(view, { refreshStatus }) {
       if (!r) { go.disabled = false; return; }
       key.value = ''; form.hidden = true; go.hidden = true; watch(r.job.id);
     }
-    const { close } = dialog({ title: 'Add a connector', fullscreen: true, onClose: stopPoll, content: [form, log, tail], actions: [h('md-text-button', { onclick: () => close() }, 'Close'), go] });
+    const { close } = dialog({ title: 'Add a connector', fullscreen: true, onClose: stopPoll, content: [form, log, tail, helpChat('connector')], actions: [h('md-text-button', { onclick: () => close() }, 'Close'), go] });
   }
   page.newAction = add;
   clear(view).append(h('div', { class: 'page-head' }, h('h1', { class: 'display' }, 'Connectors'), h('p', { class: 'muted title-m' }, 'Connect other services so the assistant can read from them and, with your OK, act in them.')), list, h('div', { class: 'fab-slot' }, fab('Add', 'Add connector', add)));

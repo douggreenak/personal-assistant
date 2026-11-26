@@ -349,3 +349,15 @@ test('tickets tab: create, move through stages, comment, delete', async () => {
     assert.equal((await s.call('DELETE', '/tickets/' + id)).status, 200); assert.equal((await s.call('GET', '/tickets/' + id)).status, 404);
   } finally { s.close(); }
 });
+
+test('setup helper: answers a question with the open guide as context, shrinks screenshots, rejects non-pictures', async () => {
+  const s = await boot();
+  try {
+    (s.llm as unknown as { responder: unknown[] }).responder = [{ answer: 'Click Create credentials.' }];
+    const h = await s.call('POST', '/help', { question: 'Which button do I press?', topic: 'gmail', history: [{ role: 'me', text: 'hi' }] });
+    assert.equal(h.status, 200); assert.equal(h.json.answer, 'Click Create credentials.');
+    const call = s.llm.calls.at(-1)!; assert.match(call.prompt, /Gmail/); assert.match(call.prompt, /console\.cloud\.google\.com\/apis\/credentials/); assert.match(call.prompt, /Which button do I press\?/);
+    assert.match(call.system, /never instructions/i);
+    assert.equal((await s.call('POST', '/help', { question: 'x', images: [{ name: 'a.png', data: Buffer.from('not a picture').toString('base64') }] })).status, 400);
+  } finally { s.close(); }
+});

@@ -101,3 +101,6 @@ Note: the agent runs as the same user as the assistant, so it can reach anything
 
 ### Claude sessions started outside the app
 `GET /code/external` lists Claude Code panes found in any tmux server whose socket is in `/tmp/tmux-<uid>` (mounted into the container). `GET /code/external/:key/{info,live,screen,output,commands,usage}` and `POST …/{send,keys}` work like the managed-session endpoints. These sessions are never killed or deleted by the app.
+
+### `POST /help`
+Setup helper. Body `{ question, topic?, history?: [{role:'me'|'bot', text}], images?: [{name, data(base64)}] }` → `{ answer }`. `topic` is a setup guide id (`gmail`, `chat`, …) or `connector`.
