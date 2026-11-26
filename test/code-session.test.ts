@@ -97,8 +97,8 @@ test('code: Claude sessions started outside the app (in any tmux server on the h
     execFileSync('tmux', ['-S', sock, 'new-session', '-d', '-s', 'my-own', '-c', cwd, '-e', `CLAUDE_CONFIG_DIR=${join(base, 'cfg')}`, '-x', '120', '-y', '40', '--', join(dir, 'claude'), '--session-id', '99999999-9999-4999-8999-999999999999']);
     execFileSync('tmux', ['-S', sock, 'new-session', '-d', '-s', 'not-claude', '-c', cwd, '--', 'sleep', '600']);
     const found = await waitFor(async () => { const l = (await X.discover(ctx)).filter((e) => e.cwd === cwd); return l.length ? l : false; }, 10000, 'discover');   // (the machine's own tmux sessions may be listed too)
-    assert.equal(found.length, 1); assert.equal(found[0].session, 'my-own');
-    const key = found[0].key; await waitFor(async () => (await X.live(ctx, key, 0)).screen?.state === 'idle', 10000, 'idle');
+    assert.equal(found.length, 2); const mine = found.find((e) => e.session === 'my-own')!; assert.ok(mine.claude); assert.equal(found.find((e) => e.session === 'not-claude')!.claude, false);
+    const key = mine.key; await waitFor(async () => (await X.live(ctx, key, 0)).screen?.state === 'idle', 10000, 'idle');
     await X.send(ctx, key, 'hi from the app'); const l = await waitFor(async () => { const r = await X.live(ctx, key, 0); return r.msgs.some((m) => m.t === 'assistant') ? r : false; }, 10000, 'reply');
     assert.ok(l.msgs.some((m) => m.t === 'user' && m.text === 'hi from the app')); assert.equal((await X.info(ctx, key)).name, 'elsewhere');
     await assert.rejects(X.keys(ctx, key, ['rm -rf'], new Set(['Enter'])), /not allowed/); await assert.rejects(X.info(ctx, 'bm90LWE'), /No such session/);

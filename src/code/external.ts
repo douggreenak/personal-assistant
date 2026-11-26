@@ -8,7 +8,7 @@ import { CodeError, listCommandsAt, commandOutputOf } from './manager.ts';
 
 /** Claude Code sessions that were started outside this app: any tmux server on the host whose socket the container can see
  *  (the app's own is skipped; its sessions are managed). Found by looking for a pane running `claude`. */
-export interface External { key: string; socket: string; pane: string; session: string; window: string; cwd: string; name: string }
+export interface External { key: string; socket: string; pane: string; session: string; window: string; cwd: string; name: string; claude: boolean; command: string }
 const isClaude = (cmd: string) => /^claude(\.exe)?$/i.test(cmd) || /^\d+\.\d+\.\d+/.test(cmd);
 /** Claude Code's own screen: its banner, or the footer under the prompt box. */
 const looksLikeClaude = (screen: string) => /Claude Code v?\d|\? for shortcuts|\(shift\+tab to cycle\)|esc to interrupt|accept edits on/.test(screen);
@@ -32,17 +32,17 @@ export async function discover(ctx: Ctx): Promise<External[]> {
   const out: External[] = [];
   await Promise.all(sockets(ctx).map(async (socket) => {
     try { for (const p of await tmx(ctx, socket).panes()) {
-      if (!isClaude(p.command) && !(/^(node|bun|deno)$/.test(p.command) && looksLikeClaude(await tmx(ctx, socket).capture(p.pane).catch(() => '')))) continue;   // an npm install runs as `node`
+      const claude = isClaude(p.command) || (/^(node|bun|deno|bash|zsh|sh)$/.test(p.command) && looksLikeClaude(await tmx(ctx, socket).capture(p.pane).catch(() => '')));
       if (socket === ctx.cfg.code.socket && p.session.startsWith('cc-')) continue;   // managed by the app
-      out.push({ key: enc(socket, p.pane), socket, pane: p.pane, session: p.session, window: p.window, cwd: p.cwd, name: `${basename(p.cwd) || p.cwd}` });
+      out.push({ key: enc(socket, p.pane), socket, pane: p.pane, session: p.session, window: p.window, cwd: p.cwd, name: `${basename(p.cwd) || p.cwd}`, claude, command: p.command });
     } } catch { /* stale socket or another tmux version */ }
   }));
-  return out.sort((a, b) => a.cwd.localeCompare(b.cwd) || a.session.localeCompare(b.session));
+  return out.sort((a, b) => Number(b.claude) - Number(a.claude) || a.cwd.localeCompare(b.cwd) || a.session.localeCompare(b.session));
 }
 
 async function target(ctx: Ctx, key: string) {
   const { socket, pane } = dec(ctx, key); const t = tmx(ctx, socket);
-  const p = (await t.panes()).find((x) => x.pane === pane); if (!p || !(isClaude(p.command) || (/^(node|bun|deno)$/.test(p.command) && looksLikeClaude(await t.capture(pane).catch(() => ''))))) throw new CodeError('That session has ended.', 404);
+  const p = (await t.panes()).find((x) => x.pane === pane); if (!p) throw new CodeError('That session has ended.', 404);
   return { t, pane, cwd: p.cwd, session: p.session };
 }
 /** The conversation file of the newest session in that folder (a pane does not say which conversation it holds). */
