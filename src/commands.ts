@@ -7,8 +7,11 @@ import { processNextReport, storeMessage } from './pipeline.ts';
 import { ask } from './qa.ts';
 import type { Upload } from './images.ts';
 import { toLlmImages } from './images.ts';
-import { testConnector, enableConnector, listConnectors, proposeConnector } from './connectors.ts';
+import { testConnector, enableConnector, listConnectors, proposeConnector, connectorActionMap } from './connectors.ts';
 
+/** A request to DO something ("can you schedule…?", "add…", "use the X connector") — with a write-capable connector enabled it goes to the action pipeline, not the Q&A. */
+const ACTION_REQUEST = /^(?:(?:can|could|would|will) you\b|please\b|i (?:need|want) you to\b|(?:schedule|add|create|log|start|stop|set|send|book|track|use|record|update|close|open|post|submit|mark|cancel|delete|remove)\b)/i;
+const wantsAction = (ctx: Ctx, t: string): boolean => ACTION_REQUEST.test(t) && connectorActionMap(ctx).size > 0;
 const QUESTION = /^(what|when|who|where|how|which|why|show|list|find|did|do|does|is|are|any)\b|\?\s*$/i;
 
 function formatItems(items: Item[], tz: string): string {
@@ -33,7 +36,7 @@ export async function handleOwnerText(ctx: Ctx, textIn: string, sourceId: string
   if (!text && !images.length) return HELP;
   let m: RegExpExecArray | null;
   if (images.length) {   // pictures go to the model with the words: a question is answered, anything else is captured
-    if (text && QUESTION.test(text) && !/\b(remind me|remember to)\b/i.test(text)) return ask(ctx, text, toLlmImages(images));
+    if (text && QUESTION.test(text) && !/\b(remind me|remember to)\b/i.test(text) && !wantsAction(ctx, text)) return ask(ctx, text, toLlmImages(images));
     return capture(ctx, text || '(picture only)', sourceId, images);
   }
 
@@ -70,7 +73,7 @@ export async function handleOwnerText(ctx: Ctx, textIn: string, sourceId: string
   if ((m = /^test connector\s+(\S+)$/i.exec(text))) return testConnector(ctx, m[1]);
   if ((m = /^enable connector\s+(\S+)$/i.exec(text))) return enableConnector(ctx, m[1]);
   if ((m = /^connector:?\s+([\s\S]+)$/i.exec(text))) return proposeConnector(ctx, m[1]);
-  if (QUESTION.test(text) && !/\b(remind me|remember to)\b/i.test(text)) return ask(ctx, text);
+  if (QUESTION.test(text) && !/\b(remind me|remember to)\b/i.test(text) && !wantsAction(ctx, text)) return ask(ctx, text);
 
   return capture(ctx, text, sourceId, []);
 }

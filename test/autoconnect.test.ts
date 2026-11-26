@@ -449,3 +449,13 @@ test('autoconnect: given only a service name it finds the official docs itself, 
   assert.ok(asked.includes('https://docs.acme.example/api/reference'));        // followed the reference link on the index page
   assert.ok(!asked.some((x) => x.includes('pricing') || x.includes('evil.example')));   // not unrelated pages, not other sites
 });
+
+test('chat: "can you …?" goes to the action pipeline when a connector can do it (not the read-only Q&A); the Q&A knows what is connected', async () => {
+  const m = { ...fixed, id: 'drive', name: 'Drive tracker', description: 'logs drives', actions: [{ id: 'log', name: 'Log drive', description: 'log a trip', method: 'POST', path: '/drives', params: [{ name: 'to', description: 'where', in: 'body', required: true }] }] };
+  const calls: { system: string; prompt: string }[] = [];
+  const { ctx } = makeCtx((r: { system: string; prompt: string }) => { calls.push(r); return /extract|actions/i.test(r.system) && !/ANSWER|answer the owner/i.test(r.system) ? { actions: [] } : { answer: 'ok', cited: [] }; });
+  ctx.db.prepare("INSERT INTO connectors (id, manifest, status, created_at) VALUES ('drive', ?, 'enabled', ?)").run(JSON.stringify(validateManifest(m)), new Date().toISOString());
+  await handleOwnerText(ctx, 'Can you log a drive to Fred Meyer then home?', 'c-1');
+  assert.ok(calls.length && /drive\.log/.test(calls[0].prompt), 'the extract prompt offers the connector action');
+  const q = await ask(ctx, 'what is connected?'); void q;
+});
