@@ -505,3 +505,4 @@ md-dialog { max-height: min(calc(100dvh - 48px), 980px); }
 .stat.s5 { background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); border-radius: var(--r-l); }
 @media (min-width: 1100px) { .grid.tiles5 { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
 @media (max-width: 1099px) and (min-width: 601px) { .grid.tiles5 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.err-box { padding: 14px 16px; border-radius: var(--r-m); background: var(--md-sys-color-error-container); color: var(--md-sys-color-on-error-container); }

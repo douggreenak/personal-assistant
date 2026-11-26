@@ -161,6 +161,17 @@ function localDate(raw: string, utcIso: string, tz: string): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date(utcIso));
 }
 
+/** {"scheduled":"{\"date\":\"2026-11-26\",\"stops\":[\"Fred Meyer\"]}"} → date 2026-11-26, stops Fred Meyer (values that are themselves JSON are opened up). */
+export function plainArgs(args: Record<string, unknown>): string {
+  const flat = (v: unknown): string => {
+    if (typeof v === 'string') { const t = v.trim(); if (/^[[{]/.test(t)) { try { return flat(JSON.parse(t)); } catch { /* plain text */ } } return t; }
+    if (Array.isArray(v)) return v.map(flat).join(', ');
+    if (v && typeof v === 'object') return Object.entries(v).filter(([, x]) => x !== '' && x != null).map(([k, x]) => `${k.replace(/_/g, ' ')} ${flat(x)}`).join(', ');
+    return String(v ?? '');
+  };
+  const isJson = (v: unknown): boolean => typeof v === 'string' && /^\s*[[{]/.test(v) && (() => { try { JSON.parse(v); return true; } catch { return false; } })();
+  return Object.entries(args).filter(([, v]) => v !== '' && v != null).map(([k, v]) => (isJson(v) ? flat(v) : `${k.replace(/_/g, ' ')} ${flat(v)}`)).join(', ');
+}
 export function describeAction(a: Action, item?: Item): string {
   const t = item?.title ?? a.title ?? '';
   switch (a.op) {
@@ -169,6 +180,6 @@ export function describeAction(a: Action, item?: Item): string {
     case 'stage': return `Move "${t}" to stage ${a.stageId}`;
     case 'complete': return `Mark done: "${t}"`;
     case 'drop': return `Drop: "${t}"`;
-    case 'connector_call': return `Call ${a.connectorId}.${a.actionId} ${JSON.stringify(a.args ?? {}).slice(0, 300)}`;
+    case 'connector_call': return `${String(a.connectorId).replace(/[-_]+/g, ' ')} › ${String(a.actionId).replace(/[-_]+/g, ' ')}: ${plainArgs(a.args ?? {}) || 'no details'}`.slice(0, 400);
   }
 }

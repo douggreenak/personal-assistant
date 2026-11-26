@@ -150,14 +150,14 @@ test('write connectors: the model can ask — owner messages queue an approval (
     const mk = (source: string, sender: string) => ({ id: storeMessage(ctx, { source, sourceId: Math.random().toString(), sender, body: 'bill customer c1 for 40' })!, source, sourceId: 'x', sender, subject: '', body: 'bill customer c1 for 40', receivedAt: '', attempts: 1 });
     // 1) owner (chat), not pre-allowed → approval, nothing sent
     let r = await processMessage(ctx, mk('chat', 'me')); assert.equal(r.queued.length, 1); assert.equal(sent.length, 0);
-    const [ap] = listApprovals(ctx); assert.match(ap.summary, /Call acme\.create_invoice/); assert.match(ap.reason, /outside service/);
+    const [ap] = listApprovals(ctx); assert.match(ap.summary, /acme › create invoice/); assert.match(ap.reason, /outside service/);
     assert.match(await decideApproval(ctx, ap.id, true), /Create invoice done/); assert.equal(sent.length, 1);
     // 2) an email from someone else asks for the same thing → the model is not even offered writes, and a forged call is rejected
     r = await processMessage(ctx, mk('gmail', 'stranger@x.com')); assert.ok(!llm.calls.at(-1)!.prompt.includes('Connector actions')); assert.deepEqual(r.applied, []); assert.ok(r.rejected.some((x) => /unknown connector action/.test(x))); assert.equal(sent.length, 1);
     // 3) owner pre-allows the action → runs without asking, but DELETE still asks
     setAutoAllowed(ctx, 'acme', 'create_invoice', true); assert.ok(isAutoAllowed(ctx, 'acme', 'create_invoice'));
     r = await processMessage(ctx, mk('chat', 'me')); assert.equal(r.applied.length, 1); assert.equal(sent.length, 2);
-    r = await processMessage(ctx, mk('chat', 'me')); assert.equal(r.applied.length, 1); assert.equal(r.queued.length, 1); assert.match(r.queued[0], /delete_invoice/); assert.equal(sent.length, 3);
+    r = await processMessage(ctx, mk('chat', 'me')); assert.equal(r.applied.length, 1); assert.equal(r.queued.length, 1); assert.match(r.queued[0], /delete invoice/); assert.equal(sent.length, 3);
     assert.ok(llm.calls.some((c) => /Connector actions/.test(c.prompt) && /create_invoice — Acme Billing/.test(c.prompt)));
   } finally { globalThis.fetch = realFetch; }
 });
@@ -458,4 +458,10 @@ test('chat: "can you …?" goes to the action pipeline when a connector can do i
   await handleOwnerText(ctx, 'Can you log a drive to Fred Meyer then home?', 'c-1');
   assert.ok(calls.length && /drive\.log/.test(calls[0].prompt), 'the extract prompt offers the connector action');
   const q = await ask(ctx, 'what is connected?'); void q;
+});
+
+import { describeAction } from '../src/actions.ts';
+test('approvals read in plain words: connector calls open up JSON-in-a-string arguments', () => {
+  const d = describeAction({ op: 'connector_call', connectorId: 'drive-tracker', actionId: 'create_scheduled', confidence: 1, flags: [], why: '', args: { scheduled: '{"date":"2026-11-26","stops":["Fred Meyer"],"end":"Home"}' } } as never);
+  assert.equal(d, 'drive tracker › create scheduled: date 2026-11-26, stops Fred Meyer, end Home');
 });

@@ -89,10 +89,11 @@ async function capture(ctx: Ctx, text: string, sourceId: string, images: Upload[
   return 'Got it — queued.';
 }
 
-function summarize(r: { applied: string[]; queued: string[]; rejected: string[]; skipped?: string }): string {
+function summarize(r: { applied: string[]; queued: string[]; rejected: string[]; failed?: string[]; skipped?: string }): string {
   const lines: string[] = [];
   if (r.applied.length) lines.push(...r.applied.map((s) => `✅ ${s}`));
   if (r.queued.length) lines.push(...r.queued.map((s) => `❓ Needs your OK (say "approvals"): ${s}`));
+  if (r.failed?.length) lines.push(...r.failed.map((s) => `⚠️ ${s}`));
   if (r.skipped?.startsWith('error')) lines.push(`⚠️ I couldn't process that yet (${r.skipped}). I'll retry.`);
   return lines.length ? lines.join('\n') : "I didn't find anything to do in that.";
 }

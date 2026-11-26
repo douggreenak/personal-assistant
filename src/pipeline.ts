@@ -33,7 +33,7 @@ const rowToMsg = (r: Record<string, unknown>): MessageRow => ({
   subject: r.subject as string, body: r.body as string, receivedAt: r.received_at as string, attempts: r.attempts as number, thread: (r.thread as string) ?? '', counterpart: (r.counterpart as string) ?? '',
 });
 
-export interface ProcessReport { applied: string[]; queued: string[]; rejected: string[]; skipped?: string }
+export interface ProcessReport { applied: string[]; queued: string[]; rejected: string[]; failed?: string[]; skipped?: string }
 
 /** Extract → match → decide → apply/queue for one stored message. */
 export async function processMessage(ctx: Ctx, msg: MessageRow): Promise<ProcessReport> {
@@ -74,7 +74,7 @@ export async function processMessage(ctx: Ctx, msg: MessageRow): Promise<Process
     } catch (e) {
       // A backend failure must not lose the user's intent: park it for approval/retry instead.
       createApproval(ctx, { kind: 'action', summary: describeAction(a, item), reason: `backend error: ${(e as Error).message.slice(0, 120)}`, payload: { action: a }, messageId: msg.id });
-      report.queued.push(`${describeAction(a, item)} (backend error)`);
+      report.failed = [...(report.failed ?? []), `${describeAction(a, item)} — it failed: ${(e as Error).message.slice(0, 200)}. Saved in Approvals; approve it there to retry.`];
     }
   }
   return report;
