@@ -153,7 +153,9 @@ export default async function code(view) {
     const stateEl = h('span', {}); const infoEl = h('div', { class: 'muted s code-info' }); const titleEl = h('h2', { class: 'code-title' }, title);
     const permBox = h('div', {}); const term = h('pre', { class: 'term', 'aria-label': 'Terminal' }, ''); const termKeys = h('div', { class: 'term-keys' });
     const ta = h('textarea', { rows: 1, 'data-primary': '', placeholder: 'Message Claude Code…', title: 'Enter sends · Shift+Enter adds a line · / for commands', 'aria-label': 'Message' });
-    const grow = () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 200) + 'px'; }; ta.addEventListener('input', grow);
+    const KEY_D = 'code-draft:' + (ext ? 'x:' : '') + sid; try { ta.value = lsGet(KEY_D) || ''; } catch { /* none */ }
+    ta.addEventListener('input', () => { if (ta.value) lsSet(KEY_D, ta.value); else try { localStorage.removeItem(KEY_D); } catch { /* ignore */ } });
+    const grow = () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 200) + 'px'; }; ta.addEventListener('input', grow); grow();
     // Attachments: any file, uploaded as soon as it is picked/pasted/dropped; the message then carries @path for each.
     let files = []; const strip = h('div', { class: 'pics code-files', hidden: true }); const fin = h('input', { type: 'file', multiple: true, hidden: true, 'aria-label': 'Choose files' });
     const drawFiles = () => { strip.hidden = !files.length; clear(strip).append(...files.map((f, n) => h('div', { class: 'code-file' + (f.error ? ' bad' : '') }, icon(f.type.startsWith('image/') ? 'image' : 'description'), h('span', { class: 'fname' }, f.name), h('span', { class: 'muted s' }, f.error ? 'failed' : f.path ? (f.size >= 1e6 ? (f.size / 1e6).toFixed(1) + ' MB' : Math.max(1, Math.round(f.size / 1e3)) + ' KB') : 'uploading…'), h('button', { type: 'button', 'aria-label': 'Remove ' + f.name, onclick: () => { files.splice(n, 1); drawFiles(); } }, icon('close'))))); };
@@ -179,7 +181,7 @@ export default async function code(view) {
       const ok = files.filter((f) => f.path); if (!text && !ok.length) { files = []; drawFiles(); return; } sendBtn.disabled = true;
       try {
         let full = text; for (const f of ok) full = `${full}${full ? '\n' : ''}@${f.path}`;
-        await api(`${base}/send`, { method: 'POST', body: { text: full } }); pendingCmd = full.startsWith('/') ? { cmd: full.split('\n')[0].trim(), at: Date.now() } : null; ta.value = ''; grow(); files = []; drawFiles(); cmdBox.hidden = true; stick = true; poll(); setTimeout(poll, 250); setTimeout(poll, 700);
+        await api(`${base}/send`, { method: 'POST', body: { text: full } }); pendingCmd = full.startsWith('/') ? { cmd: full.split('\n')[0].trim(), at: Date.now() } : null; ta.value = ''; try { localStorage.removeItem(KEY_D); } catch { /* ignore */ } grow(); files = []; drawFiles(); cmdBox.hidden = true; stick = true; poll(); setTimeout(poll, 250); setTimeout(poll, 700);
       } catch (e) { toast(e.message, { error: true }); } finally { sendBtn.disabled = false; ta.focus({ preventScroll: true }); }
     }
     async function fetchUpload(im) { const bytes = Uint8Array.from(atob(im.data), (c) => c.charCodeAt(0)); return api(`/code/sessions/${sid}/upload?name=${encodeURIComponent(im.name)}`, { method: 'POST', raw: bytes }); }
@@ -206,6 +208,10 @@ export default async function code(view) {
       h('md-icon-button', { id: 'sessMenu', 'aria-label': 'More' }, icon('more_horiz')));
       menu(headBtns.querySelector('#sessMenu'), [['Restart', async () => { await guarded(() => api(`/code/sessions/${sid}/restart`, { method: 'POST' }), 'Restarted'); poll(); }], ['Rename', () => renameDialog('Rename session', title, (n) => api('/code/sessions/' + sid, { method: 'PATCH', body: { title: n } }), () => { titleEl.textContent = title = ''; location.reload(); })],
         ['Delete session', async () => { if (await confirmDialog('Delete this session?', 'It is stopped and removed from the list. The conversation file stays on disk.', 'Delete')) { await guarded(() => api('/code/sessions/' + sid, { method: 'DELETE' }), 'Deleted'); go('p/' + p.id); } }]]); };
+    // "Replies only": hides tool cards, thinking, slash commands and their output (remembered per session in this browser)
+    const KEY_H = 'code-replies-only:' + sid; let only = lsGet(KEY_H) === '1';
+    const onlyBtn = h('button', { class: 'code-only', type: 'button', title: 'Show only Claude\'s replies and your messages — hide tool calls, thinking and commands', onclick: () => { only = !only; lsSet(KEY_H, only ? '1' : '0'); drawOnly(); } });
+    const drawOnly = () => { onlyBtn.setAttribute('aria-pressed', String(only)); clear(onlyBtn).append(icon(only ? 'visibility_off' : 'visibility'), only ? 'Replies only' : 'All activity'); msgs.classList.toggle('replies-only', only); if (stick) msgs.scrollTop = msgs.scrollHeight; };
     const seg = h('div', { class: 'seg' }); const drawSeg = () => clear(seg).append(...[['chat', 'Conversation'], ['term', 'Terminal']].map(([v, l]) => h('button', { 'aria-pressed': String(view === v), 'data-view': v, onclick: () => { view = v; drawSeg(); layout(); if (v === 'term') pollTerm(); } }, l))); drawSeg();
     const chatPane = h('div', { class: 'code-chat' }, msgs, permBox);
     const termPane = h('div', { class: 'code-term' }, term, termKeys, h('div', { class: 'code-term-send' }, (() => { const f = h('md-outlined-text-field', { label: 'Type into the terminal', class: 'grow' }); const go2 = async (enter) => { const t = f.value; f.value = ''; await guarded(() => api(`${base}/keys`, { method: 'POST', body: { text: t, keys: enter ? ['Enter'] : undefined } })); pollTerm(); }; f.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); go2(true); } }); return [f, h('md-filled-tonal-button', { onclick: () => go2(true) }, 'Send + Enter'), h('md-text-button', { onclick: () => go2(false) }, 'Type only')]; })()));
@@ -213,8 +219,8 @@ export default async function code(view) {
     const quick = h('div', { class: 'code-quick' }, ...[['Interrupt', 'stop', () => key('Escape')], ['Cycle mode', 'sync', () => key('BTab')], ['/ Commands', 'terminal', () => { ta.value = '/'; ta.focus(); drawCmds(); }]].map(([l, ic, fn]) => h('md-assist-chip', { label: l, onclick: fn })));
     const layout = () => { chatPane.hidden = view !== 'chat'; termPane.hidden = view !== 'term'; composer.hidden = view !== 'chat' || !running; quick.hidden = view !== 'chat' || !running; if (view !== 'chat' || !running) cmdBox.hidden = true; startNote.hidden = running; };
     const startNote = h('div', { class: 'card code-stopped' }, h('b', {}, 'This session is stopped.'), h('span', { class: 'muted' }, ' Start it to continue the conversation — everything said so far is kept.'));
-    clear(el).append(h('div', { class: 'card high code-session-head' }, h('div', { class: 'code-ph' }, h('md-icon-button', { 'aria-label': 'Back to ' + p.name, onclick: () => go(ext ? '' : 'p/' + p.id) }, icon('arrow_back')), h('div', { style: 'flex:1 1 180px;min-width:0' }, titleEl, h('div', { class: 'muted s' }, p.name + ' · ' + (s.permissionMode || 'default permissions') + (s.model ? ' · ' + s.model : ''))), stateEl, headBtns), h('div', { class: 'code-sub' }, seg, infoEl)),
-      chatPane, termPane, startNote, quick, cmdBox, composer, pics.strip, pics.input); drawHead(); layout();
+    clear(el).append(h('div', { class: 'card high code-session-head' }, h('div', { class: 'code-ph' }, h('md-icon-button', { 'aria-label': 'Back to ' + p.name, onclick: () => go(ext ? '' : 'p/' + p.id) }, icon('arrow_back')), h('div', { style: 'flex:1 1 180px;min-width:0' }, titleEl, h('div', { class: 'muted s' }, p.name + ' · ' + (s.permissionMode || 'default permissions') + (s.model ? ' · ' + s.model : ''))), stateEl, headBtns), h('div', { class: 'code-sub' }, seg, onlyBtn, infoEl)),
+      chatPane, termPane, startNote, quick, cmdBox, composer, pics.strip, pics.input); drawHead(); layout(); drawOnly();
 
     // rendering the conversation
     const near = () => msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 80;
