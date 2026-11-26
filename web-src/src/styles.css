@@ -501,3 +501,7 @@ md-dialog .form { max-width: 100%; }
 @media (min-width: 1000px) { md-dialog.full [slot=content] > .form:not(.sg-info):not(.sg-act) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 20px; align-items: start; }
   md-dialog.full [slot=content] > .form > md-outlined-text-field[type=textarea], md-dialog.full [slot=content] > .form > :is(p, h3, .muted, .card, .setup-guide) { grid-column: 1 / -1; } }
 md-dialog { max-height: min(calc(100dvh - 48px), 980px); }
+
+.stat.s5 { background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); border-radius: var(--r-l); }
+@media (min-width: 1100px) { .grid.tiles5 { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+@media (max-width: 1099px) and (min-width: 601px) { .grid.tiles5 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

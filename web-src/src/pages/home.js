@@ -18,7 +18,7 @@ export default async function home(view, { nav, refreshStatus }) {
     clear(view).append(
       h('div', { class: 'page-head' }, h('div', { class: 'label' }, fmtDate(new Date(), { weekday: 'long', month: 'long', day: 'numeric' })), h('h1', { class: 'display' }, greeting() + '.'),
         h('p', { class: 'muted title-m' }, s.items.open ? `You have ${s.items.open} open item${s.items.open === 1 ? '' : 's'}${s.items.overdue ? `, ${s.items.overdue} overdue` : ''}.` : 'Nothing open. Enjoy it.')),
-      h('div', { class: 'grid cols-3' }, tile('s1', s.items.tickets, 'Tickets', 'confirmation_number', 'items'), tile('s2', s.items.reminders, 'Reminders', 'alarm', 'items'), tile('s3', s.items.tasks, 'Tasks', 'checklist', 'items'),
+      h('div', { class: 'grid cols-3 tiles5' }, tile('s5', s.items.open, 'Items', 'checklist', 'items'), tile('s1', s.items.tickets, 'Tickets', 'confirmation_number', 'tickets'), tile('s2', s.items.reminders, 'Reminders', 'alarm', 'items'), tile('s3', s.items.tasks, 'Tasks', 'checklist', 'items'),
         tile('s4', s.approvals, 'Need your OK', 'task_alt', 'approvals')),
       approvals.length ? h('div', { class: 'card high' }, h('h2', {}, icon('task_alt'), h('span', { class: 'grow' }, `${approvals.length} waiting for you`), h('md-text-button', { onclick: () => nav('approvals') }, 'Review')), h('div', { class: 'list' }, approvals.slice(0, 3).map((a) => h('div', { class: 'row static', style: 'grid-template-columns:1fr auto' }, h('div', {}, h('div', { class: 't' }, a.summary), h('div', { class: 's' }, a.reason)), h('div', { class: 'acts' },
         h('md-filled-tonal-button', { onclick: async () => { await guarded(() => api(`/approvals/${a.id}/approve`, { method: 'POST' }), 'Approved'); refresh(); } }, 'Approve')))))) : '',
