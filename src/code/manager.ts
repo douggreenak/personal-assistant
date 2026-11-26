@@ -123,6 +123,34 @@ export async function sendWhenReady(ctx: Ctx, id: string, text: string, timeoutM
   while (Date.now() < end) { if (!(await t.has(tmuxName(id)))) return; const sc = parseScreen(await t.capture(tmuxName(id))); if (sc.state === 'idle') return void (await sendMessage(ctx, id, text)); await sleep(700); }
 }
 
+// ---------- queueing: a message sent while Claude is busy waits here and goes in the moment the prompt box is free ----------
+// (Typing it into the busy terminal left it stranded in the box.) One queue per session/pane, delivered in order, in memory only.
+const waiting = new Map<string, { texts: string[]; draining: boolean }>();
+export const queuedCount = (key: string): number => waiting.get(key)?.texts.length ?? 0;
+/** Sends now if the session is idle and nothing is ahead of it; otherwise queues it. Returns how many messages are waiting (0 = sent). */
+export async function sendOrQueue(key: string, text: string, screen: () => Promise<ScreenInfo | null>, deliver: (text: string) => Promise<void>): Promise<number> {
+  const q = waiting.get(key) ?? { texts: [], draining: false }; waiting.set(key, q);
+  const sc = await screen();
+  if (!q.texts.length && sc && sc.state !== 'working') { await deliver(text); return 0; }
+  if (q.texts.length >= 20) throw new CodeError('Too many messages are already waiting.');
+  q.texts.push(text);
+  if (!q.draining) {
+    q.draining = true;
+    void (async () => {
+      const give = Date.now() + 6 * 3600_000;
+      try {
+        while (q.texts.length && Date.now() < give) {
+          await sleep(1200);
+          const s = await screen().catch(() => null);
+          if (!s) { q.texts.length = 0; break; }                      // the session ended
+          if (s.state === 'idle') { const next = q.texts.shift()!; try { await deliver(next); } catch { /* it asked a question or ended: drop it */ } await sleep(2500); }
+        }
+      } finally { q.draining = false; if (!q.texts.length) waiting.delete(key); }
+    })();
+  }
+  return q.texts.length;
+}
+
 export async function sendMessage(ctx: Ctx, id: string, textIn: string): Promise<void> {
   const t = await needTmux(ctx); getSession(ctx, id); const text = String(textIn ?? '').replace(/\r\n?/g, '\n').replace(/\u0000/g, '').trim();
   if (!text) throw new CodeError('Type a message first.'); if (text.length > 30000) throw new CodeError('That message is too long.');
@@ -130,6 +158,11 @@ export async function sendMessage(ctx: Ctx, id: string, textIn: string): Promise
   const sc = parseScreen(await t.capture(name)); if (sc.state === 'permission' || sc.state === 'dialog') throw new CodeError('Claude is waiting for an answer (see the buttons above the message box).');
   if (text.includes('\n')) await t.paste(name, text); else await t.literal(name, text);
   await sleep(text.startsWith('/') ? 300 : text.includes('\n') ? 90 : 30); await t.keys(name, ['Enter']);
+}
+/** What the Code tab calls: sends, or queues behind the work in progress. */
+export async function sendOrQueueMessage(ctx: Ctx, id: string, text: string): Promise<number> {
+  const t = await needTmux(ctx); getSession(ctx, id); const name = tmuxName(id);
+  return sendOrQueue('s:' + id, text, async () => ((await t.has(name)) ? parseScreen(await t.capture(name)) : null), () => sendMessage(ctx, id, text));
 }
 /** Esc: stop what Claude is doing right now (the session stays up). */
 export async function interrupt(ctx: Ctx, id: string): Promise<void> {

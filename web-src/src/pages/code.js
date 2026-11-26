@@ -192,7 +192,7 @@ export default async function code(view) {
       const ok = files.filter((f) => f.path); if (!text && !ok.length) { files = []; drawFiles(); return; } sendBtn.disabled = true;
       try {
         let full = text; for (const f of ok) full = `${full}${full ? '\n' : ''}@${f.path}`;
-        await api(`${base}/send`, { method: 'POST', body: { text: full } }); pendingCmd = full.startsWith('/') ? { cmd: full.split('\n')[0].trim(), at: Date.now() } : null; ta.value = ''; try { localStorage.removeItem(KEY_D); } catch { /* ignore */ } grow(); files = []; drawFiles(); cmdBox.hidden = true; stick = true; poll(); setTimeout(poll, 250); setTimeout(poll, 700);
+        const sent = await api(`${base}/send`, { method: 'POST', body: { text: full } }); if (sent?.queued) toast(sent.queued === 1 ? 'Queued — it goes in when Claude finishes' : `Queued (${sent.queued} waiting) — they go in order when Claude finishes`); pendingCmd = full.startsWith('/') ? { cmd: full.split('\n')[0].trim(), at: Date.now() } : null; ta.value = ''; try { localStorage.removeItem(KEY_D); } catch { /* ignore */ } grow(); files = []; drawFiles(); cmdBox.hidden = true; stick = true; poll(); setTimeout(poll, 250); setTimeout(poll, 700);
       } catch (e) { toast(e.message, { error: true }); } finally { sendBtn.disabled = false; ta.focus({ preventScroll: true }); }
     }
     async function fetchUpload(im) { const bytes = Uint8Array.from(atob(im.data), (c) => c.charCodeAt(0)); return api(`/code/sessions/${sid}/upload?name=${encodeURIComponent(im.name)}`, { method: 'POST', raw: bytes }); }

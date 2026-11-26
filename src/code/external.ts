@@ -4,7 +4,7 @@ import type { Ctx } from '../ctx.ts';
 import { makeTmux } from './tmux.ts';
 import { parseScreen, type ScreenInfo } from './screen.ts';
 import { encodeCwd, readBack, readDelta, scanUsage, estimateCost, type Msg } from './transcript.ts';
-import { CodeError, listCommandsAt, commandOutputOf, writeUpload } from './manager.ts';
+import { sendOrQueue, CodeError, listCommandsAt, commandOutputOf, writeUpload } from './manager.ts';
 
 /** Claude Code sessions that were started outside this app: any tmux server on the host whose socket the container can see
  *  (the app's own is skipped; its sessions are managed). Found by looking for a pane running `claude`. */
@@ -67,6 +67,11 @@ export async function send(ctx: Ctx, key: string, textIn: string): Promise<void>
   const sc = parseScreen(await x.t.capture(x.pane)); if (sc.state === 'permission' || sc.state === 'dialog') throw new CodeError('Claude is waiting for an answer (see the buttons above the message box).');
   if (text.includes('\n')) await x.t.paste(x.pane, text); else await x.t.literal(x.pane, text);
   await new Promise((r) => setTimeout(r, text.startsWith('/') ? 400 : 150)); await x.t.keys(x.pane, ['Enter']);
+}
+/** Like send, but waits for Claude to finish when it is busy. Returns how many messages are waiting (0 = sent now). */
+export async function sendOrQueueExternal(ctx: Ctx, key: string, text: string): Promise<number> {
+  const x = await target(ctx, key);
+  return sendOrQueue('x:' + key, text, async () => ((await x.t.panes()).some((p) => p.pane === x.pane) ? parseScreen(await x.t.capture(x.pane)) : null), () => send(ctx, key, text));
 }
 export async function keys(ctx: Ctx, key: string, list: string[], allowed: Set<string>, text?: string): Promise<void> {
   const x = await target(ctx, key);

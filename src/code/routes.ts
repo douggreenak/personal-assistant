@@ -43,7 +43,7 @@ export async function codeRoutes(ctx: Ctx, path: string, method: string, query: 
     }
     if ((m = /^\/code\/sessions\/([\w-]+)\/live$/.exec(path)) && method === 'GET') return ok(await C.live(ctx, m[1], Math.max(0, Number(query.get('after') ?? 0) || 0), Math.min(100, Number(query.get('tail') ?? 0) || 0)));
     if ((m = /^\/code\/sessions\/([\w-]+)\/history$/.exec(path)) && method === 'GET') return ok(C.history(ctx, m[1], Number(query.get('before') ?? 0) || 0, Number(query.get('limit') ?? 30) || 30));
-    if ((m = /^\/code\/sessions\/([\w-]+)\/send$/.exec(path)) && method === 'POST') { await C.sendMessage(ctx, m[1], String((await h.json()).text ?? '')); return ok({ ok: true }); }
+    if ((m = /^\/code\/sessions\/([\w-]+)\/send$/.exec(path)) && method === 'POST') { const queued = await C.sendOrQueueMessage(ctx, m[1], String((await h.json()).text ?? '')); return ok({ ok: true, queued }); }
     if ((m = /^\/code\/sessions\/([\w-]+)\/interrupt$/.exec(path)) && method === 'POST') { await C.interrupt(ctx, m[1]); return ok({ ok: true }); }
     if ((m = /^\/code\/sessions\/([\w-]+)\/mode$/.exec(path)) && method === 'POST') return ok({ mode: await C.setMode(ctx, m[1], String((await h.json()).mode ?? '')) });
     if ((m = /^\/code\/sessions\/([\w-]+)\/model$/.exec(path)) && method === 'POST') { await C.setModel(ctx, m[1], String((await h.json()).model ?? '')); return ok({ ok: true }); }
@@ -62,7 +62,7 @@ export async function codeRoutes(ctx: Ctx, path: string, method: string, query: 
       if (what === 'live' && method === 'GET') return ok(await X.live(ctx, key, Math.max(0, Number(query.get('after') ?? 0) || 0), Math.min(100, Number(query.get('tail') ?? 0) || 0)));
       if (what === 'upload' && method === 'POST') return ok({ path: await X.upload(ctx, key, await h.body(51 * 1024 * 1024), query.get('name') ?? 'file') });
       if (what === 'history' && method === 'GET') return ok(await X.history(ctx, key, Number(query.get('before') ?? 0) || 0, Number(query.get('limit') ?? 30) || 30));
-      if (what === 'send' && method === 'POST') { await X.send(ctx, key, String((await h.json()).text ?? '')); return ok({ ok: true }); }
+      if (what === 'send' && method === 'POST') { const queued = await X.sendOrQueueExternal(ctx, key, String((await h.json()).text ?? '')); return ok({ ok: true, queued }); }
       if (what === 'keys' && method === 'POST') { const b = await h.json(); await X.keys(ctx, key, Array.isArray(b.keys) ? b.keys.map(String) : [], ALLOWED_KEYS, typeof b.text === 'string' ? b.text : undefined); return ok({ ok: true }); }
       if (what === 'screen' && method === 'GET') return ok(await X.screen(ctx, key, Number(query.get('scrollback') ?? 0) || 0));
       if (what === 'output' && method === 'GET') return ok({ text: await X.output(ctx, key, query.get('cmd') ?? '') });
