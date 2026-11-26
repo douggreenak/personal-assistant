@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, appendFileSync } from 'node:fs';
 import { join, extname } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -65,6 +65,10 @@ function webFile(rel: string): { body: Buffer; type: string } | null {
 }
 
 // Web-UI password: a changed password is stored as a scrypt hash in the data dir and overrides WEB_PASSWORD from .env.
+/** Every web chat exchange is kept for reference in data/chat-log/YYYY-MM.jsonl (the page itself only shows the last 6 hours). Never throws. */
+function logChat(ctx: Ctx, entry: { kind: 'chat' | 'ask'; text: string; reply: string; pictures: number }): void {
+  try { const at = new Date().toISOString(); const dir = join(ctx.cfg.dataDir, 'chat-log'); mkdirSync(dir, { recursive: true }); appendFileSync(join(dir, at.slice(0, 7) + '.jsonl'), JSON.stringify({ at, ...entry }) + '\n', { mode: 0o600 }); } catch { /* logging must never break chat */ }
+}
 const pwFile = (ctx: Ctx) => join(ctx.cfg.dataDir, 'web-password.json');
 function passwordMatches(ctx: Ctx, given: string): boolean | null {   // null = password login not set up
   let salt: Buffer, hash: Buffer;
@@ -260,8 +264,8 @@ export function createHttp(ctx: Ctx, deps: HttpDeps): Server {
     if (path === '/admin/restart' && method === 'POST') {
       send(res, 200, { ok: true }); setTimeout(() => (deps.restart ?? (() => process.exit(0)))(), 400); return;
     }
-    if (path === '/chat' && method === 'POST') { const b = await readJson(req, IMAGE_BODY_LIMIT); let images; try { images = await prepareImages(parseUploads(b.images)); } catch (e) { throw new HttpError(400, (e as Error).message); } return send(res, 200, { reply: await handleOwnerText(ctx, String(b.text ?? ''), undefined, images) }); }
-    if (path === '/ask' && method === 'POST') { const b = await readJson(req, IMAGE_BODY_LIMIT); let images; try { images = await prepareImages(parseUploads(b.images)); } catch (e) { throw new HttpError(400, (e as Error).message); } return send(res, 200, { answer: await ask(ctx, String(b.question ?? ''), toLlmImages(images)) }); }
+    if (path === '/chat' && method === 'POST') { const b = await readJson(req, IMAGE_BODY_LIMIT); let images; try { images = await prepareImages(parseUploads(b.images)); } catch (e) { throw new HttpError(400, (e as Error).message); } { const text = String(b.text ?? ''); const reply = await handleOwnerText(ctx, text, undefined, images); logChat(ctx, { kind: 'chat', text, reply, pictures: images.length }); return send(res, 200, { reply }); } }
+    if (path === '/ask' && method === 'POST') { const b = await readJson(req, IMAGE_BODY_LIMIT); let images; try { images = await prepareImages(parseUploads(b.images)); } catch (e) { throw new HttpError(400, (e as Error).message); } { const text = String(b.question ?? ''); const answer = await ask(ctx, text, toLlmImages(images)); logChat(ctx, { kind: 'ask', text, reply: answer, pictures: images.length }); return send(res, 200, { answer }); } }
 
     if (path === '/items' && method === 'GET') return send(res, 200, { items: ctx.items.list({ state: url.searchParams.get('state') ?? 'open', kind: url.searchParams.get('kind') ?? undefined, limit: Number(url.searchParams.get('limit') ?? 200), hidePowerSchool: true }) });
     if ((m = /^\/items\/([0-9a-f-]+)$/.exec(path)) && method === 'GET') {
