@@ -16,7 +16,7 @@ const go = (path) => { location.hash = '#/code' + (path ? '/' + path : ''); };
 
 export default async function code(view) {
   const status = await api('/code/status');
-  const timers = []; const cleanup = () => timers.forEach(clearInterval);
+  const timers = []; document.body.classList.add('code-page'); const cleanup = () => { timers.forEach(clearInterval); document.body.classList.remove('code-page'); };
   if (!status.enabled) { clear(view).append(head(), h('div', { class: 'card' }, empty('terminal', 'The Code tab is turned off', 'Turn it on in Settings → Code.'))); return cleanup; }
   const { projects } = await api('/code/projects'); const r = route();
 
@@ -147,7 +147,7 @@ export default async function code(view) {
     const msgs = h('div', { class: 'msgs code-msgs', role: 'log', 'aria-live': 'polite' }); const tools = new Map();
     const stateEl = h('span', {}); const infoEl = h('div', { class: 'muted s code-info' }); const titleEl = h('h2', { class: 'code-title' }, title);
     const permBox = h('div', {}); const term = h('pre', { class: 'term', 'aria-label': 'Terminal' }, ''); const termKeys = h('div', { class: 'term-keys' });
-    const ta = h('textarea', { rows: 1, 'data-primary': '', placeholder: 'Message Claude Code…  (Enter to send, Shift+Enter for a new line)', 'aria-label': 'Message' });
+    const ta = h('textarea', { rows: 1, 'data-primary': '', placeholder: 'Message Claude Code…', title: 'Enter sends · Shift+Enter adds a line · / for commands', 'aria-label': 'Message' });
     const grow = () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 200) + 'px'; }; ta.addEventListener('input', grow);
     const pics = pictureAttach(ta, (m) => toast(m)); pics.input.accept = 'image/*';
     const sendBtn = h('md-filled-icon-button', { 'aria-label': 'Send', onclick: () => send() }, icon('send'));
@@ -184,7 +184,7 @@ export default async function code(view) {
     const quick = h('div', { class: 'code-quick' }, ...[['Interrupt', 'stop', () => key('Escape')], ['Cycle mode', 'sync', () => key('BTab')], ['/ Commands', 'terminal', () => { ta.value = '/'; ta.focus(); drawCmds(); }]].map(([l, ic, fn]) => h('md-assist-chip', { label: l, onclick: fn })));
     const layout = () => { chatPane.hidden = view !== 'chat'; termPane.hidden = view !== 'term'; composer.hidden = view !== 'chat' || !running; quick.hidden = view !== 'chat' || !running; if (view !== 'chat' || !running) cmdBox.hidden = true; startNote.hidden = running; };
     const startNote = h('div', { class: 'card code-stopped' }, h('b', {}, 'This session is stopped.'), h('span', { class: 'muted' }, ' Start it to continue the conversation — everything said so far is kept.'));
-    clear(el).append(h('div', { class: 'card high code-session-head' }, h('div', { class: 'code-ph' }, h('md-icon-button', { 'aria-label': 'Back to ' + p.name, onclick: () => go('p/' + p.id) }, icon('arrow_back')), h('div', { style: 'flex:1 1 180px;min-width:0' }, titleEl, h('div', { class: 'muted s' }, p.name + ' · ' + (s.permissionMode || 'default permissions') + (s.model ? ' · ' + s.model : ''))), stateEl, headBtns), infoEl, seg),
+    clear(el).append(h('div', { class: 'card high code-session-head' }, h('div', { class: 'code-ph' }, h('md-icon-button', { 'aria-label': 'Back to ' + p.name, onclick: () => go('p/' + p.id) }, icon('arrow_back')), h('div', { style: 'flex:1 1 180px;min-width:0' }, titleEl, h('div', { class: 'muted s' }, p.name + ' · ' + (s.permissionMode || 'default permissions') + (s.model ? ' · ' + s.model : ''))), stateEl, headBtns), h('div', { class: 'code-sub' }, seg, infoEl)),
       chatPane, termPane, startNote, quick, cmdBox, composer, pics.strip, pics.input); drawHead(); layout();
 
     // rendering the conversation
@@ -211,7 +211,7 @@ export default async function code(view) {
       if (m.t === 'result') { const out = tools.get(m.toolUseId); const pre = h('pre', { class: 'code-pre' + (m.isError ? ' err' : '') }, m.text.length > 3000 ? m.text.slice(0, 3000) + '\n…' : m.text || '(no output)'); if (out) { out.append(pre); if (m.isError) out.closest('details')?.classList.add('error'); } else msgs.append(h('details', { class: 'code-tool' }, h('summary', {}, h('b', {}, 'Result')), pre)); }
     }
     function drawLive(l) {
-      running = l.running; scr = l.screen; const sc = l.screen?.state || 'stopped';
+      const wasRunning = running; running = l.running; scr = l.screen; if (running && !wasRunning && view === 'chat') setTimeout(() => ta.focus({ preventScroll: true }), 150); const sc = l.screen?.state || 'stopped';
       clear(stateEl).append(stateChip(sc, running)); drawHead(); layout();
       infoEl.textContent = [scr?.working && '✻ ' + scr.working, scr?.mode, l.lastActivity && 'last activity ' + ago(l.lastActivity)].filter(Boolean).join(' · ');
       // permission question / dialog

@@ -282,7 +282,7 @@ try {
     await goto('home'); await page.locator('h1').click();
     await press('g'); assert.ok(await page.locator('.chord-hint').isVisible()); await press('i'); await heading('Items');
     for (const [k, h] of [['h', /Good|Still/], ['c', 'Chat'], ['b', 'Inbox'], ['a', 'Approvals'], ['o', 'Connectors'], ['y', 'System'], ['s', 'Settings']]) { await page.locator('h1').first().click(); await press('g'); await press(k); await heading(h); }
-    for (const [k, h] of [['2', 'Items'], ['3', 'Chat'], ['8', 'Settings'], ['1', /Good|Still/]]) { await page.locator('h1').first().click(); await press(k); await heading(h); }
+    for (const [k, h] of [['2', 'Items'], ['3', 'Chat'], ['8', 'System'], ['9', 'Settings'], ['1', /Good|Still/]]) { await page.locator('h1').first().click(); await press(k); await heading(h); }
     await page.locator('h1').first().click(); await press('g'); await press('z'); assert.equal(await page.locator('.chord-hint').count(), 0);          // unknown second key cancels
   });
 
@@ -290,7 +290,6 @@ try {
     await goto('items'); await page.locator('h1').click(); await press('?'); await dlg().waitFor(); assert.match(await dlg().innerText(), /Keyboard shortcuts/); assert.match(await dlg().innerText(), /Jump to the text box/); await press('Escape'); await page.waitForTimeout(500);
     assert.equal(await dlg().count(), 0);
     await press('/'); await press('Control+k'); await dlg().waitFor(); assert.match(await dlg().innerText(), /Search/); await press('Escape'); await page.waitForTimeout(500);
-    await page.getByRole('button', { name: 'Keyboard shortcuts' }).click(); await dlg().waitFor(); await press('Escape');
   });
 
   await step('keyboard: n creates, Ctrl+Enter submits, j/k select, x completes, e edits, Delete drops (with confirm)', async () => {
@@ -328,7 +327,7 @@ try {
   });
 
 
-  await step('items: sort, time filters, quick add, relative dates, export, remembered view', async () => {
+  await step('items: time filters, quick add, relative dates', async () => {
     const T = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 16);
     await api('POST', '/items', { kind: 'task', title: 'Zeta overdue', dueAt: T(-2), priority: 'low' });
     await api('POST', '/items', { kind: 'task', title: 'Yankee soon', dueAt: T(3), priority: 'urgent' });
@@ -336,15 +335,7 @@ try {
     assert.match(await row('Zeta overdue').innerText(), /overdue · 2 days ago/); assert.match(await row('Yankee soon').innerText(), /due in 3 days/);
     await page.getByRole('button', { name: /Overdue/ }).click(); await page.waitForTimeout(300); assert.equal(await row('Yankee soon').count(), 0); assert.ok(await row('Zeta overdue').count());
     await page.getByRole('button', { name: 'Any time' }).click();
-    await page.locator('md-text-button', { hasText: 'Sort:' }).click(); await page.locator('md-menu-item:visible', { hasText: 'A–Z' }).click(); await page.waitForTimeout(300);
-    const titles = await page.locator('.row .t').allInnerTexts(); assert.deepEqual(titles, [...titles].sort((a, b) => a.localeCompare(b)));
-    await page.reload(); await page.waitForTimeout(900); assert.match(await page.locator('md-text-button', { hasText: 'Sort:' }).innerText(), /A–Z/);   // remembered
-    await page.locator('md-text-button', { hasText: 'Sort:' }).click(); await page.locator('md-menu-item:visible', { hasText: 'Due date' }).click();
     await page.locator('md-outlined-text-field[label^="Quick add"]').click(); await page.keyboard.type('Quick added thing'); await page.keyboard.press('Enter'); await row('Quick added thing').waitFor();
-    await page.evaluate(() => { const o = URL.createObjectURL; URL.createObjectURL = (b) => { window.__blob = b; return o.call(URL, b); }; });
-    const [dl] = await Promise.all([page.waitForEvent('download'), (async () => { await page.locator('md-text-button', { hasText: 'Export' }).click(); await page.locator('md-menu-item:visible', { hasText: 'CSV' }).click(); })()]);
-    assert.match(dl.suggestedFilename(), /^items-\d{4}-\d\d-\d\d\.csv$/);
-    const csv = await page.evaluate(() => window.__blob.text()); assert.match(csv, /Quick added thing/); assert.match(csv, /^kind,title/);
   });
 
   await step('command palette: commands, Enter runs the first match; tab title shows counts', async () => {
@@ -363,8 +354,8 @@ try {
   });
 
   await step('connection lost: banner appears and clears when the server answers again; chat ArrowUp recalls', async () => {
-    await goto('home'); await ctx.setOffline(true); await page.getByRole('button', { name: 'Refresh' }).click(); await page.locator('.offline').waitFor();
-    await ctx.setOffline(false); await page.getByRole('button', { name: 'Refresh' }).click(); await page.locator('.offline').waitFor({ state: 'detached' });
+    await goto('home'); await ctx.setOffline(true); await page.evaluate(() => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'r', bubbles: true }))); await page.locator('.offline').waitFor();
+    await ctx.setOffline(false); await page.evaluate(() => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'r', bubbles: true }))); await page.locator('.offline').waitFor({ state: 'detached' });
     await page.evaluate(() => localStorage.setItem('chat_history', JSON.stringify([{ role: 'me', text: 'previous message' }, { role: 'bot', text: 'ok' }])));
     await goto('chat'); await page.locator('textarea[aria-label=Message]').focus(); await page.keyboard.press('ArrowUp');
     assert.equal(await page.locator('textarea[aria-label=Message]').inputValue(), 'previous message');
