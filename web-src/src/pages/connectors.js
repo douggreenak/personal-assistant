@@ -63,8 +63,9 @@ export default async function connectors(view, { refreshStatus }) {
   function add() {
     const t = h('md-outlined-text-field', { label: 'Paste everything — docs, example requests, your key', type: 'textarea', rows: 8, 'data-primary': '' });
     const key = h('md-outlined-text-field', { label: 'API key (optional — I also find keys inside the paste)', type: 'password', autocomplete: 'off', 'supporting-text': 'Keys are stored on the server only; the model never sees them.' });
+    const label = h('md-outlined-text-field', { label: 'Name (optional)', maxlength: 80, 'supporting-text': 'Already connected to this service? Add it again for another account — give it a name to tell them apart.' });
     const log = h('div', { class: 'autolog', 'aria-live': 'polite' }), tail = h('div', { class: 'form' });
-    const form = h('div', { class: 'form' }, h('p', { class: 'muted' }, 'Paste whatever the service gave you — docs, a curl example, the key, all in one go. For an MCP server, paste its URL (or its config / the claude mcp add line) and I’ll list its tools. I’ll pull the key out and keep it on the server, work out how the service logs in, build the connector (it can read, write, or both — every write asks you first), try it for real, fix whatever goes wrong, and switch it on.'), t, key);
+    const form = h('div', { class: 'form' }, h('p', { class: 'muted' }, 'Paste whatever the service gave you — docs, a curl example, the key, all in one go. For an MCP server, paste its URL (or its config / the claude mcp add line) and I’ll list its tools. I’ll pull the key out and keep it on the server, work out how the service logs in, build the connector (it can read, write, or both — every write asks you first), try it for real, fix whatever goes wrong, and switch it on.'), t, key, label);
     let poll, cur = null;
     const go = h('md-filled-button', { onclick: start }, icon('bolt'), 'Connect');
     const stopPoll = () => clearInterval(poll);
@@ -83,7 +84,7 @@ export default async function connectors(view, { refreshStatus }) {
     function reset() { stopPoll(); clear(log); clear(tail); form.hidden = false; go.disabled = false; go.hidden = false; t.focus(); }
     async function start() {
       if (!t.value.trim()) { t.focus(); return; }
-      go.disabled = true; const r = await guarded(() => api('/connectors/auto', { method: 'POST', body: { input: t.value, apiKey: key.value || undefined } }));
+      go.disabled = true; const r = await guarded(() => api('/connectors/auto', { method: 'POST', body: { input: t.value, apiKey: key.value || undefined, label: label.value.trim() || undefined } }));
       if (!r) { go.disabled = false; return; }
       key.value = ''; form.hidden = true; go.hidden = true; watch(r.job.id);
     }

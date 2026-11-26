@@ -209,7 +209,7 @@ export function createHttp(ctx: Ctx, deps: HttpDeps): Server {
       try { setAutoAllowed(ctx, m[1], m[2], !!(await readJson(req)).allow); } catch (e) { throw new HttpError(400, (e as Error).message); }
       return send(res, 200, { ok: true });
     }
-    if (path === '/connectors/auto' && method === 'POST') { const b = await readJson(req); const j = startAutoConnect(ctx, String(b.input ?? ''), b.apiKey ? String(b.apiKey) : undefined); return send(res, 202, { job: pub(j) }); }
+    if (path === '/connectors/auto' && method === 'POST') { const b = await readJson(req); const j = startAutoConnect(ctx, String(b.input ?? ''), b.apiKey ? String(b.apiKey) : undefined, undefined, b.label ? String(b.label) : undefined); return send(res, 202, { job: pub(j) }); }
     if ((m = /^\/connectors\/auto\/(\w+)(\/key)?$/.exec(path))) {
       const j = getJob(m[1]); if (!j) throw new HttpError(404, 'unknown job');
       if (m[2] && method === 'POST') { try { return send(res, 200, { job: pub(continueWithKey(ctx, m[1], String((await readJson(req)).apiKey ?? ''))) }); } catch (e) { throw new HttpError(400, (e as Error).message); } }

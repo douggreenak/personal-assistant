@@ -203,6 +203,22 @@ export function listConnectors(ctx: Ctx): ConnRow[] {
 }
 export const getConn = (ctx: Ctx, id: string) => listConnectors(ctx).find((c) => c.id === id);
 
+/** Several connections to the same service (two Canopy accounts, two mailboxes…) are allowed: the 2nd, 3rd… get `-2`, `-3` ids,
+ *  a "(2)" name and their own credential name, so each keeps its own key. `n` is 1 for the first. */
+export function uniqueConnection(ctx: Ctx, baseId: string): { id: string; n: number } {
+  if (!getConn(ctx, baseId)) return { id: baseId, n: 1 };
+  for (let n = 2; n < 100; n++) { const id = `${baseId.slice(0, 38)}-${n}`; if (!getConn(ctx, id)) return { id, n }; }
+  throw new Error('Too many connections to the same service.');
+}
+/** Applies uniqueConnection to a validated manifest and (when given) the owner's own label. */
+export function makeUnique(ctx: Ctx, m: Manifest, label?: string): Manifest {
+  const { id, n } = uniqueConnection(ctx, m.id); const name = label?.trim().slice(0, 80);
+  if (n === 1 && !name) return m;
+  const out: Manifest = { ...m, id, name: name || `${m.name} (${n})` };
+  if (n > 1 && m.auth.type !== 'none' && m.auth.secret) out.auth = { ...m.auth, secret: `${m.auth.secret.slice(0, 57)}_${n}` };
+  return out;
+}
+
 /** The pasted text itself, or — if it is just an https URL — that page's visible text. Throws a user-readable message. */
 export async function loadDocs(input: string, fetchImpl: typeof fetch = fetch): Promise<string> {
   const docs = input.trim();
@@ -227,7 +243,7 @@ export async function proposeConnector(ctx: Ctx, input: string, fetchImpl: typeo
   const raw = await ctx.llm.json({ system: CONNECTOR_SYSTEM, prompt: `<docs>\n${docs.slice(0, 60000)}\n</docs>`, schema: MANIFEST_SCHEMA as unknown as Record<string, unknown> });
   let m: Manifest;
   try { m = validateManifest(raw); await assertPublicHttps(m.baseUrl); } catch (e) { return `I couldn't build a safe connector from that: ${(e as Error).message}`; }
-  if (getConn(ctx, m.id)) return `A connector named "${m.id}" already exists.`;
+  m = makeUnique(ctx, m);
   ctx.db.prepare('INSERT INTO connectors (id, manifest, status, created_at) VALUES (?,?,?,?)').run(m.id, JSON.stringify(m), 'proposed', nowIso());
   const secretNote = m.auth.type === 'none' ? 'no credentials' : `credential ${m.auth.secret} (${m.auth.type})`;
   const aid = createApproval(ctx, {

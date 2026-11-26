@@ -3,6 +3,7 @@ import { nowIso } from './db.ts';
 import { CONNECTOR_SYSTEM, FetchProblem, describeCaps, MANIFEST_SCHEMA, assertPublicHttps, fetchRecords, getConn, getSecret, loadDocs, toMessage, validateManifest, type Manifest } from './connectors.ts';
 import { deleteConnector, hasSecret, setSecret } from './admin.ts';
 import { extractKeys, hint } from './keyscan.ts';
+import { makeUnique, uniqueConnection } from './connectors.ts';
 import { buildManifest, mcpIdFor, mcpOpen, mcpTools, McpError, MAX_MCP_TOOLS, parseMcpInput, toolsToActions, type McpCandidate } from './mcp.ts';
 
 /**
@@ -11,7 +12,7 @@ import { buildManifest, mcpIdFor, mcpOpen, mcpTools, McpError, MAX_MCP_TOOLS, pa
  * stay (public HTTPS only, one read-only GET, manifest validation, the model never sees the credential).
  */
 export interface AutoJob {
-  id: string; state: 'running' | 'needs_key' | 'done' | 'failed'; steps: string[]; connectorId?: string; secret?: string; result?: string; startedAt: number;
+  id: string; state: 'running' | 'needs_key' | 'done' | 'failed'; steps: string[]; connectorId?: string; secret?: string; label?: string; result?: string; startedAt: number;
 }
 const jobs = new Map<string, AutoJob>();
 /** An MCP server that answered 401 and is waiting for a key (not serialized to the browser). */
@@ -32,9 +33,9 @@ const friendly = (msg: string): string => {
 
 export function getJob(id: string): AutoJob | undefined { return jobs.get(id); }
 
-export function startAutoConnect(ctx: Ctx, input: string, apiKey: string | undefined, fetchImpl: typeof fetch = fetch): AutoJob {
+export function startAutoConnect(ctx: Ctx, input: string, apiKey: string | undefined, fetchImpl: typeof fetch = fetch, label?: string): AutoJob {
   for (const [k, v] of jobs) if (Date.now() - v.startedAt > 3600_000) jobs.delete(k);   // keep the map small
-  const job: AutoJob = { id: Math.random().toString(36).slice(2, 10), state: 'running', steps: [], startedAt: Date.now() };
+  const job: AutoJob = { id: Math.random().toString(36).slice(2, 10), state: 'running', steps: [], startedAt: Date.now(), label: label?.trim().slice(0, 80) || undefined };
   jobs.set(job.id, job);
   void run(ctx, job, input, apiKey, fetchImpl).catch((e) => { job.state = 'failed'; job.result = friendly((e as Error).message); });
   return job;
@@ -91,7 +92,7 @@ async function run(ctx: Ctx, job: AutoJob, input: string, apiKey: string | undef
   note(job, 'Designing a connector…');
   let m: Manifest;
   try { m = await design(ctx, docs); } catch (e) { throw new Error(`I couldn't build a safe connector from that: ${(e as Error).message}`); }
-  if (getConn(ctx, m.id)) throw new Error(`A connector named "${m.id}" already exists. Delete it first if you want to redo it.`);
+  m = makeUnique(ctx, m, job.label);   // a second connection to the same service gets its own id, name and credential
   ctx.db.prepare('INSERT INTO connectors (id, manifest, status, created_at) VALUES (?,?,?,?)').run(m.id, JSON.stringify(m), 'approved', nowIso());
   job.connectorId = m.id;
   note(job, `Designed “${m.name}” — ${describeCaps(m)}.`);
@@ -140,6 +141,7 @@ async function verifyAndEnable(ctx: Ctx, job: AutoJob, id: string, docs: string,
           prompt: `<docs>\n${docs.slice(0, 40000)}\n</docs>\n<current_manifest>\n${JSON.stringify(m)}\n</current_manifest>\n<problem>\n${lastErr}\n</problem>\n<response>\n${sample.slice(0, 1500)}\n</response>` });
         const fixed = validateManifest({ ...(raw as object), id }); await assertPublicHttps(fixed.baseUrl + (fixed.poll?.path ?? ''));
         if (fixed.auth.type !== 'none') fixed.auth.secret = m.auth.type !== 'none' ? m.auth.secret : fixed.auth.secret;
+        fixed.name = m.name;
         if (fixed.auth.type !== 'none' && !hasSecret(ctx, fixed.auth.secret!) && !getSecret(ctx, fixed.auth.secret!)) { throw new Error('the fix needs a different credential'); }
         m = fixed; ctx.db.prepare('UPDATE connectors SET manifest = ? WHERE id = ?').run(JSON.stringify(m), id);
         note(job, `Adjusted: ${m.baseUrl}${m.poll?.path ?? ''}, records at “${m.poll?.itemsPath || '(root)'}”, id “${m.poll?.idField}”.`);
@@ -154,11 +156,10 @@ async function verifyAndEnable(ctx: Ctx, job: AutoJob, id: string, docs: string,
 
 /** Connects to a remote MCP server, lists its tools, and saves them as actions (each call asks first). No model involved. */
 async function connectMcp(ctx: Ctx, job: AutoJob, c: McpCandidate, key: string | undefined, fetchImpl: typeof fetch): Promise<void> {
-  const id = mcpIdFor(c.url);
+  const { id, n } = uniqueConnection(ctx, mcpIdFor(c.url));
   const secret = `${id.slice(4).toUpperCase().replace(/-/g, '_')}_MCP_KEY`;
   const auth: Manifest['auth'] = c.queryParam ? { type: 'query', param: c.queryParam, secret } : c.authHeader && !/^authorization$/i.test(c.authHeader) ? { type: 'header', header: c.authHeader, secret } : key || c.hasKey ? { type: 'bearer', secret } : { type: 'none' };
   const url = new URL(c.url); if (c.queryParam) url.searchParams.delete(c.queryParam);
-  if (getConn(ctx, id)) throw new Error(`A connector named "${id}" already exists. Delete it first if you want to redo it.`);
   await assertPublicHttps(url.toString());
   const headers: Record<string, string> = {}; const target = new URL(url);
   if (auth.type !== 'none') {
@@ -180,7 +181,7 @@ async function connectMcp(ctx: Ctx, job: AutoJob, c: McpCandidate, key: string |
   const actions = toolsToActions(tools);
   if (!actions.length) throw new Error('That MCP server has no tools I can use.');
   if (tools.length > MAX_MCP_TOOLS) note(job, `Keeping the first ${MAX_MCP_TOOLS} (read-only tools first).`);
-  const m = validateManifest(buildManifest(id, serverName || id.slice(4), url, auth, actions));
+  const m = validateManifest(buildManifest(id, job.label || (n > 1 ? `${serverName || mcpIdFor(c.url).slice(4)} (${n})` : serverName || id.slice(4)), url, auth, actions));
   ctx.db.prepare('INSERT INTO connectors (id, manifest, status, created_at) VALUES (?,?,?,?)').run(m.id, JSON.stringify(m), 'enabled', nowIso());
   ctx.db.prepare("INSERT INTO kv (key, value) VALUES (?, '1') ON CONFLICT(key) DO UPDATE SET value = '1'").run(`connector.tested.${m.id}`);
   job.connectorId = m.id;
