@@ -61,7 +61,7 @@ export default async function connectors(view, { refreshStatus }) {
     pending = Object.fromEntries(((await guarded(() => api('/approvals'))) ?? { approvals: [] }).approvals.filter((a) => a.kind === 'connector').map((a) => [a.payload.id, a.id])); const { connectors: cs } = (await guarded(() => api('/connectors/full'))) ?? { connectors: [] };
     loaded = true; clear(list).append(...(cs.length ? cs.map(card) : [empty('extension', 'No connectors yet', 'Paste a service\'s docs and key, or an MCP server\'s URL, and I\'ll connect it for you.')])); }
   function add() {
-    const t = h('md-outlined-text-field', { label: 'Paste everything — docs, example requests, your key', type: 'textarea', rows: 8, 'data-primary': '' });
+    const t = h('md-outlined-text-field', { label: 'Paste docs, a docs link, an MCP URL — or just the service name and I\'ll look up the docs', type: 'textarea', rows: 8, 'data-primary': '' });
     const key = h('md-outlined-text-field', { label: 'API key (optional — I also find keys inside the paste)', type: 'password', autocomplete: 'off', 'supporting-text': 'Keys are stored on the server only; the model never sees them.' });
     const label = h('md-outlined-text-field', { label: 'Name (optional)', maxlength: 80, 'supporting-text': 'Already connected to this service? Add it again for another account — give it a name to tell them apart.' });
     const log = h('div', { class: 'autolog', 'aria-live': 'polite' }), tail = h('div', { class: 'form' });

@@ -220,15 +220,57 @@ export function makeUnique(ctx: Ctx, m: Manifest, label?: string): Manifest {
 }
 
 /** The pasted text itself, or — if it is just an https URL — that page's visible text. Throws a user-readable message. */
+const htmlToText = (h: string): string => h.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>|<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+/** One public https page: its visible text and the links on it (resolved). Throws a user-readable message. */
+async function fetchPage(url: string, fetchImpl: typeof fetch): Promise<{ text: string; links: string[] }> {
+  const u = await assertPublicHttps(url);
+  const r = await fetchImpl(u, { redirect: 'manual', signal: AbortSignal.timeout(20000) });
+  if (!r.ok) throw new Error(`Couldn't read ${url} (HTTP ${r.status}). Paste the docs text instead.`);
+  const raw = await r.text(); const links: string[] = [];
+  for (const m of raw.matchAll(/href\s*=\s*["']([^"'#]+)["']/gi)) { try { links.push(new URL(m[1], u).toString()); } catch { /* not a URL */ } }
+  return { text: htmlToText(raw), links };
+}
 export async function loadDocs(input: string, fetchImpl: typeof fetch = fetch): Promise<string> {
   const docs = input.trim();
   if (!/^https:\/\/\S+$/.test(docs)) return docs;
-  try {
-    const u = await assertPublicHttps(docs);
-    const r = await fetchImpl(u, { redirect: 'manual', signal: AbortSignal.timeout(20000) });
-    if (!r.ok) throw new Error(`Couldn't read ${docs} (HTTP ${r.status}). Paste the docs text instead.`);
-    return (await r.text()).replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>|<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 60000);
-  } catch (e) { const m = (e as Error).message; throw new Error(m.startsWith("Couldn't read") ? m : `Couldn't fetch that URL: ${m}. Paste the docs text instead.`); }
+  try { return (await fetchPage(docs, fetchImpl)).text.slice(0, 60000); }
+  catch (e) { const m = (e as Error).message; throw new Error(m.startsWith("Couldn't read") ? m : `Couldn't fetch that URL: ${m}. Paste the docs text instead.`); }
+}
+
+const REF_LINK = /api|reference|openapi|swagger|endpoint|rest|sdk|docs?\/|guide/i;
+const DOCS_SYSTEM = `You help set up an integration for a personal assistant. The owner named a service (or described one) but gave no documentation. Name up to 5 https URLs of the service's OFFICIAL, PUBLIC API documentation — its REST API reference, getting-started/authentication page, or an OpenAPI/Swagger spec file. Only URLs you are confident exist on the vendor's own domain; never guess paths. Answer as JSON {"urls": [...]} (empty if you do not know the service).`;
+/** True when the input is just a service name or a vague request rather than docs, a URL or a pasted example. */
+export const looksLikeNoDocs = (input: string): boolean => { const t = input.trim(); return t.length < 400 && !/https?:\/\//i.test(t) && !/\b(GET|POST|curl)\b|\{[\s\S]*\}/.test(t); };
+
+/**
+ * The documentation for the connector being built. Pasted docs are used as they are. A bare URL is read, and when that page is only an index
+ * (little text) the reference pages it links to are read as well. A service NAME makes the model suggest the vendor's official docs URLs, which are
+ * then fetched. Everything fetched is public https only (assertPublicHttps) and treated as untrusted data. `note` reports each step to the owner.
+ */
+export async function gatherDocs(ctx: Ctx, input: string, note: (s: string) => void, fetchImpl: typeof fetch = fetch): Promise<string> {
+  const text = input.trim(); const parts: string[] = []; let budget = 60000;
+  const add = (src: string, t: string) => { const piece = t.slice(0, Math.min(budget, 30000)); if (piece.length > 200) { parts.push(`--- ${src} ---\n${piece}`); budget -= piece.length; } };
+  const read = async (url: string, follow: boolean): Promise<boolean> => {
+    try {
+      note(`Reading ${url}…`); const p = await fetchPage(url, fetchImpl); add(url, p.text);
+      if (follow && p.text.length < 3000) {   // an index page: pull the reference pages it points to (same site, a few of them)
+        const host = new URL(url).host; const more = [...new Set(p.links)].filter((l) => { try { const x = new URL(l); return x.protocol === 'https:' && x.host === host && REF_LINK.test(x.pathname) && !/\.(png|jpe?g|svg|css|js|zip)$/i.test(x.pathname); } catch { return false; } }).slice(0, 4);
+        for (const l of more) { if (budget < 2000) break; try { note(`Reading ${l}…`); add(l, (await fetchPage(l, fetchImpl)).text); } catch { /* skip a page that will not load */ } }
+      }
+      return true;
+    } catch (e) { note(`Could not read ${url}: ${(e as Error).message.slice(0, 100)}`); return false; }
+  };
+  if (/^https:\/\/\S+$/.test(text)) { if (!(await read(text, true))) throw new Error(`Couldn't read ${text}. Paste the docs text instead.`); }
+  else if (looksLikeNoDocs(text)) {
+    note('No documentation was given — looking for the official API docs…');
+    let urls: string[] = [];
+    try { const r = await ctx.llm.json({ system: DOCS_SYSTEM, prompt: `<service>\n${text.slice(0, 300)}\n</service>`, schema: { type: 'object', properties: { urls: { type: 'array', items: { type: 'string' } } }, required: ['urls'] } }) as { urls?: unknown }; urls = (Array.isArray(r?.urls) ? r.urls : []).filter((u): u is string => typeof u === 'string' && /^https:\/\/\S+$/.test(u)).slice(0, 5); } catch { /* fall through to the error below */ }
+    for (const u of urls) { if (budget < 2000) break; await read(u, true); }
+    if (!parts.length) throw new Error("I couldn't find documentation for that on my own. Paste a link to the service's API docs (or the docs text) and try again.");
+    note(`Found ${parts.length} documentation page${parts.length === 1 ? '' : 's'}.`);
+    return `Service the owner asked for: ${text.slice(0, 200)}\n\n` + parts.join('\n\n');
+  } else return text;
+  return parts.join('\n\n');
 }
 
 export const describeCaps = (m: Manifest): string => [

@@ -1,6 +1,6 @@
 import type { Ctx } from './ctx.ts';
 import { nowIso } from './db.ts';
-import { CONNECTOR_SYSTEM, FetchProblem, describeCaps, MANIFEST_SCHEMA, assertPublicHttps, fetchRecords, getConn, getSecret, loadDocs, toMessage, validateManifest, type Manifest } from './connectors.ts';
+import { CONNECTOR_SYSTEM, FetchProblem, describeCaps, MANIFEST_SCHEMA, assertPublicHttps, fetchRecords, getConn, getSecret, loadDocs, gatherDocs, toMessage, validateManifest, type Manifest } from './connectors.ts';
 import { deleteConnector, hasSecret, setSecret } from './admin.ts';
 import { extractKeys, hint } from './keyscan.ts';
 import { makeUnique, uniqueConnection } from './connectors.ts';
@@ -88,7 +88,7 @@ async function run(ctx: Ctx, job: AutoJob, input: string, apiKey: string | undef
     try { await connectMcp(ctx, job, mcp, mcpKey, fetchImpl); return; }
     catch (e) { if (mcp.explicit || !(e instanceof McpError)) throw e; note(job, 'It does not speak MCP — reading it as API docs instead.'); }
   }
-  const docs = await loadDocs(scan.clean, fetchImpl);
+  const docs = await gatherDocs(ctx, scan.clean, (s) => note(job, s), fetchImpl);
   note(job, 'Designing a connector…');
   let m: Manifest;
   try { m = await design(ctx, docs); } catch (e) { throw new Error(`I couldn't build a safe connector from that: ${(e as Error).message}`); }

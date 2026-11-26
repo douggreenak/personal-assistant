@@ -432,3 +432,4 @@ body { overscroll-behavior-y: none; }
 .track .reached .dot { background: var(--md-sys-color-primary); border-color: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); }
 .track .current { color: var(--md-sys-color-on-surface); font-weight: 650; }
 .track .bridge { flex: 1; min-width: 16px; height: 2px; margin-top: 10px; background: var(--md-sys-color-outline-variant); } .track .bridge.filled { background: var(--md-sys-color-primary); }
+.setup-links { display: grid; gap: 6px; } .setup-link { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 14px; background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); text-decoration: none; font-weight: 600; font-size: .92rem; } .setup-link:hover { filter: brightness(1.06); } .setup-link .ic { width: 18px; height: 18px; flex: none; }

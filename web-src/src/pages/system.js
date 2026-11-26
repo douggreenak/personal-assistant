@@ -16,6 +16,7 @@ async function setupDialog(integ, done) {
   const box = h('md-outlined-text-field', { label: 'Paste the information here', type: 'textarea', rows: 7, 'data-primary': '', 'supporting-text': 'One value per line, like “' + g.fields[0].label + ': …”. Values are recognised by their label or by what they look like.' });
   const result = h('div', {});
   const content = h('div', { class: 'form setup-guide' }, h('p', { class: 'muted' }, g.summary),
+    g.links?.length ? h('div', { class: 'setup-links' }, h('h3', { class: 'title-m' }, 'Go here'), ...g.links.map((l) => h('a', { class: 'setup-link', href: l.url, target: '_blank', rel: 'noopener noreferrer' }, icon('open_in_new'), l.label))) : '',
     h('h3', { class: 'title-m' }, 'What to do'), h('ol', { class: 'setup-steps' }, g.steps.map((t) => h('li', {}, t))),
     h('h3', { class: 'title-m' }, 'What I need from you'), h('ul', { class: 'setup-fields' }, g.fields.map((f) => h('li', {}, h('b', {}, f.label), f.optional ? h('span', { class: 'muted' }, ' (optional)') : '', h('span', { class: 'muted' }, ' — ' + f.hint)))),
     box, result);

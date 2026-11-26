@@ -5,7 +5,7 @@ import { saveServiceAccount } from './admin.ts';
 
 /** What each built-in connection needs, in plain words: where to go, what to do, and which values to paste. */
 export interface SetupField { key: string; label: string; hint: string; secret?: boolean; optional?: boolean; aliases?: string[] }
-export interface SetupGuide { id: string; name: string; summary: string; steps: string[]; fields: SetupField[]; note?: string }
+export interface SetupGuide { id: string; name: string; summary: string; steps: string[]; fields: SetupField[]; note?: string; links?: { label: string; url: string }[] }
 
 export const GUIDES: SetupGuide[] = [
   { id: 'canopy', name: 'Canopy', summary: 'Your school planner: classes, assignments and grades.',
@@ -16,12 +16,15 @@ export const GUIDES: SetupGuide[] = [
     fields: [{ key: 'TRANSCRIBE_URL', label: 'Transcription URL', hint: 'http://whisper:8000/v1/audio/transcriptions', aliases: ['url', 'address'] }] },
   { id: 'gmail', name: 'Gmail', summary: 'Reads your mail (and mail you send) so it can find things you need to do.',
     steps: ['Go to console.cloud.google.com → APIs & Services → Credentials, and create an "OAuth client ID" (Desktop app). Enable the Gmail API for the project.', 'Copy the client ID and client secret.', 'Get a refresh token by running `npm run google-auth` on the server (docs/google-setup.md walks through it) and paste what it prints.', 'Saving turns "Read Gmail" on.'],
+    links: [{ label: '1. Create the OAuth client (Credentials)', url: 'https://console.cloud.google.com/apis/credentials' }, { label: '2. Turn on the Gmail API', url: 'https://console.cloud.google.com/apis/library/gmail.googleapis.com' }, { label: 'OAuth consent screen (add yourself as a test user)', url: 'https://console.cloud.google.com/apis/credentials/consent' }],
     fields: [{ key: 'GOOGLE_CLIENT_ID', label: 'OAuth client ID', hint: '…apps.googleusercontent.com', aliases: ['clientid', 'client'] }, { key: 'GOOGLE_CLIENT_SECRET', label: 'OAuth client secret', hint: 'GOCSPX-…', secret: true, aliases: ['clientsecret', 'secret'] }, { key: 'GOOGLE_REFRESH_TOKEN', label: 'Refresh token', hint: '1//…', secret: true, aliases: ['refreshtoken', 'refresh', 'token'] }] },
   { id: 'chat', name: 'Google Chat bot', summary: 'Lets you message the assistant from Google Chat.',
     steps: ['In Google Cloud, create a service account, download its JSON key, and enable the Google Chat API and Pub/Sub.', 'Create a Pub/Sub topic + subscription for the Chat app and copy the subscription name (projects/…/subscriptions/…).', 'Paste the whole service-account JSON file contents here, plus the subscription line.', 'Also add your Chat user id (users/123…) as "Allowed users" — only these people may command the assistant.'],
+    links: [{ label: '1. Create the service account + JSON key', url: 'https://console.cloud.google.com/iam-admin/serviceaccounts' }, { label: '2. Turn on the Google Chat API', url: 'https://console.cloud.google.com/apis/library/chat.googleapis.com' }, { label: '3. Configure the Chat app (connection: Cloud Pub/Sub)', url: 'https://console.cloud.google.com/apis/api/chat.googleapis.com/hangouts-chat' }, { label: '4. Pub/Sub topic + subscription', url: 'https://console.cloud.google.com/cloudpubsub/topic/list' }, { label: 'Google’s Chat app guide', url: 'https://developers.google.com/workspace/chat/quickstart/pubsub' }],
     fields: [{ key: 'GOOGLE_SERVICE_ACCOUNT_FILE', label: 'Service account JSON', hint: 'paste the whole file', aliases: ['serviceaccount', 'json'] }, { key: 'CHAT_PUBSUB_SUBSCRIPTION', label: 'Pub/Sub subscription', hint: 'projects/…/subscriptions/…', aliases: ['subscription', 'pubsub'] }, { key: 'CHAT_ALLOWED_USERS', label: 'Allowed users', hint: 'users/123…', aliases: ['allowed', 'users', 'user'] }, { key: 'CHAT_NOTIFY_SPACE', label: 'Notify space', hint: 'optional: spaces/…', optional: true, aliases: ['space', 'notify'] }] },
   { id: 'drive', name: 'Google Drive index', summary: 'Indexes chosen Drive folders so questions can cite your documents.',
     steps: ['Needs the Gmail/Google sign-in above first (same Google credentials).', 'Open the folder in Google Drive and copy its link (or just the id after /folders/).', 'Paste one link or id per line.'],
+    links: [{ label: 'Turn on the Google Drive API', url: 'https://console.cloud.google.com/apis/library/drive.googleapis.com' }, { label: 'Open Google Drive', url: 'https://drive.google.com/drive/my-drive' }],
     fields: [{ key: 'DRIVE_FOLDER_IDS', label: 'Folder links or ids', hint: 'one per line', aliases: ['folders', 'folder', 'ids'] }] },
   { id: 'ntfy', name: 'Phone push (ntfy)', summary: 'Sends reminders and nags to your phone.',
     steps: ['Install the free ntfy app on your phone (or use ntfy.sh).', 'Subscribe to a hard-to-guess topic name, e.g. assistant-7f3k9.', 'Paste the server (https://ntfy.sh unless you host your own) and the topic.'],
