@@ -6,7 +6,7 @@ import type { Ctx } from '../ctx.ts';
 import { sniffImage } from '../images.ts';
 import { ALLOWED_KEYS, makeTmux, type Tmux } from './tmux.ts';
 import { parseScreen, parseUsageScreen, resetInZone, type ScreenInfo } from './screen.ts';
-import { estimateCost, readBack, readDelta, scanUsage, transcriptPath, type Msg, type UsageRow } from './transcript.ts';
+import { currentSessionId, estimateCost, readBack, readDelta, scanUsage, transcriptPath, type Msg, type UsageRow } from './transcript.ts';
 
 export const PERMISSION_MODES = ['manual', 'acceptEdits', 'auto', 'plan', 'dontAsk', 'bypassPermissions'] as const;
 export class CodeError extends Error { status = 400; constructor(m: string, status = 400) { super(m); this.status = status; } }
@@ -110,7 +110,7 @@ export async function startSession(ctx: Ctx, id: string, firstPrompt?: string): 
   if (s.permissionMode === 'bypassPermissions' && !ctx.cfg.code.allowBypass) throw new CodeError('“Bypass permissions” is turned off (Settings → Code).', 403);
   ensureClaudeConfig(ctx, p.path);
   const resumed = !!transcriptPath(ctx.cfg.code.configDir, p.path, id);
-  const argv = [ctx.cfg.code.claudeBin, ...(resumed ? ['--resume', id] : ['--session-id', id]), ...(s.model ? ['--model', s.model] : []), ...(s.permissionMode ? ['--permission-mode', s.permissionMode] : [])];
+  const argv = [ctx.cfg.code.claudeBin, ...(resumed ? ['--resume', currentSessionId(ctx.cfg.code.configDir, p.path, id)] : ['--session-id', id]), ...(s.model ? ['--model', s.model] : []), ...(s.permissionMode ? ['--permission-mode', s.permissionMode] : [])];
   await t.start(tmuxName(id), p.path, argv, ctx.cfg.code.claudeEnv);
   ctx.db.prepare('UPDATE code_sessions SET started_at = ?, desired = 1 WHERE id = ?').run(new Date().toISOString(), id);
   if (s.permissionMode === 'bypassPermissions') void acceptBypassWarning(ctx, id).catch(() => {});
@@ -240,7 +240,7 @@ export async function screenText(ctx: Ctx, id: string, scrollback = 0): Promise<
   return { running: true, text: await t.capture(name, Math.min(2000, Math.max(0, scrollback))) };
 }
 
-export interface Live { dialogText?: string; running: boolean; screen: ScreenInfo | null; msgs: Msg[]; next: number; start?: number; title: string; transcript: boolean; lastActivity: string | null; queue?: string[] }
+export interface Live { dialogText?: string; running: boolean; screen: ScreenInfo | null; msgs: Msg[]; next: number; start?: number; title: string; transcript: boolean; lastActivity: string | null; queue?: string[]; fileKey?: string }
 export async function live(ctx: Ctx, id: string, after: number, tail = 0): Promise<Live> {
   const t = await needTmux(ctx); const s = getSession(ctx, id); const p = getProject(ctx, s.projectId);
   const name = tmuxName(id); const running = await t.has(name);
@@ -252,7 +252,7 @@ export async function live(ctx: Ctx, id: string, after: number, tail = 0): Promi
   if (file) { const d = tail ? readBack(file, tail) : readDelta(file, after); msgs = d.msgs; next = d.next; if ('start' in d) start = d.start; last = new Date(statSync(file).mtimeMs).toISOString(); }
   const title = [...msgs].reverse().find((m) => m.t === 'title') as { title: string } | undefined;
   if (title && title.title !== s.aiTitle) ctx.db.prepare('UPDATE code_sessions SET ai_title = ? WHERE id = ?').run(title.title, id);
-  return { dialogText: screen && (screen.state === 'dialog' || screen.state === 'unknown') ? raw.replace(/\n{3,}/g, '\n\n').trimEnd().slice(-3000) : undefined, running, screen, msgs, next, start, title: title?.title ?? s.aiTitle, transcript: !!file, lastActivity: last, queue: queuedTexts('s:' + id) };
+  return { dialogText: screen && (screen.state === 'dialog' || screen.state === 'unknown') ? raw.replace(/\n{3,}/g, '\n\n').trimEnd().slice(-3000) : undefined, running, screen, msgs, next, start, title: title?.title ?? s.aiTitle, transcript: !!file, lastActivity: last, queue: queuedTexts('s:' + id), fileKey: file ? file.split('/').pop() : undefined };
 }
 
 export async function sessionSummaries(ctx: Ctx): Promise<{ id: string; running: boolean; state: string }[]> {

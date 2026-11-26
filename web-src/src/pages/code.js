@@ -327,12 +327,13 @@ export default async function code(view) {
     function fillUp() { setTimeout(() => { if (oldest > 0 && !loadingOld && msgs.scrollHeight <= msgs.clientHeight + 60) loadOlder(); }, 60); }   // short history (e.g. replies only): keep loading until the box is full or there is no more
     msgs.addEventListener('scroll', () => { if (msgs.scrollTop < 160 && oldest > 0 && !loadingOld) loadOlder(); });
     function poll() { if (polling) { again = true; return Promise.resolve(); } polling = true; return pollOnce().finally(() => { polling = false; if (again) { again = false; poll(); } }); }
+    let curFile = '';
     async function pollOnce() {
       if (document.hidden) return;
       try {
         const l = await api(started ? `${base}/live?after=${after}` : `${base}/live?tail=40`); const first = !started;
-        if (started && l.next < after) { { const lastReal = [...msgs.children].filter((n) => n !== queueEl).pop(); if (lastReal && !lastReal.classList.contains('code-compact') && msgs.querySelector('.bubble')) addMsg({ t: 'note', id: 'clear-' + Date.now(), ts: '', text: 'Conversation cleared', kind: 'compact' }); } topNote.hidden = true; tools.clear(); seen.clear(); orphans.clear(); oldest = 0; started = false; after = 0; again = true; return; }   // the conversation file was replaced (e.g. /clear): start over
-        loadingEl.remove(); started = true; after = l.next || after; if (first) { oldest = l.start || 0; topNote.hidden = oldest <= 0; setTimeout(fillUp, 100); }
+        if (started && (l.next < after || (l.fileKey && curFile && l.fileKey !== curFile))) { { const lastReal = [...msgs.children].filter((n) => n !== queueEl).pop(); if (lastReal && !lastReal.classList.contains('code-compact') && msgs.querySelector('.bubble')) addMsg({ t: 'note', id: 'clear-' + Date.now(), ts: '', text: 'Conversation cleared', kind: 'compact' }); } topNote.hidden = true; tools.clear(); seen.clear(); orphans.clear(); oldest = 0; started = false; after = 0; again = true; return; }   // the conversation file was replaced (e.g. /clear): start over
+        curFile = l.fileKey || curFile; loadingEl.remove(); started = true; after = l.next || after; if (first) { oldest = l.start || 0; topNote.hidden = oldest <= 0; setTimeout(fillUp, 100); }
         let list = l.msgs.filter((m) => { if (m.t === 'title' || m.t === 'mode') return true; const k = m.id; if (seen.has(k)) return false; seen.add(k); return true; }); if (first && list.length > 300) { hidden = list.length - 300; list = list.slice(-300); msgs.append(h('div', { class: 'code-note' }, `${hidden} earlier messages are not shown here (they are in the terminal's scrollback and the conversation file).`)); }
         for (const m of list) addMsg(m); if (list.length && stick) msgs.scrollTop = msgs.scrollHeight;
         if (first && !l.msgs.length && !l.transcript) msgs.append(h('div', { class: 'code-note', id: 'emptyNote' }, l.running ? 'Session is up. Say something to Claude Code below.' : ''));

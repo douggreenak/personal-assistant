@@ -17,7 +17,34 @@ export type Msg =
 
 export const encodeCwd = (cwd: string): string => cwd.replace(/[^a-zA-Z0-9]/g, '-');
 
+// After /clear (and similar) Claude Code carries on in a NEW conversation file whose first lines say which session it came from
+// ({"type":"derived-from","sessions":[{"id":"<old>","via":"clear"}]}). Without following that, the chat stops at the clear while the terminal moves on.
+const parentsOf = new Map<string, string[]>();   // file → the session ids it derives from (cached once the file has real content)
+function derivedFrom(file: string): string[] {
+  const hit = parentsOf.get(file); if (hit) return hit;
+  let ids: string[] = []; let size = 0;
+  try {
+    size = statSync(file).size; const fd = openSync(file, 'r');
+    try { const buf = Buffer.alloc(Math.min(size, 16384)); readSync(fd, buf, 0, buf.length, 0); for (const line of buf.toString('utf8').split('\n').slice(0, 12)) { if (!line.includes('"derived-from"')) continue; try { const e = JSON.parse(line); if (e.type === 'derived-from') ids = (e.sessions ?? []).map((x: { id?: string }) => String(x.id ?? '')).filter(Boolean); } catch { /* partial line */ } } } finally { closeSync(fd); }
+  } catch { return []; }
+  if (ids.length || size > 16384) parentsOf.set(file, ids);
+  return ids;
+}
+const childCache = new Map<string, { at: number; byParent: Map<string, string> }>();
+/** The conversation id this session is on NOW: follows clear/derived-from links to the newest descendant (the id itself when nothing followed). */
+export function currentSessionId(configDir: string, cwd: string, sessionId: string): string {
+  const dir = join(configDir, 'projects', encodeCwd(cwd)); let c = childCache.get(dir);
+  if (!c || Date.now() - c.at > 1500) {
+    const byParent = new Map<string, string>();
+    try { for (const f of readdirSync(dir)) if (f.endsWith('.jsonl')) { const id = f.slice(0, -6); for (const p of derivedFrom(join(dir, f))) if (p !== id) byParent.set(p, id); } } catch { /* no directory yet */ }
+    c = { at: Date.now(), byParent }; childCache.set(dir, c);
+  }
+  let cur = sessionId; for (let i = 0; i < 20; i++) { const next = c.byParent.get(cur); if (!next || next === cur) break; cur = next; }
+  return cur;
+}
+
 export function transcriptPath(configDir: string, cwd: string, sessionId: string): string | null {
+  sessionId = currentSessionId(configDir, cwd, sessionId);
   const direct = join(configDir, 'projects', encodeCwd(cwd), `${sessionId}.jsonl`); if (existsSync(direct)) return direct;
   const root = join(configDir, 'projects');
   try { for (const d of readdirSync(root)) { const p = join(root, d, `${sessionId}.jsonl`); if (existsSync(p)) return p; } } catch { /* no projects yet */ }
