@@ -1,5 +1,5 @@
 import { api, getToken } from '../api.js';
-import { h, icon, clear, spinner, empty, chip, dialog, confirmDialog, toast, guarded, ago, fmtDate, pictureAttach, menu } from '../ui.js';
+import { page, h, icon, clear, spinner, empty, chip, dialog, confirmDialog, toast, guarded, ago, fmtDate, pictureAttach, menu } from '../ui.js';
 import { md } from '../markdown.js';
 import { prepareImage } from '../ui.js';
 
@@ -16,17 +16,19 @@ const go = (path) => { location.hash = '#/code' + (path ? '/' + path : ''); };
 
 export default async function code(view) {
   const status = await api('/code/status');
-  const timers = []; document.body.classList.add('code-page'); const cleanup = () => { timers.forEach(clearInterval); document.body.classList.remove('code-page'); };
+  const timers = []; let mainTimers = []; document.body.classList.add('code-page'); const cleanup = () => { page.soft = null; mainTimers.forEach(clearInterval); timers.forEach(clearInterval); document.body.classList.remove('code-page'); };
   if (!status.enabled) { clear(view).append(head(), h('div', { class: 'card' }, empty('terminal', 'The Code tab is turned off', 'Turn it on in Settings → Code.'))); return cleanup; }
-  const { projects } = await api('/code/projects'); const r = route();
+  let { projects } = await api('/code/projects'); let r = route();
 
   // ---- layout like Claude Code on the web: sessions grouped by project on the left, the open session on the right ----
-  const curProject = r.kind === 'p' ? r.id : r.kind === 's' ? projects.find((p) => p.sessions.some((s) => s.id === r.id))?.id : null;
+  let curProject = null; const setCur = () => { curProject = r.kind === 'p' ? r.id : r.kind === 's' ? projects.find((p) => p.sessions.some((s) => s.id === r.id))?.id : null; }; setCur();
   const side = h('aside', { class: 'code-side', 'aria-label': 'Sessions' }); const body = h('div', { class: 'code-main' });
   const layout = h('div', { class: 'code-layout', 'data-pane': ['s', 'u', 't', 'x'].includes(r.kind) ? 'main' : 'list' }, side, body);
   clear(view).append(head(!status.tmux), layout);
   let externals = [];
-  function drawSide(list) {
+  let sideSig = '';
+  function drawSide(list, force) {
+    projects = list; const sig = JSON.stringify([list, externals, r.kind, r.id, curProject]); if (!force && sig === sideSig) return; sideSig = sig;   // only touch the sidebar when something in it changed
     const rows = [];
     for (const p of list) {
       rows.push(h('div', { class: 'code-proj' + (curProject === p.id && r.kind === 'p' ? ' sel' : ''), 'data-project': p.id },
@@ -50,15 +52,24 @@ export default async function code(view) {
     const { close } = dialog({ title: 'New session in…', content: sel, actions: [h('md-text-button', { onclick: () => close() }, 'Cancel'), h('md-filled-button', { onclick: () => { const p = list.find((x) => x.id === sel.value) || list[0]; close(); newSessionDialog(p, status); } }, 'Next')] });
   }
 
-  if (r.kind === 'u') usagePage(body, timers);
-  else if (r.kind === 't') serverPage(body, status, timers);
-  else if (r.kind === 's') await sessionPage(body, r.id, projects, status, timers);
-  else if (r.kind === 'x') await sessionPage(body, r.id, projects, status, timers, true);
+  let mainToken = 0;
+  async function renderMain() {
+    const tok = ++mainToken; mainTimers.forEach(clearInterval); mainTimers = []; const tm = mainTimers;
+    layout.dataset.pane = ['s', 'u', 't', 'x'].includes(r.kind) ? 'main' : 'list';
+  if (r.kind === 'u') usagePage(body, tm);
+  else if (r.kind === 't') serverPage(body, status, tm);
+  else if (r.kind === 's') await sessionPage(body, r.id, projects, status, tm);
+  else if (r.kind === 'x') await sessionPage(body, r.id, projects, status, tm, true);
   else {
     const pid = r.kind === 'p' ? r.id : (projects.find((p) => p.id === lsGet(LAST)) || projects[0])?.id;
     if (!pid) clear(body).append(h('div', { class: 'card' }, empty('terminal', 'No projects yet', 'A project is a folder Claude Code works in. Add one to start sessions.'), h('div', { style: 'text-align:center;margin-top:12px' }, h('md-filled-button', { onclick: () => addProjectDialog() }, icon('add'), 'Add a project'))));
-    else { lsSet(LAST, pid); projectPage(body, projects.find((p) => p.id === pid), status, timers); }
+    else { lsSet(LAST, pid); projectPage(body, projects.find((p) => p.id === pid), status, tm); }
   }
+    if (tok !== mainToken) tm.forEach(clearInterval);   // a newer navigation took over while this one was loading
+  }
+  await renderMain();
+  // Moving between sessions, projects, Usage and Server swaps only the right-hand panel; the sidebar, the page and its scroll stay put.
+  page.soft = async () => { r = route(); setCur(); drawSide(projects, true); await renderMain(); return true; };
   return cleanup;
 
   function head(warn) { return warn ? h('div', { class: 'card high', style: 'border-left:4px solid var(--md-sys-color-error);margin-bottom:12px' }, h('b', {}, 'The tmux server for Claude Code is not reachable'), h('p', { class: 'muted' }, 'Sessions cannot run until it is. See Settings → Code, or docs/web-ui.md (Code tab).')) : ''; }

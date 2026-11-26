@@ -33,7 +33,7 @@ export async function discover(ctx: Ctx): Promise<External[]> {
   await Promise.all(sockets(ctx).map(async (socket) => {
     try { for (const p of await tmx(ctx, socket).panes()) {
       const claude = isClaude(p.command) || (/^(node|bun|deno|bash|zsh|sh)$/.test(p.command) && looksLikeClaude(await tmx(ctx, socket).capture(p.pane).catch(() => '')));
-      if (socket === ctx.cfg.code.socket && p.session.startsWith('cc-')) continue;   // managed by the app
+      if ((socket === ctx.cfg.code.socket || basename(socket) === ctx.cfg.code.socket) && p.session.startsWith('cc-')) continue;   // managed by the app
       out.push({ key: enc(socket, p.pane), socket, pane: p.pane, session: p.session, window: p.window, cwd: p.cwd, name: `${basename(p.cwd) || p.cwd}`, claude, command: p.command });
     } } catch { /* stale socket or another tmux version */ }
   }));

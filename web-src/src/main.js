@@ -54,11 +54,15 @@ function destination(p, badge = true) {
   navEls.push(a); return a;
 }
 
-function route() {
+let curId = '';
+function route(hard = true) {
   const id = (location.hash.match(/^#\/(\w+)/) || [])[1] || 'home';
   const p = PAGES.find((x) => x.id === id) || PAGES[0];
+  // Same page, different part (e.g. another Code session): the page swaps only what changed instead of rebuilding.
+  if (hard && p.id === curId && page.soft) { lastHash = location.hash; Promise.resolve(page.soft()).then((ok) => { if (ok === false) route(false); }).catch(() => route(false)); return; }
+  curId = p.id;
   navEls.forEach((d) => d.toggleAttribute('aria-current', d.dataset.id === p.id)); navEls.forEach((d) => d.dataset.id === p.id ? d.setAttribute('aria-current', 'page') : d.removeAttribute('aria-current'));
-  cleanup?.(); cleanup = null; refreshStatus(); page.newAction = null; page.guard = null; curLabel = p.label === 'Connect' ? 'Connectors' : p.label; setTitle(); lastHash = location.hash;
+  cleanup?.(); cleanup = null; refreshStatus(); page.newAction = null; page.guard = null; page.soft = null; curLabel = p.label === 'Connect' ? 'Connectors' : p.label; setTitle(); lastHash = location.hash;
   const view = document.getElementById('view'); clear(view).append(spinner());
   window.scrollTo(0, 0);
   Promise.resolve(p.fn(view, { nav, refreshStatus })).then((c) => { cleanup = typeof c === 'function' ? c : null; }).catch((e) => clear(view).append(h('div', { class: 'card' }, h('h2', {}, 'Something went wrong'), h('p', { class: 'muted' }, e.message))));
@@ -121,7 +125,7 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) { hiddenAt = Date.now(); return; }
   if (!hasToken()) return; refreshStatus();
   const typing = document.activeElement && /^(INPUT|TEXTAREA|MD-)/.test(document.activeElement.tagName);
-  if (Date.now() - hiddenAt > 60000 && !page.guard?.() && !typing && !document.querySelector('md-dialog[open]') && !/^#\/(chat|settings|code)/.test(location.hash)) route();
+  if (Date.now() - hiddenAt > 300000 && !page.guard?.() && !typing && !document.querySelector('md-dialog[open]') && !/^#\/(chat|settings|code)/.test(location.hash)) { const y = scrollY; route(); setTimeout(() => scrollTo(0, y), 500); }   // coming back to the tab after a long time: refresh the data, keep your place
 });
 window.addEventListener('auth-lost', () => { clearToken(); showLogin(); });
 setInterval(() => { if (hasToken() && !document.hidden) refreshStatus(); }, 20000);

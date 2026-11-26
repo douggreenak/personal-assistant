@@ -20,7 +20,7 @@ function add(e, kids) {
   }
 }
 /** Per-page hooks for the keyboard layer: the page sets `page.newAction`; main.js resets it on every navigation. */
-export const page = { newAction: null, guard: null };
+export const page = { newAction: null, guard: null, soft: null };
 export const clear = (e) => { e.replaceChildren(); return e; };
 
 export function icon(name, cls = '') {
