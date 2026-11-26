@@ -34,6 +34,15 @@ export default async function connectors(view, { refreshStatus }) {
     else {
       if (needsKey) btns.push(h('md-outlined-button', { onclick: () => secretDialog(c) }, icon('key'), c.secretSet ? 'Change key' : 'Set key'));
       btns.push(h('md-outlined-button', { onclick: async () => { const r = await run(() => api(`/connectors/${c.id}/test`, { method: 'POST' })); if (r) showResult('Dry run', r.result); } }, icon('play_arrow'), 'Test'));
+      if (c.lastError || c.status !== 'enabled') btns.push(h('md-filled-tonal-button', { onclick: async (e) => {
+        const b = e.currentTarget; b.disabled = true;
+        try {
+          const t = await run(() => api(`/connectors/${c.id}/test`, { method: 'POST' })); if (!t) return;
+          let msg = t.result;
+          if (c.status !== 'enabled' && !c.lastError) { const en = await run(() => api(`/connectors/${c.id}/enable`, { method: 'POST' })); if (en) msg += '\n\n' + en.result; }
+          showResult('Retry', msg);
+        } finally { b.disabled = false; }
+      } }, icon('refresh'), 'Retry'));
       btns.push(c.status === 'enabled' ? h('md-filled-tonal-button', { onclick: () => run(() => api(`/connectors/${c.id}/disable`, { method: 'POST' }), 'Disabled') }, icon('block'), 'Disable')
         : h('md-filled-button', { onclick: async () => { const r = await run(() => api(`/connectors/${c.id}/enable`, { method: 'POST' })); if (r) toast(r.result.slice(0, 160)); } }, 'Enable'));
     }
