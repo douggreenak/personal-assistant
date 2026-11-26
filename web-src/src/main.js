@@ -54,7 +54,7 @@ function destination(p, badge = true) {
   navEls.push(a); return a;
 }
 
-let curId = '';
+let curId = '', routeSeq = 0;
 function route(hard = true) {
   const id = (location.hash.match(/^#\/(\w+)/) || [])[1] || 'home';
   const p = PAGES.find((x) => x.id === id) || PAGES[0];
@@ -64,8 +64,10 @@ function route(hard = true) {
   navEls.forEach((d) => d.toggleAttribute('aria-current', d.dataset.id === p.id)); navEls.forEach((d) => d.dataset.id === p.id ? d.setAttribute('aria-current', 'page') : d.removeAttribute('aria-current'));
   cleanup?.(); cleanup = null; refreshStatus(); page.newAction = null; page.guard = null; page.soft = null; curLabel = p.label === 'Connect' ? 'Connectors' : p.label; setTitle(); lastHash = location.hash;
   const view = document.getElementById('view'); clear(view).append(spinner());
+  // The entrance animation is for arriving on a page only: once it has played, in-page redraws (ticking off a task, the 30s refresh) must not replay it.
+  view.classList.remove('settled'); const navSeq = ++routeSeq;
   window.scrollTo(0, 0);
-  Promise.resolve(p.fn(view, { nav, refreshStatus })).then((c) => { cleanup = typeof c === 'function' ? c : null; }).catch((e) => clear(view).append(h('div', { class: 'card' }, h('h2', {}, 'Something went wrong'), h('p', { class: 'muted' }, e.message))));
+  Promise.resolve(p.fn(view, { nav, refreshStatus })).then((c) => { cleanup = typeof c === 'function' ? c : null; setTimeout(() => { if (navSeq === routeSeq) view.classList.add('settled'); }, 600); }).catch((e) => clear(view).append(h('div', { class: 'card' }, h('h2', {}, 'Something went wrong'), h('p', { class: 'muted' }, e.message))));
 }
 
 function searchDialog() {

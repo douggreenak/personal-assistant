@@ -54,6 +54,7 @@ main { min-width: 0; padding: 0 var(--pad) 120px; max-width: 2600px; width: 100%
 .page > *, .toolbar > * { min-width: 0; }
 .page-head { margin-bottom: 0; }
 .page > * { animation: rise .35s var(--smooth) backwards; }
+.page.settled > * { animation: none; }   /* set by main.js after the arrival animation: redraws stay still */
 
 .bottom-nav { display: none; }
 @media (max-width: 839px) {
