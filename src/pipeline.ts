@@ -1,3 +1,4 @@
+import { sameRequest } from './calls.ts';
 import { exchangeText } from './router.ts';
 import { prepareImages, toLlmImages, MAX_IMAGES, MAX_INBOUND_IMAGES } from './images.ts';
 import type { Ctx } from './ctx.ts';
@@ -79,7 +80,10 @@ export async function processMessage(ctx: Ctx, msg: MessageRow): Promise<Process
   for (const a of actions) {
     const item = a.itemId ? ctx.items.get(a.itemId) : undefined;
     const m = a.op === 'connector_call' ? writes.get(`${a.connectorId}.${a.actionId}`) : undefined;
-    const d = decide(a, ctx.cfg, !!m && fromOwner && m.action.method !== 'DELETE' && isAutoAllowed(ctx, a.connectorId!, a.actionId!));
+    const same = a.op === 'connector_call' ? sameRequest(ctx, a) : {};
+    if (same.pending) { report.queued.push(`${describeAction(a, item)} (this is already waiting for your OK as #${same.pending})`); continue; }
+    const d = decide(a, ctx.cfg, !!m && fromOwner && m.action.method !== 'DELETE' && !same.doneAt && isAutoAllowed(ctx, a.connectorId!, a.actionId!));
+    if (same.doneAt) d.reason = `You already asked for exactly this ${ago(same.doneAt, ctx.now())}. Approve only if you want it done again`;
     if (d.mode === 'ask') {
       createApproval(ctx, { kind: 'action', summary: describeAction(a, item), reason: a.why && !/^(involves|dropping|low confidence)/.test(d.reason) ? `${d.reason}. ${a.why}` : d.reason, payload: { action: a, trigger: { source: msg.source, sender: msg.sender, subject: msg.subject, excerpt: msg.body.replace(/\s+/g, ' ').slice(0, 300) } }, messageId: msg.id });
       report.queued.push(describeAction(a, item));
@@ -153,3 +157,5 @@ async function announce(ctx: Ctx, msg: MessageRow, r: ProcessReport): Promise<vo
   const line = (s: string) => (/^Skipped/.test(s) ? s : `✓ ${s}`);
   await ctx.notify.send(`${r.applied.map(line).join('\n')}${who}`);
 }
+
+const ago = (iso: string, now: Date): string => { const m = Math.max(1, Math.round((now.getTime() - Date.parse(iso)) / 60000)); return m < 90 ? `${m} min ago` : `${Math.round(m / 60)} h ago`; };

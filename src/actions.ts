@@ -111,7 +111,9 @@ export async function applyAction(ctx: Ctx, a: Action, sourceMessageId: number |
 
   if (a.op === 'connector_call') {
     const { callConnectorAction } = await import('./connectors.ts');   // dynamic: connectors.ts imports the pipeline, which imports this file
-    return { summary: await callConnectorAction(ctx, a.connectorId!, a.actionId!, a.args ?? {}) };
+    const summary = await callConnectorAction(ctx, a.connectorId!, a.actionId!, a.args ?? {});
+    (await import('./calls.ts')).noteCall(ctx, a);
+    return { summary };
   }
 
   const item = items.get(a.itemId!);

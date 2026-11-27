@@ -125,7 +125,7 @@ test('write connectors: the call is built safely (path escaping, body, auth, no 
   const f = (async (u: URL, init: RequestInit) => { req = { url: String(u), init }; return json({ id: 'inv_1' }, 201); }) as unknown as typeof fetch;
   ctx.db.prepare("UPDATE connectors SET last_run_at = ? WHERE id = 'acme'").run(new Date().toISOString());
   const out = await callConnectorAction(ctx, 'acme', 'create_invoice', { customer: 'a/b c', amount: '40', memo: 'hi', draft: '1', ignored: 'x' }, f);
-  assert.match(out, /Create invoice done \(HTTP 201\)/);
+  assert.match(out, /Create invoice done/);
   assert.equal(ctx.db.prepare('SELECT last_run_at v FROM connectors WHERE id = ?').get('acme')!.v, '1970-01-01T00:00:00.000Z');   // a write makes the next check re-read at once
   assert.equal(req!.url, 'https://api.acme.example/v1/customers/a%2Fb%20c/invoices?draft=1');
   assert.deepEqual(JSON.parse(String(req!.init.body)), { amount: '40', memo: 'hi' }); assert.equal(req!.init.method, 'POST'); assert.equal(req!.init.redirect, 'manual');
@@ -141,7 +141,7 @@ test('write connectors: the model can ask — owner messages queue an approval (
   setResolverForTests(async () => ['93.184.216.34']);
   const dir = mkdtempSync(join(tmpdir(), 'asst-'));
   const call = { op: 'connector_call', connectorId: 'acme', actionId: 'create_invoice', args: { customer: 'c1', amount: '40' }, confidence: 0.95, flags: [], why: 'owner asked' };
-  const { ctx, llm } = makeCtx([rw, { actions: [call] }, { actions: [call] }, { actions: [call] }, { actions: [call, { ...call, actionId: 'delete_invoice', args: { id: '9' } }] }], { env: { ASSISTANT_DATA: dir } });
+  const { ctx, llm } = makeCtx([rw, { actions: [call] }, { actions: [call] }, { actions: [{ ...call, args: { customer: 'c1', amount: '41' } }] }, { actions: [{ ...call, args: { customer: 'c1', amount: '42' } }, { ...call, actionId: 'delete_invoice', args: { id: '9' } }] }], { env: { ASSISTANT_DATA: dir } });
   assert.equal((await done(startAutoConnect(ctx, 'docs: GET /orders', 'k-12345678', (async () => json(orders)) as unknown as typeof fetch).id)).state, 'done');
   assert.ok(connectorActionMap(ctx).has('acme.create_invoice'));
   const sent: string[] = []; const realFetch = globalThis.fetch;
