@@ -379,8 +379,9 @@ let plan: { at: number; data: ReturnType<typeof parseUsageScreen> | null; error?
 export async function planUsage(ctx: Ctx, force = false) {
   if (plan && !force && Date.now() - plan.at < 300000) return { ...plan, cached: true };
   if (!planBusy) planBusy = (async () => {
-    const t = await needTmux(ctx); const name = 'cc-probe-usage'; await t.kill(name);
+    const name = 'cc-probe-usage'; let t: Tmux | undefined;
     try {
+      t = await needTmux(ctx); await t.kill(name).catch(() => {});   // a probe left over from before, if any (inside the try: whatever goes wrong is reported on the page, never a bare error)
       const dir = rootDir(ctx); ensureClaudeConfig(ctx, dir);
       await t.start(name, dir, [ctx.cfg.code.claudeBin], ctx.cfg.code.claudeEnv); let ready = false;
       for (let i = 0; i < 40 && !ready; i++) { await sleep(700); const sc = parseScreen(await t.capture(name).catch(() => '')); if (sc.state === 'idle') ready = true; else if (sc.state === 'dialog' && i > 6) throw new Error('Claude Code is asking a question I cannot answer (it may need to sign in: run `claude login` once).'); }
@@ -388,7 +389,7 @@ export async function planUsage(ctx: Ctx, force = false) {
       await t.literal(name, '/usage'); await sleep(250); await t.keys(name, ['Enter']); await sleep(3500);
       const data = parseUsageScreen(await t.capture(name)); for (const sec of data.sections) sec.resets = resetInZone(sec.resets, ctx.cfg.tz); if (!data.sections.length) throw new Error('The usage screen had no limits to show (is this an API-key login?).');
       plan = { at: Date.now(), data };
-    } catch (e) { plan = { at: Date.now(), data: null, error: (e as Error).message }; } finally { await t.kill(name).catch(() => {}); }
+    } catch (e) { plan = { at: Date.now(), data: null, error: (e as Error).message }; } finally { await t?.kill(name).catch(() => {}); }
   })().finally(() => { planBusy = null; });
   await planBusy; return { ...plan!, cached: false };
 }

@@ -27,7 +27,7 @@ export function makeTmux(bin: string, socket: string): Tmux & { panes(): Promise
     });
     if (input !== undefined) { p.stdin?.on('error', () => {}); p.stdin?.end(input); }
   });
-  const noServer = (e: Error) => /no server running|no sessions|error connecting|can't find session/i.test(e.message);
+  const noServer = (e: Error) => /no server running|no sessions|error connecting|can't find session|no current target/i.test(e.message);   // ("no current target": a server that is up but has no sessions)
   return {
     // A path socket means "the tmux server running on the host": it must already exist (we never start a server of our own there, or sessions would run inside the container).
     available: () => new Promise((r) => execFile(bin, ['-V'], { timeout: 5000 }, (e) => {
