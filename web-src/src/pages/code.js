@@ -11,6 +11,8 @@ const lsGet = (k) => { try { return localStorage.getItem(k); } catch { return nu
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch { /* ignore */ } };
 const kfmt = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(n >= 1e4 ? 0 : 1) + 'k' : String(Math.round(n || 0)));
 const usd = (n) => '$' + (n < 10 ? n.toFixed(2) : n.toFixed(0));
+/** Question options that ask for words rather than a choice. */
+const FREE_TEXT = /type something|tell claude what to do|something else|chat about this|^other\b|\bother\b\.?$/i;
 const STATE = { stopped: ['Stopped', ''], idle: ['Ready', 'ok'], working: ['Working', 'warn'], permission: ['Needs you', 'bad'], dialog: ['Needs you', 'bad'], unknown: ['Running', ''] };
 const stateChip = (s, running) => { const [t, c] = running === false ? STATE.stopped : STATE[s] || STATE.unknown; return h('span', { class: 'tag code-state ' + c, 'data-state': running === false ? 'stopped' : s }, t); };
 const route = () => { const m = /^#\/code(?:\/(p|s|u|t|x)(?:\/([\w-]+))?)?/.exec(location.hash) || []; return { kind: m[1] || '', id: m[2] || '' }; };
@@ -305,6 +307,19 @@ export default async function code(view) {
       clear(queueEl).append(...q.map((t) => h('div', { class: 'bubble me code-user queued', title: 'Waiting for Claude to finish — it goes in automatically' }, md(t), h('div', { class: 'queued-note' }, icon('schedule'), 'Waiting'))));
       msgs.append(queueEl); if (q.length && stick) msgs.scrollTop = msgs.scrollHeight;
     }
+    /** An option that means "let me say it in words" (Type something, No and tell Claude what to do differently, Other…): a text box opens in the card; Send picks the option, types the words and presses Enter. */
+    function typeAnswer(card, o) {
+      const open = card.querySelector('.code-perm-type'); if (open) { open.querySelector('md-outlined-text-field')?.focus(); return; }
+      const f = h('md-outlined-text-field', { label: o.label.replace(/\s*\((?:esc|shift\+tab)\)\s*$/i, '').replace(/[.…]+$/, ''), class: 'grow', maxlength: '500', 'data-primary': '' });
+      const sendBtn = h('md-filled-button', {}, icon('send'), 'Send'); const row = h('div', { class: 'code-perm-type' }, f, h('div', { class: 'code-perm-btns' }, sendBtn, h('md-text-button', { onclick: () => row.remove() }, 'Close')));
+      const send = async () => {
+        const text = String(f.value || '').replace(/[\r\n]+/g, ' ').trim(); if (!text || sendBtn.disabled) return; sendBtn.disabled = true;
+        try { if (!(await guarded(() => api(`${base}/keys`, { method: 'POST', body: { keys: [o.key] } })))) return; await new Promise((r) => setTimeout(r, 400));   // let Claude Code open its text row
+          if (await guarded(() => api(`${base}/keys`, { method: 'POST', body: { text, keys: ['Enter'] } }))) row.remove(); } finally { sendBtn.disabled = false; poll(); }
+      };
+      sendBtn.addEventListener('click', send); f.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); send(); } });
+      card.append(row); setTimeout(() => { row.scrollIntoView({ block: 'nearest' }); f.focus(); }, 60);
+    }
     function drawLive(l) {
       const wasRunning = running; running = l.running; scr = l.screen; if (running && !wasRunning && view === 'chat') setTimeout(() => ta.focus({ preventScroll: true }), 150); const sc = l.screen?.state || 'stopped';
       clear(stateEl).append(stateChip(sc, running)); if (running !== wasRunning || !headBtns.childElementCount) drawHead(); layout();   // not on every poll: redrawing rebuilds the ⋯ menu and closes it
@@ -313,7 +328,7 @@ export default async function code(view) {
       // Rebuild the question card only when what it says changes. Rebuilding on every poll threw away anything the owner had selected to copy.
       const sig = scr?.state === 'permission' ? 'p' + JSON.stringify(scr.permission) : scr?.state === 'dialog' || scr?.state === 'unknown' && l.dialogText ? 'd' + (l.dialogText || scr.hint || '') : '';
       if (sig !== permSig) { permSig = sig; clear(permBox);
-      if (scr?.state === 'permission') permBox.append(h('div', { class: 'card code-perm', role: 'alertdialog', 'aria-label': 'Claude is asking' }, h('b', {}, scr.permission.question), scr.permission.detail ? h('pre', { class: 'code-pre' }, scr.permission.detail) : '', h('div', { class: 'code-perm-btns' }, ...scr.permission.options.map((o) => h(o.selected ? 'md-filled-button' : 'md-outlined-button', { 'data-opt': o.key, onclick: () => key(o.key) }, o.label.replace(/\s*\(shift\+tab\)\s*$/, ''))), h('md-text-button', { onclick: () => key('Escape') }, 'Cancel'))));
+      if (scr?.state === 'permission') permBox.append(h('div', { class: 'card code-perm', role: 'alertdialog', 'aria-label': 'Claude is asking' }, h('b', {}, scr.permission.question), scr.permission.detail ? h('pre', { class: 'code-pre' }, scr.permission.detail) : '', h('div', { class: 'code-perm-btns' }, ...scr.permission.options.map((o) => h(o.selected ? 'md-filled-button' : 'md-outlined-button', { 'data-opt': o.key, onclick: (ev) => (FREE_TEXT.test(o.label) ? typeAnswer(ev.currentTarget.closest('.code-perm'), o) : key(o.key)) }, o.label.replace(/\s*\(shift\+tab\)\s*$/, ''))), h('md-text-button', { onclick: () => key('Escape') }, 'Cancel'))));
       else if (scr?.state === 'dialog' || scr?.state === 'unknown' && l.dialogText) permBox.append(h('div', { class: 'card code-dialog', role: 'dialog', 'aria-label': 'Claude Code' }, h('pre', { class: 'code-pre' }, (l.dialogText || scr.hint || '').split('\n').filter((x) => x.trim()).slice(-24).join('\n')), h('div', { class: 'code-perm-btns' }, ...[['↑', 'Up'], ['↓', 'Down'], ['←', 'Left'], ['→', 'Right'], ['Enter', 'Enter'], ['Tab', 'Tab'], ['Esc', 'Escape']].map(([lb, k]) => h('md-outlined-button', { 'data-key': k, onclick: () => key(k) }, lb))))); }
       composer.classList.toggle('busy', scr?.state === 'working'); stopBtn.hidden = scr?.state !== 'working';
     }

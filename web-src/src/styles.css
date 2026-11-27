@@ -610,3 +610,10 @@ md-dialog { max-height: min(calc(100dvh - 48px), 980px); }
 /* Claude's question and what it wants to do: text you can select and copy (buttons stay unselectable) */
 .code-perm, .code-perm b, .code-dialog { -webkit-user-select: text; user-select: text; cursor: text; }
 .code-perm-btns, .code-perm-btns * { -webkit-user-select: none; user-select: none; cursor: pointer; }
+
+.code-perm-type { margin-top: 12px; display: grid; gap: 8px; } .code-perm-type md-outlined-text-field { width: 100%; --md-outlined-text-field-container-shape: 12px; }
+.code-perm-type, .code-perm-type * { -webkit-user-select: text; user-select: text; cursor: text; } .code-perm-type .code-perm-btns, .code-perm-type .code-perm-btns * { cursor: pointer; -webkit-user-select: none; user-select: none; } .code-perm-type .code-perm-btns { margin-top: 0; }
+
+/* Claude's question never grows past the pane (it scrolls instead), and the quick keys step aside while it is open, so the text box for typing an answer is never hidden behind them */
+.code-perm { max-height: 55vh; overflow: auto; }
+.code-main:has(.code-perm) .code-quick { display: none; }

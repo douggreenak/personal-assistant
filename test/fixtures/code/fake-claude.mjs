@@ -12,6 +12,7 @@ if (flag('--resume') && !existsSync(file)) { console.log('No conversation found 
 const cfgJson = process.env.CLAUDE_CONFIG_DIR ? join(process.env.CLAUDE_CONFIG_DIR, '.claude.json') : null;
 if (cfgJson && existsSync(cfgJson)) { const j = JSON.parse(readFileSync(cfgJson, 'utf8')); if (!j.projects?.[cwd]?.hasTrustDialogAccepted) { /* the real one would ask */ } }
 
+let typing = false, typed = '';
 let lines = [], input = '', state = 'idle', pending = null, timer = null, usageOpen = false, seq = 0;
 const CYCLE = ['manual', 'acceptEdits', 'plan', 'auto']; let curMode = mode;
 const MODES = { manual: '⏸ manual mode on · ? for shortcuts', auto: '⏵⏵ auto mode on (shift+tab to cycle)', plan: '⏸ plan mode on', acceptEdits: '⏵⏵ accept edits on', dontAsk: "⏵⏵ don't ask on", bypassPermissions: '⏵⏵ bypass permissions on' };
@@ -22,7 +23,7 @@ const render = () => {
   let out = '\x1b[2J\x1b[H';
   if (usageOpen) { out += readFileSync(FX + 'screen-usage.txt', 'utf8'); process.stdout.write(out); return; }
   out += ` ▐▛███▛█   Claude Code v0.0.0-fake\n▝▜██████▀  ${model}\n ▝▝   ▝▝   ${cwd}\n\n` + lines.join('\n') + '\n';
-  if (state === 'permission') { out += RULE + '\n Create file\n ' + pending.file + '\n╌╌╌╌╌╌╌╌╌╌╌╌\n  1 ok\n╌╌╌╌╌╌╌╌╌╌╌╌\n Do you want to create ' + pending.file + '?\n ❯ 1. Yes\n   2. Yes, and switch to accept edits (auto-approve file edits and common file commands) for this session (shift+tab)\n   3. No\n\n Esc to cancel · Tab to amend\n'; }
+  if (state === 'permission') { out += RULE + '\n Create file\n ' + pending.file + '\n╌╌╌╌╌╌╌╌╌╌╌╌\n  1 ok\n╌╌╌╌╌╌╌╌╌╌╌╌\n Do you want to create ' + pending.file + '?\n ❯ 1. Yes\n   2. Yes, and switch to accept edits (auto-approve file edits and common file commands) for this session (shift+tab)\n   3. No' + (pending.askType ? '\n   4. ' + (typing ? typed + '▌' : 'Type something.') : '') + '\n\n Esc to cancel · Tab to amend\n'; }
   else { if (state === 'working') out += '✶ Pondering… (' + (seq++ % 9 + 1) + 's · ↓ 5 tokens)\n'; out += RULE + '\n❯ ' + input + '\n' + RULE + '\n  ' + modeText() + (state === 'working' ? ' · esc to interrupt' : '') + '\n'; }
   process.stdout.write(out);
 };
@@ -35,7 +36,7 @@ const submit = (text) => {
   if (text === '/usage') { usageOpen = true; return render(); }
   write({ type: 'user', message: { role: 'user', content: text } }); lines.push('❯ ' + text);
   if (text.includes('PERMISSION')) {
-    const id = 'toolu_' + randomUUID().slice(0, 8); pending = { id, file: 'perm.txt' };
+    const id = 'toolu_' + randomUUID().slice(0, 8); pending = { id, file: 'perm.txt', askType: text.includes('PERMTYPE') }; typing = false; typed = '';
     write({ type: 'assistant', message: { id: 'msg_' + randomUUID().slice(0, 8), model, role: 'assistant', content: [{ type: 'text', text: 'I will create the file.' }, { type: 'tool_use', id, name: 'Write', input: { file_path: join(cwd, 'perm.txt'), content: 'ok' } }], usage: usage(12, 30) } });
     lines.push('● Write(perm.txt)'); state = 'permission'; return render();
   }
@@ -54,7 +55,9 @@ process.stdin.on('data', (d) => {
     if (d.startsWith('\x1b[Z', i)) { curMode = CYCLE[(CYCLE.indexOf(curMode) + 1) % CYCLE.length]; i += 2; render(); continue; }
     if (d.startsWith('\x1b[200~', i)) { paste = true; i += 5; continue; } if (d.startsWith('\x1b[201~', i)) { paste = false; i += 5; continue; }
     const c = d[i];
-    if (state === 'permission') { if (c === '1') decide(true); else if (c === '3' || c === '\x1b') decide(false); continue; }
+    if (state === 'permission') { if (pending.askType && typing) { if (c === '\r') { lines.push('  ⎿  You told Claude: ' + typed); typing = false; decide(false); } else if (c === '\x7f') typed = typed.slice(0, -1); else if (c !== '\x1b') typed += c; else { typing = false; typed = ''; } render(); continue; }
+      if (pending.askType && c === '4') { typing = true; typed = ''; render(); continue; }
+      if (c === '1') decide(true); else if (c === '3' || c === '\x1b') decide(false); continue; }
     if (usageOpen) { if (c === '\x1b') { usageOpen = false; render(); } continue; }
     if (c === '\x1b') { if (state === 'working') { clearInterval(timer); state = 'idle'; lines.push('  ⎿  Interrupted'); render(); } continue; }
     if (c === '\r' && !paste) { if (input.trim()) submit(input); continue; }
