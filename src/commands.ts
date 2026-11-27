@@ -3,7 +3,7 @@ import type { Ctx } from './ctx.ts';
 import type { Item } from './items.ts';
 import { decide, listApprovals } from './approvals.ts';
 import { ack, parseSnooze, shortId, snooze } from './nag.ts';
-import { liveContext, processNextReport, storeMessage } from './pipeline.ts';
+import { liveContext, processNextReport, storeMessage, type ProcessReport } from './pipeline.ts';
 import { planAndFetch } from './lookups.ts';
 import { rememberExchange, route, type Route } from './router.ts';
 import { ask } from './qa.ts';
@@ -111,19 +111,24 @@ async function handleText(ctx: Ctx, textIn: string, sourceId: string, images: Up
   }
   if (r.intent === 'action') {   // read what the request needs first (e.g. the list that holds the item's id), then decide what to do with it
     const live = await planAndFetch(ctx, text).catch(() => []);
-    return capture(ctx, text, sourceId, [], live.filter((b) => b.ok).map((b) => `${b.label}:\n${b.text}`).join('\n\n').slice(0, 14000));
+    const services = listConnectors(ctx).filter((c) => c.status === 'enabled').map((c) => c.manifest.name);
+    return capture(ctx, text, sourceId, [], live.filter((b) => b.ok).map((b) => `${b.label}:\n${b.text}`).join('\n\n').slice(0, 14000), (rep) =>
+      // They asked for something to be DONE, but nothing went to a connected service: say so instead of passing a note off as the action.
+      rep.ops?.length && !rep.ops.includes('connector_call') && rep.ops.every((o) => o === 'create')
+        ? `\n\nNote: that is saved here as a note for you. I could not do it myself: ${services.length ? `none of your connected services (${services.join(', ')}) can do that` : 'no connected service can do that'}.`
+        : '');
   }
   return capture(ctx, text, sourceId, []);
 }
 
-async function capture(ctx: Ctx, text: string, sourceId: string, images: Upload[], liveData = ''): Promise<string> {
+async function capture(ctx: Ctx, text: string, sourceId: string, images: Upload[], liveData = '', after?: (r: ProcessReport) => string): Promise<string> {
   const id = storeMessage(ctx, { source: 'chat', sourceId, sender: 'me', body: text, images });
   if (id === null) return 'I already have that one.';
   if (liveData) liveContext.set(id, liveData);
   for (let i = 0; i < 10; i++) {                       // drain anything queued ahead of it, then this message
     const r = await processNextReport(ctx);
     if (!r) break;
-    if (r.msg.id === id) return summarize(r.report);
+    if (r.msg.id === id) return summarize(r.report) + (after?.(r.report) ?? '');
   }
   return 'Got it — queued.';
 }

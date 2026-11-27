@@ -38,7 +38,7 @@ const rowToMsg = (r: Record<string, unknown>): MessageRow => ({
 /** Live data fetched for a chat request just before it is read (e.g. the assignment list with its ids), keyed by message id. In memory only: it is gone after the message is processed. */
 export const liveContext = new Map<number, string>();
 
-export interface ProcessReport { applied: string[]; queued: string[]; rejected: string[]; failed?: string[]; skipped?: string }
+export interface ProcessReport { applied: string[]; queued: string[]; rejected: string[]; failed?: string[]; skipped?: string; ops?: string[] /* what kind of change each action was (create, connector_call, ...) */ }
 
 /** Extract → match → decide → apply/queue for one stored message. */
 export async function processMessage(ctx: Ctx, msg: MessageRow): Promise<ProcessReport> {
@@ -69,6 +69,7 @@ export async function processMessage(ctx: Ctx, msg: MessageRow): Promise<Process
   const { actions, rejected } = parseActions(raw, new Set(candidates.map((c) => c.id)), writes);
   report.rejected = rejected;
 
+  report.ops = actions.map((a) => a.op);
   for (const a of actions) {
     const item = a.itemId ? ctx.items.get(a.itemId) : undefined;
     const m = a.op === 'connector_call' ? writes.get(`${a.connectorId}.${a.actionId}`) : undefined;

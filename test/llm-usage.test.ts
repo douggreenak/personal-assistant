@@ -87,3 +87,10 @@ test('chat routing: an action request first reads live data, which the action st
   const reply = await handleOwnerText(ctx, 'Mark my physics homework as done'); assert.ok(typeof reply === 'string');
   assert.equal(llm.routeCalls.length, 1); assert.equal(liveContext.size, 0, 'the live data is used once and dropped'); void live;
 });
+
+test('chat routing: an action that no connected service can do is saved as a note and says so', async () => {
+  const { ctx, llm } = mk((req) => ({ actions: [{ op: 'create', kind: 'task', title: 'Email Sam: I will be late', confidence: 0.9, flags: [], why: 'asked' }] }));
+  llm.router = () => ({ intent: 'action', terms: [] });
+  const reply = await handleOwnerText(ctx, 'Send Sam an email saying I will be late');
+  assert.match(reply, /Email Sam/); assert.match(reply, /saved here as a note[\s\S]*could not do it myself/);
+});
