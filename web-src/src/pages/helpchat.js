@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { h, icon, spinner, pictureAttach, toast } from '../ui.js';
+import { h, icon, typing, pictureAttach, toast } from '../ui.js';
 import { md } from '../markdown.js';
 
 /** A small help chat for connecting services: ask a question, attach a screenshot of what you see, get the next step.
@@ -15,7 +15,7 @@ export function helpChat(topic) {
     const question = ta.value.trim(); const images = pics.images(); if (!question && !images.length) return;
     bubble('me', question, images.map((p) => p.thumb)); const history = turns.slice(-6); turns.push({ role: 'me', text: question });
     ta.value = ''; ta.style.height = 'auto'; pics.clear(); sendBtn.disabled = true;
-    const wait = bubble('bot', ''); wait.append(spinner('Thinking'));
+    const wait = bubble('bot', ''); wait.append(typing('Thinking'));
     let reply; try { reply = (await api('/help', { method: 'POST', body: { question, topic, history, images: images.map(({ name, data }) => ({ name, data })) } })).answer; } catch (e) { reply = 'Error: ' + e.message; }
     wait.remove(); bubble('bot', reply); turns.push({ role: 'bot', text: reply }); sendBtn.disabled = false; ta.focus({ preventScroll: true });
   }

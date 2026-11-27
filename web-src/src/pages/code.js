@@ -1,5 +1,5 @@
 import { api, getToken } from '../api.js';
-import { page, h, icon, clear, spinner, empty, chip, dialog, confirmDialog, toast, guarded, ago, fmtDate, pictureAttach, noEmoji, menu as uiMenu } from '../ui.js';
+import { page, h, icon, clear, spinner, wheel, empty, chip, dialog, confirmDialog, toast, guarded, ago, fmtDate, pictureAttach, noEmoji, menu as uiMenu } from '../ui.js';
 /** Attaches a ⋯ menu of [label, action] pairs to its button (the menu element has to be in the page to show). */
 const menu = (btn, pairs) => { const m = uiMenu(btn, pairs.map(([label, onclick]) => ({ label, onclick }))); btn.after(m); return m; };
 import { md } from '../markdown.js';
@@ -191,7 +191,7 @@ export default async function code(view) {
     const drawFiles = () => { strip.hidden = !files.length; sendBtn.disabled = uploading(); sendBtn.title = uploading() ? 'Uploading… one moment' : '';
       clear(strip).append(...files.map((f, n) => { const busy = !f.path && !f.error; const sz = f.size >= 1e6 ? (f.size / 1e6).toFixed(1) + ' MB' : Math.max(1, Math.round(f.size / 1e3)) + ' KB';
         return h('div', { class: 'code-file' + (f.error ? ' bad' : busy ? ' busy' : ''), 'aria-busy': String(busy) },
-          busy ? h('md-circular-progress', { indeterminate: true, class: 'code-file-wheel', 'aria-label': 'Uploading ' + f.name }) : icon(f.error ? 'error' : f.type.startsWith('image/') ? 'image' : 'description'),
+          busy ? h('span', { class: 'code-file-wheel', role: 'status', 'aria-label': 'Uploading ' + f.name }, wheel('sm')) : icon(f.error ? 'error' : f.type.startsWith('image/') ? 'image' : 'description'),
           h('span', { class: 'fname' }, f.name), h('span', { class: 'muted s' }, f.error ? 'failed' : busy ? 'uploading… ' + sz : sz),
           h('button', { type: 'button', 'aria-label': 'Remove ' + f.name, onclick: () => { files.splice(n, 1); drawFiles(); } }, icon('close'))); })); };
     const addFiles = (list) => { for (const file of list) { if (files.length >= 10) { toast('At most 10 files per message.'); break; } const f = { name: file.name || 'file', type: file.type || '', size: file.size, path: '', error: false }; files.push(f); api(`${base}/upload?name=${encodeURIComponent(f.name)}`, { method: 'POST', raw: file }).then((r) => { f.path = r.path; }).catch((e) => { f.error = true; toast(e.message, { error: true }); }).finally(drawFiles); } drawFiles(); };

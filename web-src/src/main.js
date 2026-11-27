@@ -64,7 +64,7 @@ function route(hard = true) {
   curId = p.id;
   navEls.forEach((d) => d.toggleAttribute('aria-current', d.dataset.id === p.id)); navEls.forEach((d) => d.dataset.id === p.id ? d.setAttribute('aria-current', 'page') : d.removeAttribute('aria-current'));
   cleanup?.(); cleanup = null; refreshStatus(); page.newAction = null; page.guard = null; page.soft = null; curLabel = p.label === 'Connect' ? 'Connectors' : p.label; setTitle(); lastHash = location.hash;
-  const view = document.getElementById('view'); clear(view).append(spinner());
+  const view = document.getElementById('view'); clear(view).append(spinner('Loading', 'lg'));
   // The entrance animation is for arriving on a page only: once it has played, in-page redraws (ticking off a task, the 30s refresh) must not replay it.
   view.classList.remove('settled'); const navSeq = ++routeSeq;
   window.scrollTo(0, 0);

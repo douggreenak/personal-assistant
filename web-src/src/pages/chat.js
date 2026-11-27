@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { h, icon, clear, spinner, page, pictureAttach, toast } from '../ui.js';
+import { h, icon, clear, typing, page, pictureAttach, toast } from '../ui.js';
 import { md } from '../markdown.js';
 
 const KEY = 'chat_history';
@@ -36,7 +36,7 @@ export default async function chat(view) {
     text = (text ?? ta.value).trim(); const images = pics.images(); if (!text && !images.length) return;
     const thumbs = images.map((p) => p.thumb); pics.clear();
     ta.value = ''; ta.style.height = 'auto'; hist.push({ role: 'me', text, thumbs, at: Date.now() }); bubble('me', text, thumbs);
-    const wait = h('div', { class: 'bubble bot' }, spinner()); msgs.append(wait); msgs.scrollTop = msgs.scrollHeight; sendBtn.disabled = true;
+    const wait = h('div', { class: 'bubble bot' }, typing()); msgs.append(wait); msgs.scrollTop = msgs.scrollHeight; sendBtn.disabled = true;
     let reply, approvals = [];
     const pay = images.map(({ name, data }) => ({ name, data }));
     try { const j = await api('/chat', { method: 'POST', body: { text: text || 'What is in this picture?', images: pay } }); reply = j.reply; approvals = j.approvals ?? []; } catch (e) { reply = 'Error: ' + e.message; }

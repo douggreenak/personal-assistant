@@ -165,11 +165,32 @@ input[type=color]::-webkit-color-swatch-wrapper { padding: 0; } input[type=color
 .composer textarea { flex: 1; min-width: 0; width: 0; border: 0; background: none; resize: none; font: inherit; color: inherit; outline: none; max-height: 160px; padding: 10px 0; }
 .suggest { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
 
-/* wavy loading indicator */
-.wavy { display: inline-flex; gap: 5px; align-items: center; height: 28px; }
-.wavy span { width: 7px; height: 18px; border-radius: 4px; background: var(--md-sys-color-primary); animation: wave 1s var(--spring) infinite; }
-.wavy span:nth-child(2) { animation-delay: .1s; } .wavy span:nth-child(3) { animation-delay: .2s; } .wavy span:nth-child(4) { animation-delay: .3s; } .wavy span:nth-child(5) { animation-delay: .4s; }
-@keyframes wave { 0%, 100% { transform: scaleY(.45); } 50% { transform: scaleY(1.3); } }
+/* loading wheel */
+.wheel { --s: 40px; width: var(--s); height: var(--s); display: block; flex: none; transform-origin: center; animation: wheel-turn 1.5s linear infinite; }
+.wheel.sm { --s: 20px; } .wheel.lg { --s: 56px; }
+.wheel circle { fill: none; stroke-width: 4.5; stroke-linecap: round; }
+.wheel .track { stroke: var(--md-sys-color-primary); opacity: .16; }
+.wheel .arc { stroke: var(--md-sys-color-primary); stroke-dasharray: 8 120; stroke-dashoffset: 0; transform-origin: center; animation: wheel-arc 1.5s cubic-bezier(.4, 0, .2, 1) infinite; }
+@keyframes wheel-turn { to { transform: rotate(360deg); } }
+@keyframes wheel-arc { 0% { stroke-dasharray: 8 120; stroke-dashoffset: 0; } 50% { stroke-dasharray: 80 120; stroke-dashoffset: -28; } 100% { stroke-dasharray: 8 120; stroke-dashoffset: -119; } }
+.loading { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 36px 16px; text-align: center; color: var(--md-sys-color-on-surface-variant); opacity: 0; animation: loading-in .3s ease .2s forwards; }
+.loading.lg { padding: 18vh 16px 10vh; } .loading.sm { display: inline-flex; padding: 0; gap: 0; }
+.loading-label { font: 550 .95rem var(--font); }
+.loading-slow { font-size: .85rem; opacity: 0; animation: loading-in .5s ease 8s forwards; max-width: 26em; }
+@keyframes loading-in { to { opacity: 1; } }
+.loading-slow { margin-top: -6px; }
+/* typing dots in a chat bubble */
+.typing { display: inline-flex; gap: 5px; align-items: center; height: 22px; padding: 0 4px; }
+.typing i { width: 8px; height: 8px; border-radius: 50%; background: var(--md-sys-color-on-surface-variant); opacity: .4; animation: typing-bounce 1.2s ease-in-out infinite; }
+.typing i:nth-child(2) { animation-delay: .15s; } .typing i:nth-child(3) { animation-delay: .3s; }
+@keyframes typing-bounce { 0%, 60%, 100% { transform: translateY(0); opacity: .4; } 30% { transform: translateY(-5px); opacity: 1; } }
+/* reduced motion: no zippy motion, but a loader that does not move looks frozen: keep a slow turn, show it at once */
+@media (prefers-reduced-motion: reduce) {
+  .loading { opacity: 1 !important; animation: none !important; }
+  .loading-slow { opacity: 1 !important; animation: none !important; }
+  .wheel { animation: wheel-turn 3s linear infinite !important; } .wheel .arc { animation: none !important; stroke-dasharray: 60 120 !important; }
+  .typing i { animation: none !important; opacity: .7 !important; }
+}
 
 /* ===== misc ===== */
 .timeline { display: grid; gap: 0; border-left: 3px solid var(--md-sys-color-outline-variant); margin-left: 8px; }
@@ -388,7 +409,7 @@ main { position: relative; }
 @media (max-width: 839px) { .display { font-size: 1.5rem; } .chat { height: calc(100dvh - 350px); min-height: 200px; } }
 .code-files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .code-file { display: flex; align-items: center; gap: 6px; padding: 4px 4px 4px 10px; border-radius: 16px; background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); font-size: .85rem; max-width: 260px; }
-.code-file-wheel { --md-circular-progress-size: 20px; --md-circular-progress-active-indicator-width: 12; flex: none; }
+.code-file-wheel { flex: none; }
 .code-file.busy { opacity: .85; }
 .code-file .ic { width: 18px; height: 18px; } .code-file .fname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .code-file.bad { background: var(--md-sys-color-error-container); }
 .code-file button { all: unset; cursor: pointer; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; } .code-file button:hover { background: #0002; }

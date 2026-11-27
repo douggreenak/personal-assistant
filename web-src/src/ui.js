@@ -96,7 +96,20 @@ export function confirmDialog(title, text, okLabel = 'Confirm') {
 }
 
 // ---- small components ----
-export const spinner = (label = 'Loading') => h('div', { class: 'wavy', role: 'progressbar', 'aria-label': label }, h('span'), h('span'), h('span'), h('span'), h('span'));
+/** The loading wheel: a smooth ring that spins while its arc grows and shrinks. `size`: 'sm' (inline, e.g. in a button or a row), 'md' (a section), 'lg' (a whole page). */
+export function wheel(size = 'md') {
+  const ns = 'http://www.w3.org/2000/svg'; const s = document.createElementNS(ns, 'svg');
+  s.setAttribute('viewBox', '0 0 48 48'); s.setAttribute('class', 'wheel ' + size); s.setAttribute('aria-hidden', 'true');
+  for (const cls of ['track', 'arc']) { const c = document.createElementNS(ns, 'circle'); c.setAttribute('cx', '24'); c.setAttribute('cy', '24'); c.setAttribute('r', '19'); c.setAttribute('class', cls); s.append(c); }
+  return s;
+}
+/** A loading block, centred in whatever holds it: the wheel and what is loading. It fades in only after a moment (a fast load never flashes it) and admits when it is taking long.
+ *  A 'sm' one is just the wheel, for use inline. */
+export const spinner = (label = 'Loading', size = 'md') => size === 'sm'
+  ? h('span', { class: 'loading sm', role: 'status', 'aria-label': label }, wheel('sm'))
+  : h('div', { class: 'loading ' + size, role: 'status', 'aria-live': 'polite', 'aria-label': label }, wheel(size), h('div', { class: 'loading-label' }, label.replace(/[….]+$/, '') + '…'), h('div', { class: 'loading-slow' }, 'Still working. This is taking longer than usual.'));
+/** Three softly bouncing dots: someone is writing a reply (chat bubbles). */
+export const typing = (label = 'Thinking') => h('span', { class: 'typing', role: 'status', 'aria-label': label }, h('i'), h('i'), h('i'));
 export const empty = (iconName, title, sub) => h('div', { class: 'empty' }, h('div', { class: 'empty-art' }, icon(iconName)), h('div', { class: 'title-m' }, title), sub && h('div', { class: 'muted' }, sub));
 export const chip = (text, cls = '') => h('span', { class: 'tag ' + cls }, text);
 export function field(label, props = {}, type = 'md-outlined-text-field') {
