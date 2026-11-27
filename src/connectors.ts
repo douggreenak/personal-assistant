@@ -264,7 +264,7 @@ export async function gatherDocs(ctx: Ctx, input: string, note: (s: string) => v
   else if (looksLikeNoDocs(text)) {
     note('No documentation was given — looking for the official API docs…');
     let urls: string[] = [];
-    try { const r = await ctx.llm.json({ system: DOCS_SYSTEM, prompt: `<service>\n${text.slice(0, 300)}\n</service>`, schema: { type: 'object', properties: { urls: { type: 'array', items: { type: 'string' } } }, required: ['urls'] } }) as { urls?: unknown }; urls = (Array.isArray(r?.urls) ? r.urls : []).filter((u): u is string => typeof u === 'string' && /^https:\/\/\S+$/.test(u)).slice(0, 5); } catch { /* fall through to the error below */ }
+    try { const r = await ctx.llm.json({ purpose: 'triage', system: DOCS_SYSTEM, prompt: `<service>\n${text.slice(0, 300)}\n</service>`, schema: { type: 'object', properties: { urls: { type: 'array', items: { type: 'string' } } }, required: ['urls'] } }) as { urls?: unknown }; urls = (Array.isArray(r?.urls) ? r.urls : []).filter((u): u is string => typeof u === 'string' && /^https:\/\/\S+$/.test(u)).slice(0, 5); } catch { /* fall through to the error below */ }
     for (const u of urls) { if (budget < 2000) break; await read(u, true); }
     if (!parts.length) throw new Error("I couldn't find documentation for that on my own. Paste a link to the service's API docs (or the docs text) and try again.");
     note(`Found ${parts.length} documentation page${parts.length === 1 ? '' : 's'}.`);
@@ -282,7 +282,7 @@ export const describeCaps = (m: Manifest): string => [
 export async function proposeConnector(ctx: Ctx, input: string, fetchImpl: typeof fetch = fetch): Promise<string> {
   let docs: string;
   try { docs = await loadDocs(input, fetchImpl); } catch (e) { return (e as Error).message; }
-  const raw = await ctx.llm.json({ system: CONNECTOR_SYSTEM, prompt: `<docs>\n${docs.slice(0, 60000)}\n</docs>`, schema: MANIFEST_SCHEMA as unknown as Record<string, unknown> });
+  const raw = await ctx.llm.json({ purpose: 'setup', system: CONNECTOR_SYSTEM, prompt: `<docs>\n${docs.slice(0, 60000)}\n</docs>`, schema: MANIFEST_SCHEMA as unknown as Record<string, unknown> });
   let m: Manifest;
   try { m = validateManifest(raw); await assertPublicHttps(m.baseUrl); } catch (e) { return `I couldn't build a safe connector from that: ${(e as Error).message}`; }
   m = makeUnique(ctx, m);

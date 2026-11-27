@@ -20,6 +20,6 @@ export async function helpAnswer(ctx: Ctx, o: { question: string; topic?: string
   const state = `Built-in: ${integ.map((i) => `${i.name} ${i.configured ? (i.ok === false ? 'configured but failing' : 'set up') : 'not set up'}`).join('; ')}\nCustom connectors: ${conns.map((c) => `${c.manifest.name} (${c.status}${c.lastError ? ', error: ' + c.lastError.slice(0, 100) : ''})`).join('; ') || 'none'}`;
   const history = (o.history ?? []).slice(-6).map((t) => `${t.role === 'me' ? 'Owner' : 'Helper'}: ${String(t.text).slice(0, 600)}`).join('\n');
   const prompt = `<guide>\n${guideText}\n</guide>\n<state>\n${state}\n</state>${history ? `\n<history>\n${history}\n</history>` : ''}\n\nOwner's question: ${question || '(no words — they only attached a screenshot; say what you see and what to do next)'}${o.images?.length ? `\n\n${o.images.length} screenshot(s) attached above.` : ''}`;
-  const r = await ctx.llm.json({ system: HELP_SYSTEM, prompt, images: o.images, schema: HELP_SCHEMA as unknown as Record<string, unknown> }) as { answer?: unknown };
+  const r = await ctx.llm.json({ purpose: 'help', system: HELP_SYSTEM, prompt, images: o.images, schema: HELP_SCHEMA as unknown as Record<string, unknown> }) as { answer?: unknown };
   return String(r?.answer ?? '').trim() || "I couldn't work out an answer — try rephrasing or add a screenshot.";
 }

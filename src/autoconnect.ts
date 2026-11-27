@@ -62,7 +62,7 @@ const slug = (v: unknown): string => String(v ?? '').toLowerCase().replace(/[^a-
 async function design(ctx: Ctx, docs: string): Promise<Manifest> {
   let problem = '';
   for (let attempt = 0; attempt < 2; attempt++) {
-    const raw = await ctx.llm.json({ system: CONNECTOR_SYSTEM, prompt: `<docs>\n${docs.slice(0, 60000)}\n</docs>${problem ? `\n\nYour previous manifest was rejected: ${problem}. Fix exactly that and answer again.` : ''}`, schema: MANIFEST_SCHEMA as unknown as Record<string, unknown> });
+    const raw = await ctx.llm.json({ purpose: 'setup', system: CONNECTOR_SYSTEM, prompt: `<docs>\n${docs.slice(0, 60000)}\n</docs>${problem ? `\n\nYour previous manifest was rejected: ${problem}. Fix exactly that and answer again.` : ''}`, schema: MANIFEST_SCHEMA as unknown as Record<string, unknown> });
     try {
       if (raw && typeof raw === 'object') { const r = raw as { id?: unknown; name?: unknown; instructions?: unknown }; delete r.instructions; /* only the owner writes these */ r.id = slug(r.id) || slug(r.name) || 'service'; const au = (raw as { auth?: { secret?: unknown } }).auth; if (au && typeof au.secret === 'string') au.secret = au.secret.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^[^A-Z]+|_+$/g, ''); }
       const m = validateManifest(raw);
@@ -137,7 +137,7 @@ async function verifyAndEnable(ctx: Ctx, job: AutoJob, id: string, docs: string,
       if (/^HTTP (401|403)/.test(lastErr)) { lastErr += ' — the service rejected the key. Check the key and the auth style.'; if (attempt >= 2) break; }
       note(job, 'Asking the model to fix the connector using what the service returned…');
       try {
-        const raw = await ctx.llm.json({ system: REPAIR_SYSTEM, schema: MANIFEST_SCHEMA as unknown as Record<string, unknown>,
+        const raw = await ctx.llm.json({ purpose: 'setup', system: REPAIR_SYSTEM, schema: MANIFEST_SCHEMA as unknown as Record<string, unknown>,
           prompt: `<docs>\n${docs.slice(0, 40000)}\n</docs>\n<current_manifest>\n${JSON.stringify(m)}\n</current_manifest>\n<problem>\n${lastErr}\n</problem>\n<response>\n${sample.slice(0, 1500)}\n</response>` });
         const fixed = validateManifest({ ...(raw as object), id }); await assertPublicHttps(fixed.baseUrl + (fixed.poll?.path ?? ''));
         if (fixed.auth.type !== 'none') fixed.auth.secret = m.auth.type !== 'none' ? m.auth.secret : fixed.auth.secret;

@@ -4,6 +4,7 @@ import { captureLogs } from './logs.ts';
 import { openDb } from './db.ts';
 import { ItemStore } from './items.ts';
 import { ClaudeCliLlm } from './llm.ts';
+import { recordUsage, pruneUsage } from './llmusage.ts';
 import { ConsoleNotifier, MultiNotifier, NtfyNotifier, type Notifier } from './notify.ts';
 import { join } from 'node:path';
 import { LocalTicketing } from './tickets/local.ts';
@@ -38,7 +39,7 @@ const user = cfg.google.oauth?.refreshToken ? new UserOAuth(cfg.google.oauth.cli
 
 // ctx.notify is swapped in below once the chat bot (which needs ctx) exists.
 const ctx: Ctx = {
-  cfg, db, items: new ItemStore(db), llm: new ClaudeCliLlm(cfg.claude), now: () => new Date(), notify: new ConsoleNotifier(),
+  cfg, db, items: new ItemStore(db), llm: new ClaudeCliLlm({ ...cfg.claude, onUsage: (u) => recordUsage(db, u) }), now: () => new Date(), notify: new ConsoleNotifier(),
   ticketing: new LocalTicketing(openTicketsDb(join(cfg.dataDir, 'tickets.db'))),   // the ticket tracker is built in
   canopy: cfg.canopy ? new CanopyClient(cfg.canopy.url, cfg.canopy.readToken, cfg.canopy.writeToken) : undefined,
 };
@@ -63,6 +64,7 @@ function every(name: string, ms: number, fn: () => Promise<unknown>, runNow = tr
 // The worker drains the message queue one at a time (each message is one LLM call).
 const wake = every('worker', 3000, async () => { while (await processNextReport(ctx)) { /* keep draining */ } });
 every('nag', 30_000, () => nagTick(ctx));
+every('usage-prune', 6 * 3600_000, async () => pruneUsage(db), false);
 every('approvals', 10_000, () => announcePending(ctx));
 every('connectors', 60_000, () => runConnectors(ctx));
 every('backup', 5 * 60_000, () => nightlyBackupTick(ctx), true);

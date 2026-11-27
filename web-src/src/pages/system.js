@@ -93,7 +93,7 @@ export default async function system(view, { refreshStatus }) {
   const filter = h('md-outlined-text-field', { label: 'Filter the server log', 'data-primary': '', class: 'grow' }, h('span', { slot: 'leading-icon' }, icon('search')));
   let drawLogsNow = () => {}; filter.addEventListener('input', () => { q = filter.value.toLowerCase(); drawLogsNow(); });
   async function load() {
-    const [s, integ, logs, act, mac, macClients] = await Promise.all([api('/status'), api('/status/integrations'), api('/logs?limit=250'), api('/activity?limit=25'), api('/app/mac/latest').catch((e) => ({ release: { available: false, error: e.message } })), api('/app/mac/clients').catch(() => ({ clients: [] }))]);
+    const [s, integ, logs, act, mac, macClients, cu] = await Promise.all([api('/status'), api('/status/integrations'), api('/logs?limit=250'), api('/activity?limit=25'), api('/app/mac/latest').catch((e) => ({ release: { available: false, error: e.message } })), api('/app/mac/clients').catch(() => ({ clients: [] })), api('/status/claude').catch(() => null)]);
     const stat = (label, v, ic) => h('div', { class: 'card flat' }, h('div', { class: 'label' }, label), h('div', { class: 'title-l' }, v));
     const logBox = h('div', { class: 'logs mono' });
     const drawLogs = () => { clear(logBox).append(...logs.lines.filter((l) => (level === 'all' || l.level === 'error') && (!q || l.text.toLowerCase().includes(q))).map((l) => h('div', { class: l.level === 'error' ? 'e' : '' }, h('span', { class: 'at' }, fmtDate(l.at, { timeStyle: 'medium' }) + '  '), l.text))); logBox.scrollTop = logBox.scrollHeight; };
@@ -105,6 +105,7 @@ export default async function system(view, { refreshStatus }) {
       h('div', { class: 'grid ' + (s.bySource.length ? 'cols-2' : '') },
         s.bySource.length ? h('div', { class: 'card' }, h('h2', {}, icon('inbox'), 'Where messages come from'), s.bySource.length ? h('div', { class: 'list' }, s.bySource.map((r) => h('div', { class: 'row static', style: 'grid-template-columns:1fr auto' }, h('div', { class: 't' }, r.source), chip(String(r.n))))) : h('div', { class: 'muted' }, 'No messages yet.')) : null,
         h('div', { class: 'card' }, h('h2', {}, icon('history'), 'Recent changes'), act.events.length ? h('div', { class: 'timeline' }, act.events.slice(0, 10).map((e) => h('div', {}, h('div', { class: 't' }, `${e.type} · ${e.title}`), h('div', { class: 'muted' }, `${e.actor} · ${ago(e.at)}`)))) : h('div', { class: 'muted' }, 'Nothing yet.'))),
+      cu ? claudeUsageCard(cu) : null,
       macAppCard(mac.release, macClients.clients, async () => { if (await guarded(() => api('/app/mac/latest?refresh=1'))) load(); }),
       h('div', { class: 'card' }, h('h2', {}, icon('terminal'), h('span', { class: 'grow' }, 'Server log'), levels), logBox),
       h('div', { class: 'card' }, h('h2', {}, icon('tune'), 'Maintenance'), h('div', { style: 'display:flex;gap:10px;flex-wrap:wrap' },
@@ -115,4 +116,19 @@ export default async function system(view, { refreshStatus }) {
   clear(view).append(h('div', { class: 'page-head' }, h('h1', { class: 'display' }, 'System'), h('p', { class: 'muted title-m' }, 'Health, logs and maintenance.')), h('div', { class: 'toolbar' }, filter), body);
   clear(body).append(spinner()); await load();
   const t = setInterval(() => !document.hidden && !document.querySelector('md-dialog[open], md-menu[open]') && load().catch(() => {}), 20000); return () => clearInterval(t);
+}
+
+const kfmt = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'k' : String(n));
+const PURPOSE = { 'extract-bg': 'Reading incoming mail and messages', extract: 'Reading your own messages and chats', plan: 'Choosing live lookups', answer: 'Answering questions', help: 'Help chat', setup: 'Connecting services', triage: 'Small checks', other: 'Other' };
+/** How much Claude the assistant has used, and what it saved by skipping or shrinking work. */
+function claudeUsageCard(u) {
+  const b = u.budget; const pct = b.limit ? Math.min(100, Math.round((b.used / b.limit) * 100)) : 0;
+  return h('div', { class: 'card' }, h('h2', {}, icon('bolt'), 'Claude usage, last 24 hours'),
+    h('div', { class: 'grid cols-3' },
+      h('div', { class: 'card flat' }, h('div', { class: 'label' }, 'Calls'), h('div', { class: 'title-l' }, String(u.calls)), u.failed ? h('div', { class: 's muted' }, u.failed + ' failed') : null),
+      h('div', { class: 'card flat' }, h('div', { class: 'label' }, 'Tokens used'), h('div', { class: 'title-l' }, kfmt(u.input + u.output + u.cacheRead)), h('div', { class: 's muted' }, kfmt(u.output) + ' written by Claude')),
+      h('div', { class: 'card flat' }, h('div', { class: 'label' }, 'Messages skipped'), h('div', { class: 'title-l' }, String(u.filtered)), h('div', { class: 's muted' }, 'not worth a call'))),
+    h('div', { class: 'list' }, u.byPurpose.map((r) => h('div', { class: 'row static' }, h('div', { class: 'grow' }, PURPOSE[r.purpose] || r.purpose), h('div', { class: 'muted' }, `${r.calls} call${r.calls === 1 ? '' : 's'} · ${kfmt(r.tokens)} tokens`)))),
+    b.limit ? h('div', { style: 'margin-top:10px' }, h('div', { class: 's muted' }, `Background reading today: ${b.used} of ${b.limit} allowed` + (b.open ? '' : '. The limit is reached, so new incoming mail waits.')), h('div', { class: 'usage-bar', role: 'progressbar', 'aria-valuenow': String(pct), 'aria-valuemin': '0', 'aria-valuemax': '100' }, h('div', { style: `width:${pct}%` }))) : null,
+    h('p', { class: 's muted' }, 'Your own chats and questions are never limited. Change the limit in Settings.'));
 }

@@ -13,7 +13,8 @@ export interface Config {
   transcribeUrl: string | null;                          // OpenAI-compatible /v1/audio/transcriptions endpoint
   indexPaths: string[]; driveFolderIds: string[]; backup: { auto: boolean; hour: number; keep: number };
   code: { enabled: boolean; root: string; maxSessions: number; allowBypass: boolean; resumeOnBoot: boolean; claudeBin: string; tmuxBin: string; socket: string; configDir: string; globalConfig: string; claudeEnv: Record<string, string> };
-  claude: { bin: string; model?: string; timeoutMs: number };
+  claude: { bin: string; model?: string; fastModel?: string; timeoutMs: number };
+  llm: { backgroundCallsPerDay: number };
   autoApplyMinConfidence: number;                        // below this, updates/completions go to the approval queue
   ignoreSenders: RegExp[];
   github: { repo: string; token: string };               // where the Mac app releases live
@@ -45,7 +46,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       claudeEnv: env.CLAUDE_CONFIG_DIR ? { CLAUDE_CONFIG_DIR: env.CLAUDE_CONFIG_DIR } : {},
       globalConfig: env.CODE_GLOBAL_CONFIG ?? (env.CLAUDE_CONFIG_DIR ? `${env.CLAUDE_CONFIG_DIR}/.claude.json` : `${env.HOME ?? '/home/node'}/.claude.json`) },
     backup: { auto: env.BACKUP_AUTO !== '0', hour: Math.min(23, Math.max(0, Math.trunc(Number(env.BACKUP_HOUR ?? 2)) || 0)), keep: Math.min(365, Math.max(1, Math.trunc(Number(env.BACKUP_KEEP ?? 14)) || 14)) },
-    claude: { bin: env.CLAUDE_BIN ?? 'claude', model: env.CLAUDE_MODEL, timeoutMs: Number(env.CLAUDE_TIMEOUT_MS ?? 180000) },
+    claude: { bin: env.CLAUDE_BIN ?? 'claude', model: env.CLAUDE_MODEL, fastModel: env.CLAUDE_FAST_MODEL ?? 'haiku', timeoutMs: Number(env.CLAUDE_TIMEOUT_MS ?? 180000) },
+    llm: { backgroundCallsPerDay: Math.max(0, Math.trunc(Number(env.LLM_BACKGROUND_CALLS_PER_DAY ?? 300)) || 0) },
     autoApplyMinConfidence: Number(env.AUTO_APPLY_MIN_CONFIDENCE ?? 0.6),
     github: { repo: env.GITHUB_REPO ?? 'douggreenak/personal-assistant', token: env.GITHUB_TOKEN ?? '' },
     ignoreSenders: list(env.IGNORE_SENDERS ?? 'no-?reply,mailer-daemon,notifications?@').map((s) => new RegExp(s, 'i')),

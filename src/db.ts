@@ -94,6 +94,9 @@ CREATE INDEX message_items_item ON message_items(item_id);
 `, `
 CREATE TABLE code_queue (id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT NOT NULL, text TEXT NOT NULL, created_at TEXT NOT NULL);   -- Code-tab messages waiting for Claude to be free; survives a restart
 CREATE INDEX code_queue_key ON code_queue(key);
+`, `
+  CREATE TABLE llm_usage (id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, purpose TEXT NOT NULL, model TEXT NOT NULL DEFAULT '', input INTEGER NOT NULL DEFAULT 0, output INTEGER NOT NULL DEFAULT 0, cache_read INTEGER NOT NULL DEFAULT 0, cache_write INTEGER NOT NULL DEFAULT 0, cost REAL NOT NULL DEFAULT 0, ms INTEGER NOT NULL DEFAULT 0, chars INTEGER NOT NULL DEFAULT 0, ok INTEGER NOT NULL DEFAULT 1);
+  CREATE INDEX llm_usage_at ON llm_usage (at);
 `];
 
 export function openDb(path: string): Db {

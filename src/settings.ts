@@ -16,6 +16,8 @@ export const SETTINGS: SettingDef[] = [
   { key: 'AUTO_APPLY_MIN_CONFIDENCE', label: 'Auto-apply confidence', group: 'General', type: 'number', placeholder: '0.6', help: 'Updates and completions below this confidence ask for approval first (0–1).' },
   { key: 'IGNORE_SENDERS', label: 'Ignore senders', group: 'General', type: 'list', help: 'Comma-separated regexes of automated senders that are skipped without a model call.' },
 
+  { key: 'CLAUDE_FAST_MODEL', label: 'Claude model for small jobs', group: 'Brain', type: 'text', default: 'haiku', help: 'Used for choosing which live lookups a question needs. A smaller model keeps usage down.' },
+  { key: 'LLM_BACKGROUND_CALLS_PER_DAY', label: 'Daily limit for background reading', group: 'Brain', type: 'number', default: '300', help: 'The most messages from email and other outside sources that Claude reads per day. Your own chats and questions are never limited. 0 means no limit.' },
   { key: 'CLAUDE_MODEL', label: 'Claude model', group: 'Brain', type: 'text', help: 'Model used to understand messages. Leave blank for the Claude Code default.' },
   { key: 'CLAUDE_TIMEOUT_MS', label: 'Model timeout (ms)', group: 'Brain', type: 'number', placeholder: '180000' },
 

@@ -604,3 +604,5 @@ md-dialog { max-height: min(calc(100dvh - 48px), 980px); }
 @media (max-width: 359px) { .code-sub { flex-wrap: wrap !important; } .code-sub > span { margin-left: 0; } }
 
 .approval-from { margin-top: 8px; padding: 8px 12px; border-left: 3px solid var(--md-sys-color-outline-variant); background: var(--md-sys-color-surface-container); border-radius: 0 10px 10px 0; font-size: .9rem; overflow-wrap: anywhere; }
+.usage-bar { height: 8px; border-radius: 4px; background: var(--md-sys-color-surface-container-highest); overflow: hidden; margin-top: 6px; }
+.usage-bar > div { height: 100%; background: var(--md-sys-color-primary); border-radius: 4px; }

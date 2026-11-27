@@ -23,6 +23,7 @@ import { search } from './qa.ts';
 import { indexPaths } from './index/indexer.ts';
 import { activity, connectorsFull, deleteConnector, integrations, listMessages, retryMessage, saveServiceAccount, setConnectorStatus, setSecret, skipMessage, status } from './admin.ts';
 import { readOverrides, saveSettings, viewSettings } from './settings.ts';
+import { usageSummary } from './llmusage.ts';
 import { consentUrl, exchangeCode } from './google/connect.ts';
 /** A setting's current value: what was saved on the Settings page (not yet applied until a restart), else the environment. */
 const effective = (ctx: Ctx, key: string): string => readOverrides(ctx.cfg.dataDir)[key] || process.env[key] || '';
@@ -167,6 +168,7 @@ export function createHttp(ctx: Ctx, deps: HttpDeps): Server {
       return;
     }
     if (path === '/status' && method === 'GET') return send(res, 200, status(ctx));
+    if (path === '/status/claude' && method === 'GET') return send(res, 200, usageSummary(ctx, 24));
     if (path === '/status/integrations' && method === 'GET') return send(res, 200, { integrations: await integrations(ctx) });
     if (path === '/activity' && method === 'GET') return send(res, 200, { events: activity(ctx, Number(url.searchParams.get('limit') ?? 60)) });
     if (path === '/logs' && method === 'GET') return send(res, 200, { lines: getLogs(Number(url.searchParams.get('limit') ?? 200)) });

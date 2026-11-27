@@ -1,0 +1,64 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, writeFileSync, chmodSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { makeCtx } from './helpers.ts';
+import { storeMessage, processNext } from '../src/pipeline.ts';
+import { isAcknowledgement, skipReason, trimMail } from '../src/prefilter.ts';
+import { ClaudeCliLlm } from '../src/llm.ts';
+import { recordUsage, backgroundBudget, usageSummary } from '../src/llmusage.ts';
+
+test('prefilter: bare acknowledgements and nothing else', () => {
+  for (const t of ['ok', 'Thanks!', 'thank you', '👍', 'Sounds good.', 'got it', 'Yes', 'lol']) assert.equal(isAcknowledgement(t), true, t);
+  for (const t of ['ok can you send the invoice by Friday', 'Thanks, but the deadline moved to Monday', 'yes please book it', 'no, I need it today', '']) assert.equal(isAcknowledgement(t), false, t);
+  assert.equal(skipReason({ source: 'gmail', body: 'thanks', fromOwner: false }, { linkedOpen: 0, duplicate: false }), 'acknowledgement');
+  assert.equal(skipReason({ source: 'gmail', body: 'yes', fromOwner: false }, { linkedOpen: 1, duplicate: false }), null, 'a short reply may close an open item');
+  assert.equal(skipReason({ source: 'chat', body: 'ok', fromOwner: true }, { linkedOpen: 0, duplicate: true }), null, 'the owner talking to the assistant is always read');
+  assert.equal(skipReason({ source: 'gmail', body: 'Please call me', fromOwner: false }, { linkedOpen: 0, duplicate: true }), 'repeat');
+});
+
+test('prefilter: mail loses the quoted chain, signature and footer but keeps the new text', () => {
+  const mail = ['Hi Doug,', '', 'Can you send the signed contract by Friday? ' + 'https://example.com/track?' + 'x'.repeat(120), '', 'Thanks,', 'Sam', '', 'On Tue, Nov 4, 2026 at 9:15 AM Doug <d@x.com> wrote:', '> Sure, what do you need?', '> long old text '.repeat(50), '', '-- ', 'Sam Smith | Acme', 'Unsubscribe here'].join('\n');
+  const out = trimMail(mail);
+  assert.match(out, /signed contract by Friday/); assert.doesNotMatch(out, /wrote:|old text|Acme|Unsubscribe/); assert.match(out, /example\.com\/…/); assert.ok(out.length < mail.length / 2);
+  assert.equal(trimMail('> quoted only'), '> quoted only', 'never trims a message down to nothing');
+  assert.ok(trimMail('a'.repeat(20000)).length < 6100);
+});
+
+test('pipeline: acks and repeats never reach the model; real mail does, trimmed, and is counted', async () => {
+  const { ctx, llm } = makeCtx(() => ({ actions: [] }));
+  const send = (id: string, body: string, thread = 't1') => storeMessage(ctx, { source: 'gmail', sourceId: id, sender: 'sam@x.com', subject: 's', body, thread });
+  send('1', 'thanks'); await processNext(ctx); assert.equal(llm.calls.length, 0);
+  send('2', 'Please send the contract by Friday.\n\nOn Tue, Nov 4, 2026 at 9:15 AM Doug wrote:\n> old chain here'); await processNext(ctx);
+  assert.equal(llm.calls.length, 1); assert.doesNotMatch(llm.calls[0].prompt, /old chain here/); assert.match(llm.calls[0].prompt, /contract by Friday/);
+  send('3', 'Please send the contract by Friday.\n\nOn Tue, Nov 4, 2026 at 9:15 AM Doug wrote:\n> old chain here'); await processNext(ctx);
+  assert.equal(llm.calls.length, 1, 'the exact same message again is not read again');
+  send('4', 'Please send the contract by Friday.'); send('5', 'Please send the contract by Friday.'); await processNext(ctx); await processNext(ctx);
+  assert.equal(llm.calls.length, 2, 'different text (no quoted chain) is read once, its repeat is not');
+  assert.equal(usageSummary(ctx).filtered, 3, 'the ack and the two repeats are counted as saved calls');
+});
+
+test('budget: past the daily cap the model reads only the owner\'s own words; the rest waits', async () => {
+  const { ctx, llm } = makeCtx(() => ({ actions: [] }), { env: { LLM_BACKGROUND_CALLS_PER_DAY: '2' } });
+  for (let i = 0; i < 2; i++) recordUsage(ctx.db, { purpose: 'extract-bg', model: '', input: 10, output: 5, cacheRead: 0, cacheWrite: 0, cost: 0.01, ms: 5, chars: 100, ok: true });
+  assert.equal(backgroundBudget(ctx).open, false);
+  storeMessage(ctx, { source: 'gmail', sourceId: 'm1', sender: 'sam@x.com', subject: 'hello', body: 'Please call me about the quote tomorrow.' });
+  assert.equal(await processNext(ctx), false, 'incoming mail waits'); assert.equal(llm.calls.length, 0);
+  storeMessage(ctx, { source: 'chat', sourceId: 'c1', sender: 'me', subject: '', body: 'remind me to call Sam tomorrow' });
+  assert.equal(await processNext(ctx), true, 'the owner\'s own chat is never held back'); assert.equal(llm.calls.length, 1);
+  assert.equal(ctx.cfg.llm.backgroundCallsPerDay, 2);
+});
+
+test('llm: tokens and cost are logged from Claude Code\'s own report, and small jobs use the fast model', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'fake-claude-')); const bin = join(dir, 'claude');
+  writeFileSync(bin, '#!/bin/sh\necho "$@" > ' + join(dir, 'args') + '\necho \'{"is_error":false,"structured_output":{"ok":true},"usage":{"input_tokens":120,"output_tokens":30,"cache_read_input_tokens":900,"cache_creation_input_tokens":50},"total_cost_usd":0.0123}\'\n'); chmodSync(bin, 0o755);
+  const { ctx } = makeCtx();
+  const llm = new ClaudeCliLlm({ bin, model: 'big-model', fastModel: 'small-model', onUsage: (u) => recordUsage(ctx.db, u) });
+  await llm.json({ purpose: 'plan', system: 's', prompt: 'p', schema: { type: 'object' } });
+  assert.match((await import('node:fs')).readFileSync(join(dir, 'args'), 'utf8'), /--model small-model/);
+  await llm.json({ purpose: 'extract-bg', system: 's', prompt: 'p', schema: { type: 'object' } });
+  assert.match((await import('node:fs')).readFileSync(join(dir, 'args'), 'utf8'), /--model big-model/);
+  const u = usageSummary(ctx); assert.equal(u.calls, 2); assert.equal(u.input, 240); assert.equal(u.output, 60); assert.equal(u.cacheRead, 1800); assert.ok(Math.abs(u.cost - 0.0246) < 1e-9);
+  assert.deepEqual(u.byPurpose.map((r) => r.purpose).sort(), ['extract-bg', 'plan']); assert.equal(u.budget.used, 1);
+});

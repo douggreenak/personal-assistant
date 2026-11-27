@@ -84,5 +84,5 @@ export async function codeLive(ctx: Ctx, question: string): Promise<{ connector:
   const named = mentioned(ds, question);
   if (!asksCode && !named.length) return null;
   const pick = named.length ? named : ds;
-  return { connector: 'code', label: 'Code tab agents', ok: true, text: formatDigests(pick, { detail: named.length > 0 || pick.length <= 3 }) };
+  return { connector: 'code', label: 'Code tab agents', ok: true, text: formatDigests(pick.slice(0, 8), { detail: named.length > 0 || pick.length <= 3 }).slice(0, 6000) };
 }
