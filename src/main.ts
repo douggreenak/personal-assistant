@@ -17,6 +17,7 @@ import { ChatBot, pollChatSpaces } from './google/chat.ts';
 import { indexDrive } from './google/drive.ts';
 import { indexPaths } from './index/indexer.ts';
 import { announcePending } from './approvals.ts';
+import { importCredentialFile } from './credentials.ts';
 import { nagTick } from './nag.ts';
 import { processNextReport } from './pipeline.ts';
 import { canopySync } from './sync/canopy.ts';
@@ -67,6 +68,7 @@ every('nag', 30_000, () => nagTick(ctx));
 every('usage-prune', 6 * 3600_000, async () => pruneUsage(db), false);
 every('approvals', 10_000, () => announcePending(ctx));
 every('connectors', 60_000, () => runConnectors(ctx));
+every('credentials-file', 15_000, async () => { const n = importCredentialFile(ctx); if (n) console.log(`[credentials] stored ${n} from the credentials file`); });
 every('backup', 5 * 60_000, () => nightlyBackupTick(ctx), true);
 void bootResume(ctx).then((n) => n && console.log(`[code] resumed ${n} session(s)`)).catch((e) => console.error('[code]', (e as Error).message))
   .then(() => { const n = restoreManagedQueues(ctx) + restoreExternalQueues(ctx); if (n) console.log(`[code] restored ${n} queued message(s)`); });   // after the sessions are back up

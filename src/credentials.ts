@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import type { Ctx } from './ctx.ts';
 import { nowIso } from './db.ts';
 
@@ -79,3 +79,29 @@ export function deleteCredential(ctx: Ctx, name: string, agent: string): boolean
 
 export const credentialLog = (ctx: Ctx, name?: string, limit = 200): { at: string; agent: string; action: string; name: string }[] =>
   ctx.db.prepare(`SELECT at, agent, action, name FROM credential_log ${name ? 'WHERE name = ?' : "WHERE ? = ''"} ORDER BY id DESC LIMIT ?`).all(name ?? '', limit) as never;
+
+// ---- the agents' file: ~/.credentials.env ----
+/** Parses `NAME=value` / `export NAME="value"` lines (shell-sourceable). Comments and anything else are ignored. */
+export function parseCredentialFile(text: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const line of text.split('\n')) {
+    const m = /^\s*(?:export\s+)?([A-Z][A-Z0-9_]{2,60})=(.*)$/.exec(line); if (!m) continue;
+    let v = m[2].trim(); const q = v[0];
+    if ((q === '"' || q === "'") && v.endsWith(q) && v.length >= 2) v = q === "'" ? v.slice(1, -1).replace(/'\\''/g, "'") : v.slice(1, -1); else v = v.replace(/\s+#.*$/, '');
+    if (v) out[m[1]] = v;
+  }
+  return out;
+}
+let lastSeen = '';
+/** Copies every NAME=value in the agents' file into the encrypted store (new or changed ones only). Cheap when the file is unchanged. */
+export function importCredentialFile(ctx: Ctx, file = process.env.CREDENTIALS_FILE ?? `${ctx.cfg.code.root}/.credentials.env`): number {
+  if (!existsSync(file)) return 0;
+  const st = statSync(file); const stamp = `${file}:${st.mtimeMs}:${st.size}`; if (stamp === lastSeen) return 0;
+  let n = 0;
+  for (const [name, value] of Object.entries(parseCredentialFile(readFileSync(file, 'utf8')))) {
+    const cur = ctx.db.prepare('SELECT secret FROM credentials WHERE name = ?').get(name) as { secret: string } | undefined;
+    if (cur) { try { if (open(ctx, name, cur.secret) === value) continue; } catch { /* replace an unreadable one */ } }
+    saveCredential(ctx, name, { secret: value }, 'file'); n++;
+  }
+  lastSeen = stamp; return n;
+}

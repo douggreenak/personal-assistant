@@ -115,3 +115,6 @@ Details only — never values.
 ### `GET /credentials/log?name=` → `{"log":[{at,agent,action,name}]}` — create / update / read / delete; never values.
 
 **For agents:** `scripts/cred.sh` wraps this (`save`, `get`, `show`, `list`, `delete`). Put `ASSISTANT_URL` and `ASSISTANT_TOKEN` in `~/.assistant-credentials.conf` (mode 600) and every Claude Code session on the host can run e.g. `TOKEN=$(scripts/cred.sh get GITHUB_PAT)` or `read -s v; echo "$v" | scripts/cred.sh save GITHUB_PAT --service GitHub`.
+
+### The file interface (simplest for agents)
+Agents don't have to call the API: `~/.credentials.env` (mode 600, `NAME=value` lines) is imported into the store every ~15 seconds (inside the container it is read from `$CODE_ROOT/.credentials.env`, or `CREDENTIALS_FILE`). `scripts/cred-file.sh` (symlinked as `cred`) gives `cred put NAME` (value on stdin), `cred run NAME… -- cmd` (values only in that command's environment, so they never appear in the chat), `cred names`, `cred has`. Import is one-way, file → store. `~/.claude/CLAUDE.md` tells Claude Code agents to use it, and deny rules in `~/.claude/settings.json` stop the Read/Edit/Write tools and `cat`/`grep` from opening the file.

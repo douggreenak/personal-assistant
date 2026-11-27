@@ -49,3 +49,14 @@ test('credentials: HTTP API needs the full token, never lists values, records th
   } finally { srv.close(); }
   assert.ok(readFileSync(join(ctx.cfg.dataDir, 'credentials.key'), 'utf8').length === 64);
 });
+
+test('credentials file: NAME=value lines are imported once, changes update, quotes handled', async () => {
+  const { writeFileSync } = await import('node:fs');
+  const { parseCredentialFile, importCredentialFile } = await import('../src/credentials.ts');
+  assert.deepEqual(parseCredentialFile("# c\nA_KEY='it'\\''s'\nexport B_KEY=\"two\"\nC_KEY=plain # note\nbad=1\n"), { A_KEY: "it's", B_KEY: 'two', C_KEY: 'plain' });
+  const { ctx } = mk(); const f = join(ctx.cfg.dataDir, 'creds.env');
+  writeFileSync(f, 'ONE_KEY=aaa\nTWO_KEY="bbb"\n'); assert.equal(importCredentialFile(ctx, f), 2);
+  assert.equal(importCredentialFile(ctx, f), 0);
+  writeFileSync(f, 'ONE_KEY=aaa\nTWO_KEY="changed"\nTHREE_KEY=c\n'); assert.equal(importCredentialFile(ctx, f), 2);
+  assert.equal(getCredential(ctx, 'TWO_KEY', 'x')!.secret, 'changed'); assert.equal(getCredential(ctx, 'ONE_KEY', 'x')!.updatedBy, 'file');
+});
