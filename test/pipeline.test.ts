@@ -158,3 +158,23 @@ test('the model is told who wrote each message and sees the conversation; items 
   const other = storeMessage(ctx, { source: 'mac', sourceId: 'm4', sender: '+15559999', thread: 'mac:other', counterpart: '+15559999', body: 'unrelated' });
   assert.ok(other); assert.equal((ctx.db.prepare('SELECT thread FROM messages WHERE id = ?').get(other!) as { thread: string }).thread, 'mac:other');
 });
+
+test('a question to the owner becomes a "reply" task, and the owner\'s answer in the same conversation closes it (no approval needed)', async () => {
+  const { ctx, llm } = makeCtx((req) => {
+    if (/Direction: RECEIVED/.test(req.prompt)) return { actions: [act({ op: 'create', kind: 'task', title: 'Reply to Sam: is the 3pm meeting still on?' })] };
+    const id = /id=(\S+) \| task \| Reply to Sam/.exec(req.prompt)?.[1];   // the model can only close what it was shown
+    return { actions: id ? [act({ op: 'complete', itemId: id, why: 'the reply answers the question' })] : [] };
+  }, { now: NOW });
+  const T = 'mac:chat-sam';
+  storeMessage(ctx, { source: 'mac', sourceId: 'q1', sender: '+15550001', thread: T, counterpart: '+15550001', body: 'Is the 3pm meeting still on?' });
+  await processNext(ctx);
+  const [item] = ctx.items.list({ state: 'open' }); assert.match(item.title, /Reply to Sam/);
+  storeMessage(ctx, { source: 'mac', sourceId: 'a1', sender: 'me', thread: T, counterpart: '+15550001', subject: 'to +15550001', body: 'Yep, see you then' });   // shares no words with the item
+  await processNext(ctx);
+  assert.equal(ctx.items.get(item.id)!.state, 'done');
+  assert.equal(listApprovals(ctx, 'pending').length, 0);
+  // what the model was told
+  assert.match(llm.calls[0].system, /QUESTIONS AND REQUESTS TO THE OWNER/); assert.match(llm.calls[1].system, /CLOSING THE LOOP/);
+  assert.match(llm.calls[1].prompt, new RegExp(`still has 1 open item[\\s\\S]*id=${item.id}[\\s\\S]*return op "complete"`));
+  assert.doesNotMatch(llm.calls[0].prompt, /still has \d+ open item/);          // the hint is only for messages the owner sent
+});
