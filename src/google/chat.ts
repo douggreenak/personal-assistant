@@ -28,7 +28,7 @@ export const isAllowed = (allowed: string[], e: Pick<ChatEvent, 'senderName' | '
   e.senderType !== 'BOT' && allowed.length > 0 && allowed.some((a) => a.toLowerCase() === e.senderName.toLowerCase() || (e.senderEmail && a.toLowerCase() === e.senderEmail.toLowerCase()));
 
 export class ChatBot implements Notifier {
-  ctx: Ctx; sa: TokenSource; fetchImpl: typeof fetch;
+  ctx: Ctx; sa: TokenSource; fetchImpl: typeof fetch; seen = new Set<string>();   // Pub/Sub message ids already handled (it can deliver one twice)
   constructor(ctx: Ctx, sa: TokenSource, fetchImpl: typeof fetch = fetch) { this.ctx = ctx; this.sa = sa; this.fetchImpl = fetchImpl; }
 
   async post(space: string, text: string, thread?: string): Promise<void> {
@@ -47,13 +47,17 @@ export class ChatBot implements Notifier {
   /** Pulls pending Chat events from Pub/Sub (outbound only — no public endpoint), handles them, acks them. */
   async pullOnce(): Promise<number> {
     const sub = this.ctx.cfg.chat.pubsubSubscription; if (!sub) return 0;
-    const pull = await gjson<{ receivedMessages?: { ackId: string; message: { data: string } }[] }>(this.sa, PUBSUB_SCOPE, `https://pubsub.googleapis.com/v1/${sub}:pull`, { method: 'POST', body: { maxMessages: 10 } }, this.fetchImpl);
+    const pull = await gjson<{ receivedMessages?: { ackId: string; message: { data: string; messageId?: string } }[] }>(this.sa, PUBSUB_SCOPE, `https://pubsub.googleapis.com/v1/${sub}:pull`, { method: 'POST', body: { maxMessages: 10 } }, this.fetchImpl);
     const msgs = pull.receivedMessages ?? [];
+    // Acknowledge FIRST. Pub/Sub re-sends anything not acknowledged within the ack deadline (10 s), and a reply that needs the model takes longer than that:
+    // handling before acking made every slow message come back and get answered again, forever.
+    if (msgs.length) await gjson(this.sa, PUBSUB_SCOPE, `https://pubsub.googleapis.com/v1/${sub}:acknowledge`, { method: 'POST', body: { ackIds: msgs.map((m) => m.ackId) } }, this.fetchImpl);
     for (const m of msgs) {
+      const id = (m as { message: { messageId?: string } }).message.messageId;
+      if (id) { if (this.seen.has(id)) continue; this.seen.add(id); if (this.seen.size > 500) this.seen.delete(this.seen.values().next().value as string); }
       try { await this.handleEvent(JSON.parse(Buffer.from(m.message.data, 'base64').toString('utf8'))); }
       catch (e) { console.error('[chat] event failed:', (e as Error).message); }
     }
-    if (msgs.length) await gjson(this.sa, PUBSUB_SCOPE, `https://pubsub.googleapis.com/v1/${sub}:acknowledge`, { method: 'POST', body: { ackIds: msgs.map((m) => m.ackId) } }, this.fetchImpl);
     return msgs.length;
   }
 
@@ -62,6 +66,11 @@ export class ChatBot implements Notifier {
     if (!e || !e.text || !e.space) return;
     if (!isAllowed(this.ctx.cfg.chat.allowedUsers, e)) { console.warn(`[chat] ignoring message from non-allowed user ${e.senderEmail || e.senderName}`); return; }
     if (/DIRECT_MESSAGE|DM/.test(e.spaceType)) kvSet(this.ctx.db, 'chat.space', e.space);
+    if (e.messageName) {   // the same Chat message is never answered twice, even across restarts or re-deliveries
+      const done = (kvGet(this.ctx.db, 'chat.handled') ?? '').split('\n').filter(Boolean);
+      if (done.includes(e.messageName)) return;
+      kvSet(this.ctx.db, 'chat.handled', [...done, e.messageName].slice(-100).join('\n'));
+    }
     const reply = await handleOwnerText(this.ctx, e.text, e.messageName ?? undefined);
     await this.post(e.space, reply, e.thread);
   }
