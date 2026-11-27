@@ -33,6 +33,15 @@ Coding agents: code (all of them) · code <name> (one in detail), or just ask "h
 Connectors: connector <docs text or URL> · test connector ID · enable connector ID`;
 
 /** Handles one line from the owner (chat or HTTP) and returns the reply text. */
+/** "code", "agents", "check on the coding agents", "how are my coding projects going?", "any update on the agents?": a short message about the coding agents. */
+export function asksAboutCodeAgents(text: string): boolean {
+  const t = text.trim().replace(/[?.!\s]+$/, ''); if (t.split(/\s+/).length > 10) return false;
+  if (/^(?:code|coding|agents?|sessions?)$/i.test(t)) return true;
+  if (/\b(?:remind|schedule|add|create|task|reminder|tomorrow|later|tonight|today at)\b/i.test(t)) return false;   // a request to remember something, not a check-in
+  if (/\b(?:coding|code|claude)\s+(?:agents?|projects?|sessions?)\b/i.test(t)) return true;
+  return /^(?:please\s+)?(?:check|how|status|update|any|what|show|report)\b.*\b(?:agents?|sessions?)\b/i.test(t);
+}
+
 export async function handleOwnerText(ctx: Ctx, textIn: string, sourceId: string = randomUUID(), images: Upload[] = []): Promise<string> {
   const text = textIn.trim();
   if (!text && !images.length) return HELP;
@@ -44,7 +53,7 @@ export async function handleOwnerText(ctx: Ctx, textIn: string, sourceId: string
 
   if (/^(help|\?)$/i.test(text)) return HELP;
   if (/^(open|what'?s open\??|list|tasks|todo|what do i have\??)$/i.test(text)) return formatItems(ctx.items.list({ state: 'open' }), ctx.cfg.tz);
-  if (/^(code|coding|agents?|code agents?|coding agents?|code sessions?|how (?:are|is) (?:my |the )?(?:coding )?(?:agents?|projects?|sessions?)(?: doing| going)?\??|check (?:on )?(?:my )?(?:coding )?(?:agents?|projects?|sessions?))$/i.test(text)) {
+  if (asksAboutCodeAgents(text)) {
     if (!ctx.cfg.code.enabled) return 'The Code tab is turned off.';
     return formatDigests(await codeDigests(ctx), {});
   }

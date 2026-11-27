@@ -45,3 +45,9 @@ test('code overview: the main chat can see the agents in the Code tab (command +
   assert.match(answer, /billing agent is idle/); assert.match(llm.calls[0].prompt, /<live source="Code tab agents">[\s\S]*Billing — invoices/);
   assert.match(await handleOwnerText(ctx, 'agents'), /Billing — invoices/);
 });
+
+import { asksAboutCodeAgents } from '../src/commands.ts';
+test('chat: phrasings that mean "check on my coding agents" are recognised; reminders about code are not', () => {
+  for (const t of ['code', 'agents', 'Check on the coding agents', 'check on my coding agents', 'How are my coding projects going?', 'how are the agents doing', 'Any update on the agents?', 'status of the coding sessions', 'show me the code sessions', 'what are the claude agents doing']) assert.equal(asksAboutCodeAgents(t), true, t);
+  for (const t of ['remind me to review the code sessions tomorrow', 'add a task to check the agents later', 'call Sam about the invoice', 'what is the weather', 'how is the billing going', 'schedule a code review for Friday']) assert.equal(asksAboutCodeAgents(t), false, t);
+});
