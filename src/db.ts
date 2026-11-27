@@ -97,6 +97,16 @@ CREATE INDEX code_queue_key ON code_queue(key);
 `, `
   CREATE TABLE llm_usage (id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, purpose TEXT NOT NULL, model TEXT NOT NULL DEFAULT '', input INTEGER NOT NULL DEFAULT 0, output INTEGER NOT NULL DEFAULT 0, cache_read INTEGER NOT NULL DEFAULT 0, cache_write INTEGER NOT NULL DEFAULT 0, cost REAL NOT NULL DEFAULT 0, ms INTEGER NOT NULL DEFAULT 0, chars INTEGER NOT NULL DEFAULT 0, ok INTEGER NOT NULL DEFAULT 1);
   CREATE INDEX llm_usage_at ON llm_usage (at);
+`, `
+CREATE TABLE credentials (
+  name TEXT PRIMARY KEY,             -- UPPER_SNAKE, e.g. GITHUB_PAT
+  service TEXT NOT NULL DEFAULT '', username TEXT NOT NULL DEFAULT '', url TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '',
+  secret TEXT NOT NULL,              -- AES-256-GCM, "v1.<iv>.<tag>.<ciphertext>" (base64url); the key lives in data/credentials.key, never in the database
+  created_by TEXT NOT NULL DEFAULT '', updated_by TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE TABLE credential_log (id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, agent TEXT NOT NULL, action TEXT NOT NULL, name TEXT NOT NULL);   -- who saved / read / deleted what; never the value
+CREATE INDEX credential_log_name ON credential_log(name, id);
 `];
 
 export function openDb(path: string): Db {

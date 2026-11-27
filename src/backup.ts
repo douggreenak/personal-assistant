@@ -13,7 +13,7 @@ import { localParts } from './time.ts';
  */
 const FORMAT = 'personal-assistant-backup';
 const PLAIN_FILES = ['settings.json'];
-const SECRET_FILES = ['secrets.json', 'web-password.json', 'chat-service-account.json'];
+const SECRET_FILES = ['secrets.json', 'credentials.key', 'web-password.json', 'chat-service-account.json'];
 const MAX_UNPACKED = 1024 * 1024 * 1024;
 
 export interface BackupInfo { createdAt: string; includesSecrets: boolean; files: string[]; counts: Record<string, number> }

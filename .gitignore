@@ -10,3 +10,4 @@ mac-app/build/
 mac-app/dist/
 mac-app/*.xcodeproj/
 workspace/
+credentials.key
