@@ -57,7 +57,7 @@ export async function decide(ctx: Ctx, id: number, approve: boolean, by = 'owner
     const hook = kindHooks.get(a.kind);
     return hook ? await hook(ctx, a) : `Approved #${id}.`;
   } catch (e) {
-    ctx.db.prepare("UPDATE approvals SET status = 'pending', notified = 0, reason = ? WHERE id = ?").run(`it failed: ${(e as Error).message.slice(0, 200)}`, id);
+    ctx.db.prepare("UPDATE approvals SET status = 'pending', notified = 0, reason = ? WHERE id = ?").run(`it failed: ${(e as Error).message.slice(0, 900)}`, id);
     return `Approved #${id} but it failed (${(e as Error).message.slice(0, 200)}); it's back in the queue.`;
   }
 }

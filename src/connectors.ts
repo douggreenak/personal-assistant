@@ -405,7 +405,7 @@ export async function callConnectorAction(ctx: Ctx, connectorId: string, actionI
   const hasBody = a.method !== 'DELETE' && Object.keys(body).length > 0;
   if (hasBody) headers['content-type'] = 'application/json';
   const res = await fetchImpl(u, { method: a.method, headers, body: hasBody ? JSON.stringify(body) : undefined, redirect: 'manual', signal: AbortSignal.timeout(20000) });
-  const text = (await res.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 300);
+  const text = (await res.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, res.ok ? 300 : 900);
   if (!res.ok) throw new Error(`${c.manifest.name}: ${a.method} ${path} → HTTP ${res.status} ${text}`.trim());
   refreshAfterWrite(ctx, c);
   return `${c.manifest.name}: ${a.name} done (HTTP ${res.status})${text ? ` — ${text}` : ''}`;
