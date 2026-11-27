@@ -260,9 +260,10 @@ export default async function code(view) {
       menu(headBtns.querySelector('#sessMenu'), [['Restart', async () => { await guarded(() => api(`/code/sessions/${sid}/restart`, { method: 'POST' }), 'Restarted'); poll(); }], ['Rename', () => renameDialog('Rename session', title, (n) => api('/code/sessions/' + sid, { method: 'PATCH', body: { title: n } }), () => { titleEl.textContent = title = ''; location.reload(); })],
         ['Delete session', async () => { if (await confirmDialog('Delete this session?', 'It is stopped and removed from the list. The conversation file stays on disk.', 'Delete')) { await guarded(() => api('/code/sessions/' + sid, { method: 'DELETE' }), 'Deleted'); go('p/' + p.id); } }]]); };
     // "Replies only": hides tool cards, thinking, slash commands and their output (remembered per session in this browser)
+    let emptyReady = false;   // set once the chat's empty-state element exists
     const KEY_H = 'code-replies-only:' + sid; let only = lsGet(KEY_H) !== '0';   // replies only unless this session was switched to "All activity"
     const onlyBtn = h('button', { class: 'code-only', type: 'button', title: 'Show only Claude\'s replies and your messages — hide tool calls, thinking and commands', onclick: () => { only = !only; lsSet(KEY_H, only ? '1' : '0'); drawOnly(); } });
-    const drawOnly = () => { onlyBtn.setAttribute('aria-pressed', String(only)); clear(onlyBtn).append(icon(only ? 'visibility_off' : 'visibility'), only ? 'Replies only' : 'All activity'); msgs.classList.toggle('replies-only', only); fillUp(); if (stick) msgs.scrollTop = msgs.scrollHeight; };
+    const drawOnly = () => { onlyBtn.setAttribute('aria-pressed', String(only)); clear(onlyBtn).append(icon(only ? 'visibility_off' : 'visibility'), only ? 'Replies only' : 'All activity'); msgs.classList.toggle('replies-only', only); fillUp(); if (emptyReady) updateEmpty(); if (stick) msgs.scrollTop = msgs.scrollHeight; };
     const seg = h('div', { class: 'seg' }); const drawSeg = () => clear(seg).append(...[['chat', 'Conversation'], ['term', 'Terminal']].map(([v, l]) => h('button', { 'aria-pressed': String(view === v), 'data-view': v, onclick: () => { view = v; drawSeg(); layout(); if (v === 'term') pollTerm(); } }, l))); drawSeg();
     const chatPane = h('div', { class: 'code-chat' }, msgs, permBox);
     const termPane = h('div', { class: 'code-term' }, term, termKeys, h('div', { class: 'code-term-send' }, (() => { const f = h('md-outlined-text-field', { label: 'Type into the terminal', class: 'grow' }); const go2 = async (enter) => { const t = f.value; f.value = ''; await guarded(() => api(`${base}/keys`, { method: 'POST', body: { text: t, keys: enter ? ['Enter'] : undefined } })); pollTerm(); }; f.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); go2(true); } }); return [f, h('md-filled-tonal-button', { onclick: () => go2(true) }, 'Send + Enter'), h('md-text-button', { onclick: () => go2(false) }, 'Type only')]; })()));
@@ -321,12 +322,23 @@ export default async function code(view) {
     async function loadOlder() {
       if (loadingOld || oldest <= 0) return; loadingOld = true; topNote.disabled = true;
       try { const r = await api(`${base}/history?before=${oldest}&limit=30`); const frag = document.createDocumentFragment(); for (const m of r.msgs) { if (m.t !== 'title' && m.t !== 'mode') { if (seen.has(m.id)) continue; seen.add(m.id); } addMsg(m, frag); }
-        const prevH = msgs.scrollHeight, prevT = msgs.scrollTop; topNote.after(frag); msgs.scrollTop = prevT + (msgs.scrollHeight - prevH); oldest = r.start; topNote.hidden = oldest <= 0; fillUp(); }
+        const prevH = msgs.scrollHeight, prevT = msgs.scrollTop; topNote.after(frag); msgs.scrollTop = prevT + (msgs.scrollHeight - prevH); oldest = r.start; topNote.hidden = oldest <= 0; fillUp(); updateEmpty(); }
       catch (e) { toast(e.message, { error: true }); } finally { loadingOld = false; topNote.disabled = false; }
     }
     function fillUp() { setTimeout(() => { if (oldest > 0 && !loadingOld && msgs.scrollHeight <= msgs.clientHeight + 60) loadOlder(); }, 60); }   // short history (e.g. replies only): keep loading until the box is full or there is no more
     msgs.addEventListener('scroll', () => { if (msgs.scrollTop < 160 && oldest > 0 && !loadingOld) loadOlder(); });
     function poll() { if (polling) { again = true; return Promise.resolve(); } polling = true; return pollOnce().finally(() => { polling = false; if (again) { again = false; poll(); } }); }
+    // Never leave the chat looking blank (it reads as "stuck"): say so when there is nothing to show — no messages yet, a stopped session, or "Replies only" hiding everything.
+    const emptyEl = h('div', { class: 'code-empty', role: 'status', hidden: true }); msgs.append(emptyEl); emptyReady = true;
+    function updateEmpty() {
+      if (!started || oldest > 0 || loadingEl.isConnected) { emptyEl.hidden = true; return; }   // still loading, or earlier messages are being fetched
+      const skip = new Set([topNote, loadingEl, queueEl, emptyEl]); const kids = [...msgs.children].filter((n) => !skip.has(n));
+      if (kids.some((n) => n.getClientRects().length && !n.classList.contains('code-note'))) { emptyEl.hidden = true; return; }
+      const hiddenSome = only && kids.some((n) => !n.getClientRects().length && !n.classList.contains('code-note'));
+      emptyEl.textContent = hiddenSome ? 'No replies to show. Tool calls and commands are hidden: switch to “All activity” to see them.'
+        : running ? 'No messages to display yet. Say something to Claude Code below.' : 'No messages to display. This session is stopped: start it to begin.';
+      emptyEl.hidden = false; if (emptyEl !== msgs.lastElementChild) msgs.append(emptyEl);
+    }
     let curFile = '';
     async function pollOnce() {
       if (document.hidden) return;
@@ -336,9 +348,7 @@ export default async function code(view) {
         curFile = l.fileKey || curFile; loadingEl.remove(); started = true; after = l.next || after; if (first) { oldest = l.start || 0; topNote.hidden = oldest <= 0; setTimeout(fillUp, 100); }
         let list = l.msgs.filter((m) => { if (m.t === 'title' || m.t === 'mode') return true; const k = m.id; if (seen.has(k)) return false; seen.add(k); return true; }); if (first && list.length > 300) { hidden = list.length - 300; list = list.slice(-300); msgs.append(h('div', { class: 'code-note' }, `${hidden} earlier messages are not shown here (they are in the terminal's scrollback and the conversation file).`)); }
         for (const m of list) addMsg(m); if (list.length && stick) msgs.scrollTop = msgs.scrollHeight;
-        if (first && !l.msgs.length && !l.transcript) msgs.append(h('div', { class: 'code-note', id: 'emptyNote' }, l.running ? 'Session is up. Say something to Claude Code below.' : ''));
-        if (l.msgs.length) msgs.querySelector('#emptyNote')?.remove();
-        drawLive(l); drawQueue(l.queue || []);
+        drawLive(l); drawQueue(l.queue || []); updateEmpty();
         if (pendingCmd && l.screen?.state === 'idle' && Date.now() - pendingCmd.at > 900) { const c = pendingCmd; pendingCmd = null; try { const o = await api(`${base}/output?cmd=${encodeURIComponent(c.cmd)}`); if (o.text && !list.some((m) => m.t === 'note')) { msgs.append(h('pre', { class: 'code-pre code-cmdout' }, o.text)); if (stick) msgs.scrollTop = msgs.scrollHeight; } } catch { /* ignore */ } }
       } catch (e) { infoEl.textContent = e.message; }
     }
