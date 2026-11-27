@@ -269,8 +269,11 @@ test('search + Q&A: indexes files and messages, answers with citations, refuses 
   const a = await ask(ctx, 'What firmware did the encoder get?');
   assert.match(a, /Firmware 4\.2/); assert.match(a, /Sources: \[1\] file .*encoder-notes\.txt/); assert.doesNotMatch(a, /\[99\]/);
   assert.match(llm.calls[0].prompt, /Blackmagic/);
-  assert.match(await ask(ctx, 'zebra migration patterns'), /couldn't find/);
-  assert.equal(llm.calls.length, 1);
+  // No keyword match no longer means giving up: the model gets the recent messages and open items and says what it can (a small model is also asked for other search words).
+  const routed = llm.routeCalls.length; await ask(ctx, 'zebra migration patterns'); assert.equal(llm.calls.length, 2); assert.equal(llm.routeCalls.length, routed + 1);
+  assert.match(llm.calls[1].prompt, /most recent messages[\s\S]*Invoice 4471 is due in December/); assert.match(llm.calls[1].prompt, /<snippets>\n\(none found\)/);
+  // Only when there is nothing at all (no messages, files, items or live data) is the answer a plain "nothing found", with no model call.
+  const empty = makeCtx(() => { throw new Error('must not be called'); }); assert.match(await ask(empty.ctx, 'zebra migration patterns'), /couldn't find/);
 });
 
 test('chat commands: open, approvals, ack/snooze/done by short id, questions vs captures', async () => {

@@ -3,7 +3,9 @@ import type { Ctx } from './ctx.ts';
 import type { Item } from './items.ts';
 import { decide, listApprovals } from './approvals.ts';
 import { ack, parseSnooze, shortId, snooze } from './nag.ts';
-import { processNextReport, storeMessage } from './pipeline.ts';
+import { liveContext, processNextReport, storeMessage } from './pipeline.ts';
+import { planAndFetch } from './lookups.ts';
+import { rememberExchange, route, type Route } from './router.ts';
 import { ask } from './qa.ts';
 import { codeDigests, formatDigests, mentioned } from './code/overview.ts';
 import type { Upload } from './images.ts';
@@ -43,6 +45,12 @@ export function asksAboutCodeAgents(text: string): boolean {
 }
 
 export async function handleOwnerText(ctx: Ctx, textIn: string, sourceId: string = randomUUID(), images: Upload[] = []): Promise<string> {
+  const reply = await handleText(ctx, textIn, sourceId, images);
+  if (textIn.trim() && reply) { try { rememberExchange(ctx, textIn.trim(), reply); } catch { /* the memory of the last few turns is a convenience */ } }
+  return reply;
+}
+
+async function handleText(ctx: Ctx, textIn: string, sourceId: string, images: Upload[]): Promise<string> {
   const text = textIn.trim();
   if (!text && !images.length) return HELP;
   let m: RegExpExecArray | null;
@@ -92,14 +100,26 @@ export async function handleOwnerText(ctx: Ctx, textIn: string, sourceId: string
   if ((m = /^test connector\s+(\S+)$/i.exec(text))) return testConnector(ctx, m[1]);
   if ((m = /^enable connector\s+(\S+)$/i.exec(text))) return enableConnector(ctx, m[1]);
   if ((m = /^connector:?\s+([\s\S]+)$/i.exec(text))) return proposeConnector(ctx, m[1]);
-  if (QUESTION.test(text) && !/\b(remind me|remember to)\b/i.test(text) && !wantsAction(ctx, text)) return ask(ctx, text);
+  if (QUESTION.test(text) && !/\b(remind me|remember to)\b/i.test(text) && !wantsAction(ctx, text)) return ask(ctx, text);   // a plain question (ask() widens its own search when little is found)
 
+  // Anything else: decide what it MEANS rather than hoping a keyword matches. A failed router falls back to the old guess.
+  let r: Route; try { r = await route(ctx, text); } catch { r = { intent: wantsAction(ctx, text) ? 'action' : 'note', terms: [] }; }
+  if (r.intent === 'question') return ask(ctx, text, [], fetch, { terms: r.terms });
+  if (r.intent === 'code_status' && ctx.cfg.code.enabled) {
+    const all = await codeDigests(ctx, 10); const named = mentioned(all, text);
+    return formatDigests(named.length ? named : all, { detail: named.length > 0 });
+  }
+  if (r.intent === 'action') {   // read what the request needs first (e.g. the list that holds the item's id), then decide what to do with it
+    const live = await planAndFetch(ctx, text).catch(() => []);
+    return capture(ctx, text, sourceId, [], live.filter((b) => b.ok).map((b) => `${b.label}:\n${b.text}`).join('\n\n').slice(0, 14000));
+  }
   return capture(ctx, text, sourceId, []);
 }
 
-async function capture(ctx: Ctx, text: string, sourceId: string, images: Upload[]): Promise<string> {
+async function capture(ctx: Ctx, text: string, sourceId: string, images: Upload[], liveData = ''): Promise<string> {
   const id = storeMessage(ctx, { source: 'chat', sourceId, sender: 'me', body: text, images });
   if (id === null) return 'I already have that one.';
+  if (liveData) liveContext.set(id, liveData);
   for (let i = 0; i < 10; i++) {                       // drain anything queued ahead of it, then this message
     const r = await processNextReport(ctx);
     if (!r) break;
@@ -114,5 +134,5 @@ function summarize(r: { applied: string[]; queued: string[]; rejected: string[];
   if (r.queued.length) lines.push(...r.queued.map((s) => `Needs your OK: ${s}`));
   if (r.failed?.length) lines.push(...r.failed.map((s) => `That didn't work: ${s}`));
   if (r.skipped?.startsWith('error')) lines.push(`I couldn't process that yet (${r.skipped}). I'll retry.`);
-  return lines.length ? lines.join('\n\n') : "I didn't find anything to do in that.";
+  return lines.length ? lines.join('\n\n') : "I couldn't tell what to do with that. Tell me what you want done, or ask me a question.";
 }

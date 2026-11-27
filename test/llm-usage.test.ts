@@ -62,3 +62,28 @@ test('llm: tokens and cost are logged from Claude Code\'s own report, and small 
   const u = usageSummary(ctx); assert.equal(u.calls, 2); assert.equal(u.input, 240); assert.equal(u.output, 60); assert.equal(u.cacheRead, 1800); assert.ok(Math.abs(u.cost - 0.0246) < 1e-9);
   assert.deepEqual(u.byPurpose.map((r) => r.purpose).sort(), ['extract-bg', 'plan']); assert.equal(u.budget.used, 1);
 });
+
+import { handleOwnerText } from '../src/commands.ts';
+import { makeCtx as mk } from './helpers.ts';
+test('chat routing: a message that is not an exact command is understood by meaning, not by keyword', async () => {
+  const { ctx, llm } = mk((req) => /Question:/.test(req.prompt) ? { answer: 'The plumber comes Tuesday.', cited: [] } : { actions: [] });
+  llm.router = (req) => /plumb|update on/i.test(req.prompt) ? { intent: 'question', terms: ['plumber', 'plumbing', 'repair'] } : /coding agents/.test(req.prompt) ? { intent: 'code_status', terms: [] } : { intent: 'note', terms: [] };
+  storeMessage(ctx, { source: 'gmail', sourceId: 'p1', sender: 'Pat', subject: 'Repair visit', body: 'The plumber is coming Tuesday morning to fix the leak.' });
+  // no question word, no question mark, not an exact command: the old keyword rules would have made this a reminder
+  const a = await handleOwnerText(ctx, 'I need an update on the plumbing situation'); assert.match(a, /plumber comes Tuesday/);
+  assert.equal(ctx.items.list({ state: 'open' }).length, 0, 'no reminder was made');
+  assert.match(llm.calls.at(-1)!.prompt, /plumber is coming Tuesday/, 'the related message was found through the suggested words');
+  // a note stays a note
+  await handleOwnerText(ctx, 'Pick up the dry cleaning after work'); assert.equal(llm.routeCalls.length, 2);
+  // the follow-up knows what was just discussed
+  llm.router = () => ({ intent: 'question', terms: [] }); await handleOwnerText(ctx, 'and what about Thursday');
+  assert.match(llm.calls.at(-1)!.prompt, /Recent exchange[\s\S]*plumbing situation[\s\S]*plumber comes Tuesday/);
+});
+
+test('chat routing: an action request first reads live data, which the action step can use for ids', async () => {
+  const { ctx, llm } = mk((req) => ({ actions: [] }));
+  llm.router = () => ({ intent: 'action', terms: [] });
+  const live = new Map<number, string>(); const { liveContext } = await import('../src/pipeline.ts');
+  const reply = await handleOwnerText(ctx, 'Mark my physics homework as done'); assert.ok(typeof reply === 'string');
+  assert.equal(llm.routeCalls.length, 1); assert.equal(liveContext.size, 0, 'the live data is used once and dropped'); void live;
+});

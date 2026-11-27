@@ -75,9 +75,12 @@ export function parseLooseJson(text: string): unknown {
 /** Test double: returns scripted responses in order (or via a function). */
 export class FakeLlm implements Llm {
   calls: LlmRequest[] = [];
+  /** Calls that only route a chat message (see router.ts) are kept apart, so scripted answers for the real work keep their order. By default every message is a note. */
+  routeCalls: LlmRequest[] = []; router: (req: LlmRequest) => unknown = () => ({ intent: 'note', terms: [] });
   responder: unknown[] | ((req: LlmRequest) => unknown);
   constructor(responder: unknown[] | ((req: LlmRequest) => unknown)) { this.responder = responder; }
   async json(req: LlmRequest): Promise<unknown> {
+    if (req.purpose === 'triage' && req.system.startsWith('You route ONE message')) { this.routeCalls.push(req); return this.router(req); }
     this.calls.push(req);
     if (typeof this.responder === 'function') return this.responder(req);
     if (!this.responder.length) throw new Error('FakeLlm: no more scripted responses');
