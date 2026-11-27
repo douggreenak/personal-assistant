@@ -35,8 +35,9 @@ const childCache = new Map<string, { at: number; byParent: Map<string, string> }
 export function currentSessionId(configDir: string, cwd: string, sessionId: string): string {
   const dir = join(configDir, 'projects', encodeCwd(cwd)); let c = childCache.get(dir);
   if (!c || Date.now() - c.at > 1500) {
-    const byParent = new Map<string, string>();
-    try { for (const f of readdirSync(dir)) if (f.endsWith('.jsonl')) { const id = f.slice(0, -6); for (const p of derivedFrom(join(dir, f))) if (p !== id) byParent.set(p, id); } } catch { /* no directory yet */ }
+    const byParent = new Map<string, string>(); const born = new Map<string, number>();
+    // When several files derive from the same one (resumed twice, branched), follow the most recently written, not whichever the listing returns last
+    try { for (const f of readdirSync(dir)) if (f.endsWith('.jsonl')) { const id = f.slice(0, -6); let m = 0; try { m = statSync(join(dir, f)).mtimeMs; } catch { /* gone */ } for (const p of derivedFrom(join(dir, f))) if (p !== id && m >= (born.get(p) ?? -1)) { byParent.set(p, id); born.set(p, m); } } } catch { /* no directory yet */ }
     c = { at: Date.now(), byParent }; childCache.set(dir, c);
   }
   let cur = sessionId; for (let i = 0; i < 20; i++) { const next = c.byParent.get(cur); if (!next || next === cur) break; cur = next; }

@@ -46,18 +46,39 @@ async function target(ctx: Ctx, key: string) {
   const p = (await t.panes()).find((x) => x.pane === pane); if (!p) throw new CodeError('That session has ended.', 404);
   return { t, pane, cwd: p.cwd, session: p.session };
 }
-/** The conversation file of the newest session in that folder (a pane does not say which conversation it holds). */
-function newestTranscript(ctx: Ctx, cwd: string): string | null {
+const norm = (t: string) => t.replace(/\s+/g, ' ').trim().toLowerCase();
+/** How many of a conversation's recent messages can be seen on the pane's screen (a pane does not say which conversation it holds). */
+function screenScore(file: string, screenText: string): number {
+  let score = 0; try {
+    for (const m of readBack(file, 12).msgs) {
+      const texts = m.t === 'user' ? [m.text] : m.t === 'assistant' ? m.blocks.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text) : [];
+      for (const t of texts) { const n = norm(t); if (n.length >= 12 && screenText.includes(n.slice(0, 40))) score++; }
+    }
+  } catch { /* unreadable: scores 0 */ }
+  return score;
+}
+const chosen = new Map<string, string>();   // pane key → the conversation file it was last matched to
+/** The conversation file a pane is showing. Several conversations can live in one folder (other terminals, background jobs), so the newest file is
+ *  often the wrong one; match by what is on the pane's screen instead, and stick with the match while it still shows (so the chat does not flip around). */
+export function pickTranscript(ctx: Ctx, key: string, cwd: string, screen?: string): string | null {
   const dir = join(ctx.cfg.code.configDir, 'projects', encodeCwd(cwd)); if (!existsSync(dir)) return null;
-  let best: [number, string] | null = null;
-  for (const f of readdirSync(dir)) if (f.endsWith('.jsonl')) { const m = statSync(join(dir, f)).mtimeMs; if (!best || m > best[0]) best = [m, join(dir, f)]; }
-  return best?.[1] ?? null;
+  const files: [number, string][] = [];
+  for (const f of readdirSync(dir)) if (f.endsWith('.jsonl')) { try { files.push([statSync(join(dir, f)).mtimeMs, join(dir, f)]); } catch { /* gone */ } }
+  files.sort((a, b) => b[0] - a[0]); const cands = files.slice(0, 8).map((x) => x[1]); if (!cands.length) return null;
+  const cached = chosen.get(key); const have = cached && cands.includes(cached) ? cached : undefined;
+  if (screen === undefined) return have ?? cands[0];
+  const text = norm(screen);
+  if (have && screenScore(have, text) > 0) return have;               // still matches what is on screen: stay put
+  let best = cands[0], top = 0;
+  for (const f of cands) { const sc = f === have ? 0 : screenScore(f, text); if (sc > top) { top = sc; best = f; } }
+  const pick = top > 0 ? best : (have ?? cands[0]);
+  chosen.set(key, pick); return pick;
 }
 
 export async function info(ctx: Ctx, key: string) { const x = await target(ctx, key); return { title: x.session, name: basename(x.cwd) || x.cwd, path: x.cwd }; }
 export async function live(ctx: Ctx, key: string, after: number, tail = 0): Promise<{ start?: number; running: boolean; screen: ScreenInfo | null; dialogText?: string; msgs: Msg[]; next: number; title: string; transcript: boolean; queue?: string[]; fileKey?: string; lastActivity: string | null }> {
   let x; try { x = await target(ctx, key); } catch { return { running: false, screen: null, msgs: [], next: 0, title: '', transcript: false, lastActivity: null }; }
-  const raw = await x.t.capture(x.pane).catch(() => ''); const screen = parseScreen(raw); const file = newestTranscript(ctx, x.cwd);
+  const raw = await x.t.capture(x.pane).catch(() => ''); const screen = parseScreen(raw); const file = pickTranscript(ctx, key, x.cwd, raw);
   let msgs: Msg[] = [], next = 0, last: string | null = null; let start = 0; if (file) { const d = tail ? readBack(file, tail) : readDelta(file, after); msgs = d.msgs; next = d.next; if ('start' in d) start = d.start; last = new Date(statSync(file).mtimeMs).toISOString(); }
   const title = [...msgs].reverse().find((m) => m.t === 'title') as { title: string } | undefined;
   return { running: true, screen, dialogText: screen.state === 'dialog' || screen.state === 'unknown' ? raw.replace(/\n{3,}/g, '\n\n').trimEnd().slice(-3000) : undefined, msgs, next, start, title: title?.title ?? x.session, transcript: !!file, lastActivity: last, queue: queuedTexts('x:' + key), fileKey: file ? file.split('/').pop() : undefined };
@@ -83,12 +104,12 @@ export async function screen(ctx: Ctx, key: string, scrollback = 0) { try { cons
 export async function output(ctx: Ctx, key: string, cmd: string) { const x = await target(ctx, key); return commandOutputOf(x.t, x.pane, cmd); }
 export async function commands(ctx: Ctx, key: string) { const x = await target(ctx, key); return listCommandsAt(ctx, x.cwd); }
 export async function usage(ctx: Ctx, key: string) {
-  const x = await target(ctx, key); const f = newestTranscript(ctx, x.cwd); if (!f) return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, messages: 0, cost: 0, context: 0, model: '' };
+  const x = await target(ctx, key); const f = pickTranscript(ctx, key, x.cwd); if (!f) return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, messages: 0, cost: 0, context: 0, model: '' };
   const u = scanUsage(f, ctx.cfg.tz); const t = u.rows.reduce((a, r) => ({ input: a.input + r.input, output: a.output + r.output, cacheRead: a.cacheRead + r.cacheRead, cacheWrite: a.cacheWrite + r.cacheWrite, messages: a.messages + r.messages, cost: a.cost + estimateCost(r) }), { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, messages: 0, cost: 0 });
   return { ...t, context: u.lastContext, model: u.lastModel };
 }
 export async function history(ctx: Ctx, key: string, before: number, limit = 30) {
-  const x = await target(ctx, key); const f = newestTranscript(ctx, x.cwd); if (!f || before <= 0) return { msgs: [], start: 0 };
+  const x = await target(ctx, key); const f = pickTranscript(ctx, key, x.cwd); if (!f || before <= 0) return { msgs: [], start: 0 };
   const r = readBack(f, Math.min(100, Math.max(1, limit)), before); return { msgs: r.msgs, start: r.start };
 }
 export async function upload(ctx: Ctx, key: string, data: Buffer, name: string): Promise<string> { const x = await target(ctx, key); return writeUpload(join(x.cwd, '.claude-uploads'), data, name); }
