@@ -17,6 +17,7 @@ test('chat: both click event shapes are understood; other events are not clicks'
 });
 
 test('chat: approval notices carry buttons, and tapping Approve decides it', async () => {
+  process.env.CHAT_BUTTONS = '1';
   const { ctx } = makeCtx([], { env: { CHAT_ALLOWED_USERS: 'me@example.com' } });
   const sent: { url: string; method: string; body: any }[] = [];   // eslint-disable-line @typescript-eslint/no-explicit-any
   const fakeFetch = (async (url: string, init?: { method?: string; body?: string }) => { sent.push({ url: String(url), method: init?.method ?? 'GET', body: init?.body ? JSON.parse(init.body) : undefined }); return new Response('{}', { status: 200 }); }) as unknown as typeof fetch;
@@ -24,6 +25,7 @@ test('chat: approval notices carry buttons, and tapping Approve decides it', asy
   kvSet(ctx.db, 'chat.space', 'spaces/dm');
   const id = createApproval(ctx, { kind: 'connector', summary: 'Do a thing', reason: '', payload: {} });
   await bot.send(`Approval #${id} needs your OK: Do a thing`, { approvalId: id });
+  delete process.env.CHAT_BUTTONS;
   const card = sent[0].body.cardsV2[0].card.sections[0].widgets;
   assert.equal(card[1].buttonList.buttons.length, 2);
   assert.equal(card[1].buttonList.buttons[0].onClick.action.parameters[0].value, String(id));

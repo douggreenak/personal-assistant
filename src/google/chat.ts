@@ -63,7 +63,8 @@ export class ChatBot implements Notifier {
   async send(text: string, opts?: NotifyOpts): Promise<void> {
     const space = kvGet(this.ctx.db, 'chat.space') ?? this.ctx.cfg.chat.notifySpace;
     if (!space) { console.warn('[chat] no DM space yet; message me once in Google Chat so I can reach you:', text.slice(0, 80)); return; }
-    if (opts?.approvalId) {
+    // Buttons only work if Google can call the app directly; with the pull queue a tap never arrives ("unable to process your request"), so they are off unless CHAT_BUTTONS=1.
+    if (opts?.approvalId && process.env.CHAT_BUTTONS === '1') {
       try { await gjson(this.sa, BOT_SCOPE, `${CHAT}/${space}/messages`, { method: 'POST', body: { cardsV2: [approvalCard(opts.approvalId, text.slice(0, 3000))] } }, this.fetchImpl); return; }
       catch (e) { console.warn('[chat] button card failed, sending plain text:', (e as Error).message.slice(0, 120)); }
     }
