@@ -1,7 +1,8 @@
 import type { Ctx } from './ctx.ts';
 import { ftsQuery } from './db.ts';
 import type { LlmImage } from './llm.ts';
-import { planAndFetch } from './lookups.ts';
+import { planAndFetch, type LiveBlock } from './lookups.ts';
+import { codeLive } from './code/overview.ts';
 import { instructionBlock, listConnectors } from './connectors.ts';
 import { ANSWER_SCHEMA, ANSWER_SYSTEM } from './prompts.ts';
 
@@ -29,7 +30,8 @@ function connectorCatalog(ctx: Ctx): string {
 /** Answers from the owner's own indexed messages, files and items, with citations. */
 export async function ask(ctx: Ctx, question: string, images: LlmImage[] = [], fetchImpl: typeof fetch = fetch): Promise<string> {
   const hits = search(ctx, question);
-  const live = await planAndFetch(ctx, question, fetchImpl).catch(() => []);   // fresh data from the connected services; a failure here just means "answer from what is stored"
+  const live: LiveBlock[] = await planAndFetch(ctx, question, fetchImpl).catch(() => []);
+  const code = await codeLive(ctx, question).catch(() => null); if (code) live.push(code);   // the coding agents in the Code tab, read right now   // fresh data from the connected services; a failure here just means "answer from what is stored"
   if (!hits.length && !images.length && !live.length) return "I couldn't find anything about that in your messages, files or open items.";
   const ctxText = hits.map((h, i) => `[${i + 1}] (${label(h)})\n${h.snippet}`).join('\n\n');
   const out = await ctx.llm.json({

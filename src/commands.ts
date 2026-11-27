@@ -5,6 +5,7 @@ import { decide, listApprovals } from './approvals.ts';
 import { ack, parseSnooze, shortId, snooze } from './nag.ts';
 import { processNextReport, storeMessage } from './pipeline.ts';
 import { ask } from './qa.ts';
+import { codeDigests, formatDigests, mentioned } from './code/overview.ts';
 import type { Upload } from './images.ts';
 import { toLlmImages } from './images.ts';
 import { testConnector, enableConnector, listConnectors, proposeConnector, connectorActionMap } from './connectors.ts';
@@ -28,6 +29,7 @@ function formatItems(items: Item[], tz: string): string {
 
 const HELP = `Just tell me things and I'll turn them into tickets, reminders and tasks.
 Commands: open · approvals · approve N / reject N · ack ID · snooze ID 1h · done ID · ask <question>
+Coding agents: code (all of them) · code <name> (one in detail), or just ask "how is the billing project going?"
 Connectors: connector <docs text or URL> · test connector ID · enable connector ID`;
 
 /** Handles one line from the owner (chat or HTTP) and returns the reply text. */
@@ -42,6 +44,14 @@ export async function handleOwnerText(ctx: Ctx, textIn: string, sourceId: string
 
   if (/^(help|\?)$/i.test(text)) return HELP;
   if (/^(open|what'?s open\??|list|tasks|todo|what do i have\??)$/i.test(text)) return formatItems(ctx.items.list({ state: 'open' }), ctx.cfg.tz);
+  if (/^(code|coding|agents?|code agents?|coding agents?|code sessions?|how (?:are|is) (?:my |the )?(?:coding )?(?:agents?|projects?|sessions?)(?: doing| going)?\??|check (?:on )?(?:my )?(?:coding )?(?:agents?|projects?|sessions?))$/i.test(text)) {
+    if (!ctx.cfg.code.enabled) return 'The Code tab is turned off.';
+    return formatDigests(await codeDigests(ctx), {});
+  }
+  if (/^(?:code|agents?|sessions?)\b[\s:]+\S/i.test(text) && ctx.cfg.code.enabled) {   // "code billing": the details of the agent(s) with that name, if there is one
+    const named = mentioned(await codeDigests(ctx, 10), text.replace(/^\w+[\s:]+/, ''));
+    if (named.length) return formatDigests(named, { detail: true });
+  }
   if (/^(approvals?|pending)$/i.test(text)) {
     const p = listApprovals(ctx);
     return p.length ? p.map((a) => `#${a.id} ${a.summary}\n   (${a.reason})`).join('\n') : 'No approvals waiting.';
