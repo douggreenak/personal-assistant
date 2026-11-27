@@ -2,6 +2,7 @@ import { api, clearToken, getToken } from '../api.js';
 import { h, icon, clear, chip, guarded, toast, dialog, confirmDialog, page, fmtDate } from '../ui.js';
 import { PRESETS, prefs, applyTheme } from '../theme.js';
 import { restartServer } from './system.js';
+import { settingControl } from './settingControl.js';
 
 const GROUP_ICON = { General: 'tune', Brain: 'smart_toy', Ticketing: 'confirmation_number', Canopy: 'public', Google: 'mail', Notifications: 'notifications', 'Files & voice': 'folder', Access: 'key', Backup: 'inventory_2', Code: 'terminal', 'Mac app': 'computer' };
 
@@ -19,21 +20,13 @@ export default async function settings(view) {
   const route = () => settings(view);
 
   function control(d) { const el = control0(d); el.dataset.q = `${d.label} ${d.key} ${d.help || ''} ${d.group}`.toLowerCase(); return el; }
-  function control0(d) {
-    const hint = d.help ? h('div', { class: 'help' }, d.help) : null;
-    if (d.type === 'bool') { const sw = h('md-switch', { selected: d.value === '1' || d.value === 'true' }); sw.addEventListener('change', () => touch(d.key, sw.selected ? '1' : '0')); return h('div', {}, h('div', { class: 'field-row' }, h('div', {}, h('div', { class: 't' }, d.label), hint), sw)); }
-    if (d.type === 'secret') {
-      const f = h('md-outlined-text-field', { label: d.label, type: 'password', placeholder: d.isSet ? '•••••••• (set — type to replace)' : 'not set', autocomplete: 'off' });
-      f.addEventListener('input', () => touch(d.key, f.value));
-      return h('div', {}, h('div', { style: 'display:flex;gap:8px;align-items:center' }, f, d.isSet && h('md-icon-button', { title: 'Clear', 'aria-label': 'Clear ' + d.label, onclick: () => { touch(d.key, '__clear__'); f.placeholder = 'will be cleared'; } }, icon('delete'))), hint);
-    }
-    const f = h('md-outlined-text-field', { label: d.label, value: d.value, placeholder: d.placeholder || '', type: d.type === 'number' ? 'number' : 'text', 'supporting-text': d.overridden ? 'Changed here (overrides .env)' : (!d.value && d.placeholder ? `Not set — default: ${d.placeholder}` : '') });
-    f.addEventListener('input', () => touch(d.key, f.value)); return h('div', {}, f, hint);
-  }
+  function control0(d) { return settingControl(d, touch); }
   const filter = h('md-outlined-text-field', { label: 'Filter settings', 'data-primary': '' }, h('span', { slot: 'leading-icon' }, icon('search')));
-  const groups = [...new Set(defs.map((d) => d.group))];
-  const cards = groups.map((g) => h('div', { class: 'card high set-card', 'data-group': g }, h('div', { class: 'form set-form' }, defs.filter((d) => d.group === g).map(control),
-    g === 'Google' && h('div', {}, h('div', { class: 'label', style: 'margin-bottom:6px' }, 'Chat service-account key'), (() => { const inp = h('input', { type: 'file', accept: '.json,application/json', class: 'sr', onchange: async (e) => { const t = await e.target.files[0]?.text(); if (!t) return; const r = await guarded(() => api('/admin/service-account', { method: 'POST', raw: t }), 'Key uploaded — restart to apply'); if (r) route(); } }); return h('div', {}, inp, h('md-outlined-button', { onclick: () => inp.click() }, icon('upload'), 'Upload key file')); })()))));
+  const mine = defs.filter((d) => !d.connection);   // anything about reaching an outside service lives on the Connect page
+  const groups = [...new Set(mine.map((d) => d.group))];
+  const cards = groups.map((g) => { const all = mine.filter((d) => d.group === g); const adv = all.filter((d) => d.advanced);
+    return h('div', { class: 'card high set-card', 'data-group': g }, h('div', { class: 'form set-form' }, all.filter((d) => !d.advanced).map(control),
+      adv.length ? h('details', { class: 'set-adv' }, h('summary', {}, 'Advanced'), h('div', { class: 'form set-form' }, adv.map(control))) : null)); });
 
   // appearance + security (browser-side and password)
   const seed = h('input', { type: 'color', value: prefs.seed, 'aria-label': 'Custom color', style: 'width:52px;height:52px;border:0;background:none;padding:0;cursor:pointer' });
@@ -95,36 +88,14 @@ export default async function settings(view) {
     h('h3', { class: 'label', style: 'margin-top:16px' }, 'Saved on the server'), status, saved);
   loadSaved();
 
-  // ---- connecting the owner's Google account (Gmail, Drive, Chat reading) without a terminal ----
-  const tokenSet = !!defs.find((d) => d.key === 'GOOGLE_REFRESH_TOKEN')?.isSet;
-  const idSet = !!defs.find((d) => d.key === 'GOOGLE_CLIENT_ID')?.value && !!defs.find((d) => d.key === 'GOOGLE_CLIENT_SECRET')?.isSet;
-  const gmailOn = ['1', 'true'].includes(String(defs.find((d) => d.key === 'GMAIL_ENABLED')?.value));
-  function connectGoogleDialog() {
-    const pasted = h('md-outlined-text-field', { label: 'The address the browser ended up on', type: 'textarea', rows: 3, placeholder: 'http://localhost:1/?code=4/0A…', 'data-primary': '' });
-    const err = h('div', { class: 'err-box', hidden: true }); const link = h('md-filled-tonal-button', { target: '_blank', disabled: true }, icon('open_in_new'), 'Open Google and approve');
-    let url = ''; api('/google/connect/url', { method: 'POST' }).then((r) => { url = r.url; link.href = url; link.disabled = false; }).catch((e) => { err.hidden = false; err.textContent = e.message; });
-    const { close } = dialog({ title: 'Connect your Google account', content: h('div', { class: 'form' },
-      h('p', {}, h('b', {}, '1. '), 'Open the Google page and approve access to Gmail, Drive and Chat (read only).'), h('div', {}, link),
-      h('p', {}, h('b', {}, '2. '), 'Your browser then lands on a page that fails to load (localhost). That is expected. Copy the whole address from the address bar.'),
-      h('p', {}, h('b', {}, '3. '), 'Paste it here:'), pasted, err,
-      h('p', { class: 'muted s' }, 'Needs an OAuth client of type “Desktop app”. The token is stored on the server like your other secrets.')),
-      actions: [h('md-text-button', { onclick: () => close() }, 'Cancel'), h('md-filled-button', { onclick: async () => {
-        err.hidden = true; const ok = await (async () => { try { return await api('/google/connect/finish', { method: 'POST', body: { pasted: pasted.value } }); } catch (e) { err.hidden = false; err.textContent = e.message; return null; } })();
-        if (!ok) return; close(); toast('Google connected — restarting so Gmail can start'); setTimeout(() => restartServer(true), 600); } }, 'Connect')] });
-  }
-  const googleConnect = h('div', { class: 'card high' }, h('h2', {}, icon('mail'), 'Your Google account'),
-    h('p', { class: 'muted' }, tokenSet ? 'Connected. Gmail, Drive and Chat reading use this account.' : gmailOn ? 'Gmail is switched on, but no Google account is connected yet, so nothing is being read.' : 'Connect your account so the assistant can read Gmail, index Drive and read your Chat spaces.'),
-    !tokenSet && !idSet ? h('p', { class: 'muted' }, 'First save the OAuth client ID and secret below, then come back here.') : '',
-    h('div', {}, h('md-filled-tonal-button', { disabled: !idSet || undefined, onclick: connectGoogleDialog }, icon('link'), tokenSet ? 'Connect again' : 'Connect Google account')));
-
   // ---- layout: a list of sections on the left, one section at a time on the right ----
   const cardOf = (g) => cards.find((c) => c.dataset.group === g);
-  const ORDER = ['General', 'Appearance', 'Brain', 'Notifications', 'Google', 'Canopy', 'Files & voice', 'Mac app', 'Code', 'Backup', 'Security & access'];
+  const ORDER = ['General', 'Appearance', 'Brain', 'Code', 'Backup', 'Security & access'];
   const secs = new Map([
     ['Appearance', { icon: 'palette', blurb: 'Theme and colour — saved in this browser.', nodes: [appearance] }],
     ['Backup', { icon: 'inventory_2', blurb: 'Download, restore and schedule backups.', nodes: [backup, cardOf('Backup')] }],
     ['Security & access', { icon: 'lock_reset', blurb: 'Web password and the tokens scripts and devices use.', nodes: [security, cardOf('Access')] }]]);
-  for (const g of groups) if (g !== 'Backup' && g !== 'Access') secs.set(g, { icon: GROUP_ICON[g] || 'tune', blurb: '', nodes: g === 'Google' ? [googleConnect, cardOf(g)] : [cardOf(g)] });
+  for (const g of groups) if (g !== 'Backup' && g !== 'Access') secs.set(g, { icon: GROUP_ICON[g] || 'tune', blurb: '', nodes: [cardOf(g)] });
   const names = [...ORDER.filter((n) => secs.has(n)), ...[...secs.keys()].filter((n) => !ORDER.includes(n))];
   let cur = names.includes(localStorage.getItem('settings_section')) ? localStorage.getItem('settings_section') : names[0];
   const nav = h('nav', { class: 'set-nav', 'aria-label': 'Settings sections' }); const panes = new Map();
@@ -141,7 +112,7 @@ export default async function settings(view) {
     for (const [n, pane] of panes) {
       if (!q) { pane.hidden = n !== cur; for (const f of fieldsOf(pane)) f.hidden = false; for (const c of pane.querySelectorAll('.set-card')) c.hidden = false; continue; }
       let any = false; for (const f of fieldsOf(pane)) { const hit = f.dataset.q.includes(q); f.hidden = !hit; any ||= hit; }
-      for (const c of pane.querySelectorAll('.set-card')) c.hidden = ![...c.querySelectorAll('[data-q]')].some((f) => !f.hidden);
+      for (const c of pane.querySelectorAll('.set-card')) { c.hidden = ![...c.querySelectorAll('[data-q]')].some((f) => !f.hidden); const adv = c.querySelector('.set-adv'); if (adv) adv.open = [...adv.querySelectorAll('[data-q]')].some((f) => !f.hidden); }
       pane.hidden = !any;                                                  // while searching, only sections with a match show
     }
     drawNav();

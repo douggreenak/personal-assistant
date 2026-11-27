@@ -1,4 +1,5 @@
 import { helpChat } from './helpchat.js';
+import { builtInCard } from './connections.js';
 import { api } from '../api.js';
 import { h, icon, clear, ago, empty, chip, dialog, confirmDialog, guarded, spinner, toast, page, fab } from '../ui.js';
 
@@ -101,6 +102,6 @@ export default async function connectors(view, { refreshStatus }) {
     const { close } = dialog({ title: 'Add a connector', fullscreen: true, onClose: stopPoll, content: [form, log, tail, helpChat('connector')], actions: [h('md-text-button', { onclick: () => close() }, 'Close'), go] });
   }
   page.newAction = add;
-  clear(view).append(h('div', { class: 'page-head' }, h('h1', { class: 'display' }, 'Connectors'), h('p', { class: 'muted title-m' }, 'Connect other services so the assistant can read from them and, with your OK, act in them.')), list, h('div', { class: 'fab-slot' }, fab('Add', 'Add connector', add)));
+  clear(view).append(h('div', { class: 'page-head' }, h('h1', { class: 'display' }, 'Connectors'), h('p', { class: 'muted title-m' }, 'Everything about connecting to other services: the built-in ones, and any you add.')), builtInCard(), h('h2', { class: 'title-l', style: 'margin:22px 0 4px' }, 'Connectors you added'), h('p', { class: 'muted' }, 'Paste a service\'s docs and key, or an MCP server\'s URL. The assistant can read from them and, with your OK, act in them.'), list, h('div', { class: 'fab-slot' }, fab('Add', 'Add connector', add)));
   await load();
 }

@@ -24,14 +24,14 @@ export function codeFrom(pasted: string): string {
 }
 
 export async function exchangeCode(clientId: string, clientSecret: string, pasted: string, fetchImpl: typeof fetch = fetch): Promise<string> {
-  if (!clientId) throw new Error('Save the OAuth client ID and secret first (Settings → Google).');
+  if (!clientId) throw new Error('Save the OAuth client ID and secret first (Connect → Your Google account).');
   const code = codeFrom(pasted);
   const res = await fetchImpl('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, signal: AbortSignal.timeout(20000),
     body: new URLSearchParams({ code, client_id: clientId, client_secret: clientSecret, redirect_uri: REDIRECT, grant_type: 'authorization_code' }) });
   const j = await res.json().catch(() => ({})) as { refresh_token?: string; error?: string; error_description?: string };
   if (!j.refresh_token) {
     if (j.error === 'invalid_grant') throw new Error('That code was already used or has expired. Start again from step 1 and paste the new address.');
-    if (j.error === 'invalid_client') throw new Error('Google does not accept the client ID / secret. Check them in Settings → Google (use an OAuth "Desktop app" client).');
+    if (j.error === 'invalid_client') throw new Error('Google does not accept the client ID / secret. Check them in Connect → Your Google account (use an OAuth "Desktop app" client).');
     throw new Error(j.error_description || j.error || (res.ok ? 'Google did not return a refresh token. Start again (it must show the consent screen).' : `Google answered ${res.status}.`));
   }
   return j.refresh_token;

@@ -8,6 +8,8 @@ import { dirname } from 'node:path';
 export interface SettingDef {
   key: string; label: string; group: string; type: 'text' | 'number' | 'bool' | 'secret' | 'list' | 'textarea';
   help?: string; placeholder?: string; default?: string;
+  /** The service this setting connects to (shown on the Connect page, not in Settings). */ connection?: string;
+  /** Rarely needed: tucked under "Advanced" in Settings. */ advanced?: boolean;
 }
 export const SETTINGS: SettingDef[] = [
   { key: 'TZ_NAME', label: 'Time zone', group: 'General', type: 'text', help: 'IANA time zone name.' },
@@ -32,7 +34,7 @@ export const SETTINGS: SettingDef[] = [
   { key: 'GOOGLE_REFRESH_TOKEN', label: 'OAuth refresh token', group: 'Google', type: 'secret', help: 'Use “Connect Google account” above (or `npm run google-auth` in a terminal).' },
   { key: 'GMAIL_ENABLED', label: 'Read Gmail', group: 'Google', type: 'bool' },
   { key: 'GMAIL_SKIP_BULK', label: 'Skip bulk mail', group: 'Google', type: 'bool', default: '1', help: 'Ignore newsletters and promotions.' },
-  { key: 'GOOGLE_SERVICE_ACCOUNT_FILE', label: 'Service account file', group: 'Google', type: 'text', help: 'Upload one on the Settings page, or enter a path inside the container.' },
+  { key: 'GOOGLE_SERVICE_ACCOUNT_FILE', label: 'Service account file', group: 'Google', type: 'text', help: 'Upload one on the Connect page, or enter a path inside the container.' },
   { key: 'CHAT_PUBSUB_SUBSCRIPTION', label: 'Chat Pub/Sub subscription', group: 'Google', type: 'text' },
   { key: 'CHAT_NOTIFY_SPACE', label: 'Chat notify space', group: 'Google', type: 'text' },
   { key: 'CHAT_ALLOWED_USERS', label: 'Chat allowed users', group: 'Google', type: 'list', help: 'ONLY these Chat users may command the assistant.' },
@@ -60,6 +62,16 @@ export const SETTINGS: SettingDef[] = [
 
   { key: 'INGEST_TOKEN', label: 'Ingest token', group: 'Access', type: 'secret', help: 'Send-input-only token for the Mac agent and phone app.' },
 ];
+// Where each setting belongs. Settings about reaching an outside service live on the Connect page; the rest stay in Settings, and the ones almost nobody changes are "advanced".
+const CONNECTION: Record<string, string> = {
+  GOOGLE_CLIENT_ID: 'google', GOOGLE_CLIENT_SECRET: 'google', GOOGLE_REFRESH_TOKEN: 'google', GMAIL_ENABLED: 'gmail', GMAIL_SKIP_BULK: 'gmail',
+  GOOGLE_SERVICE_ACCOUNT_FILE: 'chat', CHAT_PUBSUB_SUBSCRIPTION: 'chat', CHAT_NOTIFY_SPACE: 'chat', CHAT_ALLOWED_USERS: 'chat', CHAT_READ_SPACES: 'chat', DRIVE_FOLDER_IDS: 'drive',
+  CANOPY_URL: 'canopy', CANOPY_READ_TOKEN: 'canopy', CANOPY_WRITE_TOKEN: 'canopy', CANOPY_GRADE_DROP_PCT: 'canopy', NTFY_URL: 'ntfy', NTFY_TOPIC: 'ntfy',
+  INDEX_PATHS: 'files', TRANSCRIBE_URL: 'whisper', GITHUB_REPO: 'github', GITHUB_TOKEN: 'github',
+};
+const ADVANCED = new Set(['NAG_MINUTES', 'AUTO_APPLY_MIN_CONFIDENCE', 'IGNORE_SENDERS', 'CLAUDE_FAST_MODEL', 'CLAUDE_TIMEOUT_MS', 'BACKUP_HOUR', 'BACKUP_KEEP', 'CODE_MAX_SESSIONS', 'CODE_RESUME_ON_BOOT', 'GMAIL_SKIP_BULK', 'CHAT_NOTIFY_SPACE', 'CANOPY_GRADE_DROP_PCT']);
+for (const d of SETTINGS) { if (CONNECTION[d.key]) d.connection = CONNECTION[d.key]; if (ADVANCED.has(d.key)) d.advanced = true; }
+
 const BY_KEY = new Map(SETTINGS.map((s) => [s.key, s]));
 
 const file = (dataDir: string) => `${dataDir}/settings.json`;

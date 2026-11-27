@@ -254,7 +254,7 @@ export function createHttp(ctx: Ctx, deps: HttpDeps): Server {
       try { return send(res, 200, { changed: saveSettings(ctx.cfg.dataDir, (await readJson(req)).values as Record<string, unknown> ?? {}) }); } catch (e) { throw new HttpError(400, (e as Error).message); }
     }
     if (path === '/google/connect/url' && method === 'POST') {
-      const id = effective(ctx, 'GOOGLE_CLIENT_ID'); if (!id) throw new HttpError(400, 'Save the OAuth client ID and secret first (Settings → Google).');
+      const id = effective(ctx, 'GOOGLE_CLIENT_ID'); if (!id) throw new HttpError(400, 'Save the OAuth client ID and secret first (Connect → Your Google account).');
       return send(res, 200, { url: consentUrl(id) });
     }
     if (path === '/google/connect/finish' && method === 'POST') {
