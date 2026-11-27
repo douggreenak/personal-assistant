@@ -108,3 +108,16 @@ test('a request to act in a service that finds nothing to call does not edit unr
   assert.deepEqual(r?.report.queued, []); assert.deepEqual(r?.report.applied, []);
   assert.equal((await import('../src/approvals.ts')).listApprovals(ctx).length, 0, 'no approval about an unrelated item');
 });
+
+test('chat: "try again" is read against the last turns, not an old request from hours ago', async () => {
+  const { ctx, llm } = mk(() => ({ actions: [] }));
+  llm.router = () => ({ intent: 'note', terms: [] });
+  const { rememberExchange } = await import('../src/router.ts');
+  const old = storeMessage(ctx, { source: 'chat', sourceId: 'o1', sender: 'me', thread: 'chat:', body: 'Schedule a drive from work to costco' })!;
+  ctx.db.prepare('UPDATE messages SET received_at = ?, processed_at = ? WHERE id = ?').run(new Date(ctx.now().getTime() - 3 * 3600_000).toISOString(), ctx.now().toISOString(), old);
+  rememberExchange(ctx, 'Mark my physics homework as done', 'I could not find a physics assignment.');
+  await handleOwnerText(ctx, 'try again');
+  const p = llm.calls.at(-1)!.prompt;
+  assert.match(p, /Mark my physics homework as done/, 'the last turn is in the prompt');
+  assert.doesNotMatch(p, /Schedule a drive from work to costco/, 'the three-hour-old request is not');
+});

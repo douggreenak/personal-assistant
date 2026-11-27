@@ -5,7 +5,7 @@ import { decide, listApprovals } from './approvals.ts';
 import { ack, parseSnooze, shortId, snooze } from './nag.ts';
 import { liveContext, processNextReport, storeMessage, type ProcessReport } from './pipeline.ts';
 import { planAndFetch } from './lookups.ts';
-import { rememberExchange, route, type Route } from './router.ts';
+import { exchangeText, rememberExchange, route, type Route } from './router.ts';
 import { ask } from './qa.ts';
 import { codeDigests, formatDigests, mentioned } from './code/overview.ts';
 import type { Upload } from './images.ts';
@@ -110,7 +110,7 @@ async function handleText(ctx: Ctx, textIn: string, sourceId: string, images: Up
     return formatDigests(named.length ? named : all, { detail: named.length > 0 });
   }
   if (r.intent === 'action') {   // read what the request needs first (e.g. the list that holds the item's id), then decide what to do with it
-    const live = await planAndFetch(ctx, text).catch(() => []);
+    const recent = exchangeText(ctx); const live = await planAndFetch(ctx, recent ? `${text}\n(Context, the last chat turns:\n${recent})` : text).catch(() => []);
     const services = listConnectors(ctx).filter((c) => c.status === 'enabled').map((c) => c.manifest.name);
     return capture(ctx, text, sourceId, [], live.filter((b) => b.ok).map((b) => `${b.label}:\n${b.text}`).join('\n\n').slice(0, 14000), async (rep) => {
       if (!rep.ops?.length && !rep.applied.length && !rep.queued.length && !rep.failed?.length && services.length) {
