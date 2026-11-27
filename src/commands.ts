@@ -135,7 +135,7 @@ async function capture(ctx: Ctx, text: string, sourceId: string, images: Upload[
 
 function summarize(r: { applied: string[]; queued: string[]; rejected: string[]; failed?: string[]; skipped?: string }): string {
   const lines: string[] = [];
-  if (r.applied.length) lines.push(...r.applied.map((s) => `Done: ${s}`));
+  if (r.applied.length) lines.push(...r.applied.map((s) => (/^Skipped/.test(s) ? s : `Done: ${s}`)));
   if (r.queued.length) lines.push(...r.queued.map((s) => `Needs your OK: ${s}`));
   if (r.failed?.length) lines.push(...r.failed.map((s) => `That didn't work: ${s}`));
   if (r.skipped?.startsWith('error')) lines.push(`I couldn't process that yet (${r.skipped}). I'll retry.`);

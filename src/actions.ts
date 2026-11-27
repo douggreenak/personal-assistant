@@ -115,7 +115,7 @@ export async function applyAction(ctx: Ctx, a: Action, sourceMessageId: number |
   }
 
   const item = items.get(a.itemId!);
-  if (!item || item.state !== 'open') return { summary: `Skipped: item no longer open (${a.itemId?.slice(0, 8)})` };
+  if (!item || item.state !== 'open') return { summary: 'Skipped: that item is no longer open' };
 
   if (a.op === 'update') {
     const f: Record<string, unknown> = {};

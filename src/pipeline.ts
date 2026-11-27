@@ -142,6 +142,7 @@ export async function processNext(ctx: Ctx): Promise<boolean> { return (await pr
 
 async function announce(ctx: Ctx, msg: MessageRow, r: ProcessReport): Promise<void> {
   if (!r.applied.length) return;  // queued items are announced by the approvals loop
-  const who = msg.source === 'voice' ? '' : ` (from ${msg.sender || msg.source})`;
-  await ctx.notify.send(`Done: ${r.applied.map((s) => `• ${s}`).join('\n')}${who}`);
+  const who = msg.source === 'voice' || !msg.sender || msg.sender === 'me' ? '' : `\nFrom ${msg.sender}`;
+  const line = (s: string) => (/^Skipped/.test(s) ? s : `✓ ${s}`);
+  await ctx.notify.send(`${r.applied.map(line).join('\n')}${who}`);
 }

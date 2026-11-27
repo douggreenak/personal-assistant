@@ -1,3 +1,4 @@
+import { plainError } from './plainerror.ts';
 import type { Ctx } from './ctx.ts';
 import { nowIso } from './db.ts';
 import { applyAction, type Action } from './actions.ts';
@@ -29,7 +30,8 @@ export const getApproval = (ctx: Ctx, id: number): Approval | undefined => {
 export async function announcePending(ctx: Ctx): Promise<number> {
   const fresh = (ctx.db.prepare('SELECT * FROM approvals WHERE status = ? AND notified = 0 ORDER BY id').all('pending') as Row[]).map(toApproval);
   for (const a of fresh) {
-    await ctx.notify.send(`Approval #${a.id} needs your OK: ${a.summary}\n   (${a.reason}) — reply "approve ${a.id}" or "reject ${a.id}"`, { approvalId: a.id });
+    const why = a.reason.startsWith('it failed:') ? `It didn't go through last time: ${plainError(a.reason.slice(10))}` : a.reason;
+    await ctx.notify.send(`Approval #${a.id} needs your OK: ${a.summary}${why ? `\n${why}` : ''}\nReply "approve ${a.id}" or "reject ${a.id}".`, { approvalId: a.id });
     ctx.db.prepare('UPDATE approvals SET notified = 1 WHERE id = ?').run(a.id);
   }
   return fresh.length;
@@ -57,7 +59,7 @@ export async function decide(ctx: Ctx, id: number, approve: boolean, by = 'owner
     const hook = kindHooks.get(a.kind);
     return hook ? await hook(ctx, a) : `Approved #${id}.`;
   } catch (e) {
-    ctx.db.prepare("UPDATE approvals SET status = 'pending', notified = 0, reason = ? WHERE id = ?").run(`it failed: ${(e as Error).message.slice(0, 900)}`, id);
-    return `Approved #${id} but it failed (${(e as Error).message.slice(0, 200)}); it's back in the queue.`;
+    ctx.db.prepare("UPDATE approvals SET status = 'pending', notified = 0, reason = ? WHERE id = ?").run(`it failed: ${plainError((e as Error).message, 600)}`, id);
+    return `Approved #${id} but it failed: ${plainError((e as Error).message)}. It's back in the queue.`;
   }
 }
