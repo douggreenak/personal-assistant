@@ -22,7 +22,10 @@ import { applyAction, type Action } from './actions.ts';
 import { search } from './qa.ts';
 import { indexPaths } from './index/indexer.ts';
 import { activity, connectorsFull, deleteConnector, integrations, listMessages, retryMessage, saveServiceAccount, setConnectorStatus, setSecret, skipMessage, status } from './admin.ts';
-import { saveSettings, viewSettings } from './settings.ts';
+import { readOverrides, saveSettings, viewSettings } from './settings.ts';
+import { consentUrl, exchangeCode } from './google/connect.ts';
+/** A setting's current value: what was saved on the Settings page (not yet applied until a restart), else the environment. */
+const effective = (ctx: Ctx, key: string): string => readOverrides(ctx.cfg.dataDir)[key] || process.env[key] || '';
 import { GUIDES, applySetup } from './setup.ts';
 import { getLogs } from './logs.ts';
 import { latestMacRelease, openMacDownload, publicRelease, macHeartbeat, listMacClients, requestMacUpdate, forgetMacClient } from './macapp.ts';
@@ -247,6 +250,14 @@ export function createHttp(ctx: Ctx, deps: HttpDeps): Server {
     if (path === '/settings' && method === 'GET') return send(res, 200, { settings: viewSettings(ctx.cfg.dataDir) });
     if (path === '/settings' && method === 'PUT') {
       try { return send(res, 200, { changed: saveSettings(ctx.cfg.dataDir, (await readJson(req)).values as Record<string, unknown> ?? {}) }); } catch (e) { throw new HttpError(400, (e as Error).message); }
+    }
+    if (path === '/google/connect/url' && method === 'POST') {
+      const id = effective(ctx, 'GOOGLE_CLIENT_ID'); if (!id) throw new HttpError(400, 'Save the OAuth client ID and secret first (Settings → Google).');
+      return send(res, 200, { url: consentUrl(id) });
+    }
+    if (path === '/google/connect/finish' && method === 'POST') {
+      try { const token = await exchangeCode(effective(ctx, 'GOOGLE_CLIENT_ID'), effective(ctx, 'GOOGLE_CLIENT_SECRET'), String((await readJson(req)).pasted ?? ''), deps.fetchImpl); saveSettings(ctx.cfg.dataDir, { GOOGLE_REFRESH_TOKEN: token }); return send(res, 200, { ok: true, restartNeeded: true }); }
+      catch (e) { throw new HttpError(400, (e as Error).message); }
     }
     if (path === '/admin/service-account' && method === 'POST') {
       try { const p = saveServiceAccount(ctx, (await readBody(req, JSON_LIMIT)).toString('utf8')); saveSettings(ctx.cfg.dataDir, { GOOGLE_SERVICE_ACCOUNT_FILE: p }); return send(res, 200, { path: p }); } catch (e) { throw new HttpError(400, (e as Error).message); }

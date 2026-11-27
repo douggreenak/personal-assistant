@@ -11,9 +11,12 @@ const SUGGEST = ['open', 'approvals'];
 export default async function chat(view) {
   let hist = load();
   const msgs = h('div', { class: 'msgs' });
+  // With no messages the page says so in plain text in the middle (not a chat bubble); it goes away as soon as there is a message.
+  const emptyEl = h('div', { class: 'chat-empty', role: 'status' }, h('div', { class: 'title-m' }, 'No messages yet'), h('p', { class: 'muted' }, 'Tell me what\'s going on and I\'ll turn it into tickets, reminders and tasks. Ask me a question and I\'ll search your messages and files.'));
+  const syncEmpty = () => { if (msgs.querySelector('.bubble, .chat-approve')) emptyEl.remove(); else if (!emptyEl.isConnected) msgs.append(emptyEl); };
   const bubble = (role, text, thumbs = [], at) => {
     const b = h('div', { class: 'bubble ' + role, 'data-at': String(at ?? Date.now()) }, thumbs.length ? h('div', { class: 'bubble-pics' }, thumbs.map((t) => h('img', { src: t, alt: 'attached picture' }))) : '', text ? md(text) : '');
-    msgs.append(b); msgs.scrollTop = msgs.scrollHeight; return b;
+    msgs.append(b); syncEmpty(); msgs.scrollTop = msgs.scrollHeight; return b;
   };
   // Approve / reject what the assistant just asked about, right in the chat; the outcome replaces the buttons (green = done, red = failed).
   const approvalRow = (list) => {
@@ -43,13 +46,13 @@ export default async function chat(view) {
   ta.addEventListener('keydown', (e) => { if (e.key === 'ArrowUp' && !ta.value) { const last = [...hist].reverse().find((m) => m.role === 'me'); if (last && last.text) { e.preventDefault(); ta.value = last.text; ta.dispatchEvent(new Event('input')); } } if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
   const sendBtn = h('md-filled-icon-button', { 'aria-label': 'Send', onclick: () => send() }, icon('send'));
   for (const m of hist) bubble(m.role, m.text, m.thumbs ?? [], m.at);
-  if (!hist.length) bubble('bot', 'Hi! Tell me what\'s going on and I\'ll turn it into tickets, reminders and tasks. Ask me a question and I\'ll search your messages and files.');
+  syncEmpty();
   clear(view).append(h('div', { class: 'page-head' }, h('h1', { class: 'display' }, 'Chat'), h('p', { class: 'muted title-m' }, 'The same assistant you reach from Google Chat.')),
-    h('div', { class: 'toolbar' }, h('div', { class: 'grow' }), h('md-text-button', { onclick: () => { hist = []; localStorage.removeItem(KEY); clear(msgs); bubble('bot', 'Cleared.'); } }, 'Clear')),
+    h('div', { class: 'toolbar' }, h('div', { class: 'grow' }), h('md-text-button', { onclick: () => { hist = []; localStorage.removeItem(KEY); clear(msgs); syncEmpty(); } }, 'Clear')),
     h('div', { class: 'chat' }, msgs, h('div', {}, pics.strip, h('div', { class: 'composer' }, pics.button, ta, sendBtn), pics.input)));
   // Messages older than 6 hours disappear from the page as time passes (they stay in the server's chat log).
   const sweep = setInterval(() => { const keep = fresh(hist); if (keep.length === hist.length) return; const gone = hist.length - keep.length; hist = keep; try { localStorage.setItem(KEY, JSON.stringify(hist)); } catch { /* ignore */ }
-    for (const el of [...msgs.querySelectorAll('.bubble[data-at]')]) if (Date.now() - Number(el.dataset.at) >= KEEP_MS) el.remove(); }, 60000);
+    for (const el of [...msgs.querySelectorAll('.bubble[data-at]')]) if (Date.now() - Number(el.dataset.at) >= KEEP_MS) el.remove(); syncEmpty(); }, 60000);
   page.newAction = () => ta.focus();
   setTimeout(() => ta.focus({ preventScroll: true }), 100);
   return () => clearInterval(sweep);

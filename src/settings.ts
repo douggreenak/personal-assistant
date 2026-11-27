@@ -27,7 +27,7 @@ export const SETTINGS: SettingDef[] = [
 
   { key: 'GOOGLE_CLIENT_ID', label: 'OAuth client ID', group: 'Google', type: 'text' },
   { key: 'GOOGLE_CLIENT_SECRET', label: 'OAuth client secret', group: 'Google', type: 'secret' },
-  { key: 'GOOGLE_REFRESH_TOKEN', label: 'OAuth refresh token', group: 'Google', type: 'secret', help: 'Create with `npm run google-auth` (see docs/google-setup.md).' },
+  { key: 'GOOGLE_REFRESH_TOKEN', label: 'OAuth refresh token', group: 'Google', type: 'secret', help: 'Use “Connect Google account” above (or `npm run google-auth` in a terminal).' },
   { key: 'GMAIL_ENABLED', label: 'Read Gmail', group: 'Google', type: 'bool' },
   { key: 'GMAIL_SKIP_BULK', label: 'Skip bulk mail', group: 'Google', type: 'bool', default: '1', help: 'Ignore newsletters and promotions.' },
   { key: 'GOOGLE_SERVICE_ACCOUNT_FILE', label: 'Service account file', group: 'Google', type: 'text', help: 'Upload one on the Settings page, or enter a path inside the container.' },

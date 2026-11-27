@@ -516,3 +516,6 @@ md-dialog { max-height: min(calc(100dvh - 48px), 980px); }
 
 .code-empty { align-self: center; max-width: 34em; margin: auto; padding: 24px 16px; text-align: center; color: var(--md-sys-color-on-surface-variant); }
 .code-empty[hidden] { display: none; }
+
+.chat-empty { margin: auto; max-width: 30em; padding: 24px 16px; text-align: center; color: var(--md-sys-color-on-surface-variant); }
+.chat-empty p { margin: 6px 0 0; }

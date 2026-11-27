@@ -95,6 +95,28 @@ export default async function settings(view) {
     h('h3', { class: 'label', style: 'margin-top:16px' }, 'Saved on the server'), status, saved);
   loadSaved();
 
+  // ---- connecting the owner's Google account (Gmail, Drive, Chat reading) without a terminal ----
+  const tokenSet = !!defs.find((d) => d.key === 'GOOGLE_REFRESH_TOKEN')?.isSet;
+  const idSet = !!defs.find((d) => d.key === 'GOOGLE_CLIENT_ID')?.value && !!defs.find((d) => d.key === 'GOOGLE_CLIENT_SECRET')?.isSet;
+  const gmailOn = ['1', 'true'].includes(String(defs.find((d) => d.key === 'GMAIL_ENABLED')?.value));
+  function connectGoogleDialog() {
+    const pasted = h('md-outlined-text-field', { label: 'The address the browser ended up on', type: 'textarea', rows: 3, placeholder: 'http://localhost:1/?code=4/0A…', 'data-primary': '' });
+    const err = h('div', { class: 'err-box', hidden: true }); const link = h('md-filled-tonal-button', { target: '_blank', disabled: true }, icon('open_in_new'), 'Open Google and approve');
+    let url = ''; api('/google/connect/url', { method: 'POST' }).then((r) => { url = r.url; link.href = url; link.disabled = false; }).catch((e) => { err.hidden = false; err.textContent = e.message; });
+    const { close } = dialog({ title: 'Connect your Google account', content: h('div', { class: 'form' },
+      h('p', {}, h('b', {}, '1. '), 'Open the Google page and approve access to Gmail, Drive and Chat (read only).'), h('div', {}, link),
+      h('p', {}, h('b', {}, '2. '), 'Your browser then lands on a page that fails to load (localhost). That is expected. Copy the whole address from the address bar.'),
+      h('p', {}, h('b', {}, '3. '), 'Paste it here:'), pasted, err,
+      h('p', { class: 'muted s' }, 'Needs an OAuth client of type “Desktop app”. The token is stored on the server like your other secrets.')),
+      actions: [h('md-text-button', { onclick: () => close() }, 'Cancel'), h('md-filled-button', { onclick: async () => {
+        err.hidden = true; const ok = await (async () => { try { return await api('/google/connect/finish', { method: 'POST', body: { pasted: pasted.value } }); } catch (e) { err.hidden = false; err.textContent = e.message; return null; } })();
+        if (!ok) return; close(); toast('Google connected — restarting so Gmail can start'); setTimeout(() => restartServer(true), 600); } }, 'Connect')] });
+  }
+  const googleConnect = h('div', { class: 'card high' }, h('h2', {}, icon('mail'), 'Your Google account'),
+    h('p', { class: 'muted' }, tokenSet ? 'Connected. Gmail, Drive and Chat reading use this account.' : gmailOn ? 'Gmail is switched on, but no Google account is connected yet, so nothing is being read.' : 'Connect your account so the assistant can read Gmail, index Drive and read your Chat spaces.'),
+    !tokenSet && !idSet ? h('p', { class: 'muted' }, 'First save the OAuth client ID and secret below, then come back here.') : '',
+    h('div', {}, h('md-filled-tonal-button', { disabled: !idSet || undefined, onclick: connectGoogleDialog }, icon('link'), tokenSet ? 'Connect again' : 'Connect Google account')));
+
   // ---- layout: a list of sections on the left, one section at a time on the right ----
   const cardOf = (g) => cards.find((c) => c.dataset.group === g);
   const ORDER = ['General', 'Appearance', 'Brain', 'Notifications', 'Google', 'Canopy', 'Files & voice', 'Mac app', 'Code', 'Backup', 'Security & access'];
@@ -102,7 +124,7 @@ export default async function settings(view) {
     ['Appearance', { icon: 'palette', blurb: 'Theme and colour — saved in this browser.', nodes: [appearance] }],
     ['Backup', { icon: 'inventory_2', blurb: 'Download, restore and schedule backups.', nodes: [backup, cardOf('Backup')] }],
     ['Security & access', { icon: 'lock_reset', blurb: 'Web password and the tokens scripts and devices use.', nodes: [security, cardOf('Access')] }]]);
-  for (const g of groups) if (g !== 'Backup' && g !== 'Access') secs.set(g, { icon: GROUP_ICON[g] || 'tune', blurb: '', nodes: [cardOf(g)] });
+  for (const g of groups) if (g !== 'Backup' && g !== 'Access') secs.set(g, { icon: GROUP_ICON[g] || 'tune', blurb: '', nodes: g === 'Google' ? [googleConnect, cardOf(g)] : [cardOf(g)] });
   const names = [...ORDER.filter((n) => secs.has(n)), ...[...secs.keys()].filter((n) => !ORDER.includes(n))];
   let cur = names.includes(localStorage.getItem('settings_section')) ? localStorage.getItem('settings_section') : names[0];
   const nav = h('nav', { class: 'set-nav', 'aria-label': 'Settings sections' }); const panes = new Map();

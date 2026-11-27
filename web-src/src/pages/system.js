@@ -4,8 +4,8 @@ import { h, icon, clear, ago, fmtDate, empty, chip, confirmDialog, dialog, guard
 
 const dur = (s) => (s < 3600 ? `${Math.round(s / 60)} min` : s < 86400 ? `${(s / 3600).toFixed(1)} h` : `${(s / 86400).toFixed(1)} days`);
 
-export async function restartServer() {
-  if (!(await confirmDialog('Restart the assistant?', 'It restarts in a few seconds. Open requests are interrupted; nothing is lost.', 'Restart'))) return;
+export async function restartServer(skipConfirm = false) {
+  if (!skipConfirm && !(await confirmDialog('Restart the assistant?', 'It restarts in a few seconds. Open requests are interrupted; nothing is lost.', 'Restart'))) return;
   await guarded(() => api('/admin/restart', { method: 'POST' }));
   toast('Restarting…');
   for (let i = 0; i < 40; i++) { await new Promise((r) => setTimeout(r, 1500)); try { if ((await fetch('/healthz')).ok && i > 1) { toast('Back online'); setTimeout(() => location.reload(), 600); return; } } catch { /* still down */ } }

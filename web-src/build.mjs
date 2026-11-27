@@ -6,7 +6,7 @@ const ICONS = ['computer', 'cleaning_services', 'timelapse', 'check_box_outline_
   'send', 'refresh', 'search', 'history', 'warning', 'error', 'restart_alt', 'logout', 'key', 'upload', 'dark_mode', 'light_mode', 'palette', 'bolt', 'notifications',
   'confirmation_number', 'alarm', 'more_horiz', 'menu', 'keyboard_arrow_down', 'sync', 'play_arrow', 'block', 'link', 'cloud_done', 'cloud_off', 'mail', 'folder',
   'snooze', 'done_all', 'undo', 'mic', 'bug_report', 'terminal', 'tune', 'lock_reset', 'contrast', 'arrow_forward', 'chevron_right', 'info', 'help', 'person', 'flag', 'event',
-  'checklist_rtl', 'inventory_2', 'dns', 'speed', 'memory', 'database', 'smart_toy', 'public', 'verified', 'visibility', 'visibility_off', 'keyboard_arrow_up', 'keyboard', 'download', 'content_copy', 'system_update_alt', 'laptop_mac', 'sort', 'wifi_off', 'palette', 'dark_mode', 'light_mode', 'arrow_forward'];
+  'checklist_rtl', 'inventory_2', 'dns', 'speed', 'memory', 'database', 'smart_toy', 'public', 'verified', 'visibility', 'visibility_off', 'keyboard_arrow_up', 'open_in_new', 'keyboard', 'download', 'content_copy', 'system_update_alt', 'laptop_mac', 'sort', 'wifi_off', 'palette', 'dark_mode', 'light_mode', 'arrow_forward'];
 const dir = 'node_modules/@material-symbols/svg-400/rounded/';
 const icons = {};
 for (const n of ICONS) {
