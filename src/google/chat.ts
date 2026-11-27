@@ -1,7 +1,8 @@
 import type { Ctx } from '../ctx.ts';
 import { kvGet, kvSet } from '../db.ts';
-import type { Notifier } from '../notify.ts';
+import type { Notifier, NotifyOpts } from '../notify.ts';
 import { handleOwnerText } from '../commands.ts';
+import { decide } from '../approvals.ts';
 import { storeMessage } from '../pipeline.ts';
 import { gjson, type TokenSource } from './auth.ts';
 
@@ -24,6 +25,27 @@ export function parseChatEvent(raw: unknown): ChatEvent | null {
     space: String(space.name ?? message.space?.name ?? ''), spaceType: String(space.spaceType ?? space.type ?? ''), thread: message.thread?.name, messageName: message.name };
 }
 
+export interface ChatClick { id: number; approve: boolean; senderName: string; senderEmail: string; senderType: string; space: string; messageName?: string }
+
+/** A tap on an Approve / Reject button, in the classic (CARD_CLICKED) or the Workspace add-on event shape. */
+export function parseChatClick(raw: unknown): ChatClick | null {
+  const e = raw as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  let fn: string | undefined, params: Record<string, string> = {};
+  if (e?.commonEventObject?.invokedFunction) { fn = e.commonEventObject.invokedFunction; params = e.commonEventObject.parameters ?? {}; }
+  else if (e?.action?.actionMethodName || e?.action?.function) { fn = e.action.actionMethodName ?? e.action.function; for (const p of e.action.parameters ?? []) params[p.key] = p.value; }
+  if (fn !== 'approval') return null;
+  const id = Number(params.id); if (!Number.isInteger(id) || !/^(approve|reject)$/.test(params.decision ?? '')) return null;
+  const payload = e?.chat?.buttonClickedPayload; const message = payload?.message ?? e?.message; const space = payload?.space ?? e?.space ?? message?.space ?? {};
+  const user = e?.chat?.user ?? e?.user ?? {};
+  return { id, approve: params.decision === 'approve', senderName: String(user.name ?? ''), senderEmail: String(user.email ?? ''), senderType: String(user.type ?? ''), space: String(space.name ?? message?.space?.name ?? ''), messageName: message?.name };
+}
+
+const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+const button = (label: string, id: number, decision: 'approve' | 'reject') => ({ text: label, onClick: { action: { function: 'approval', parameters: [{ key: 'id', value: String(id) }, { key: 'decision', value: decision }] } } });
+/** A message card with Approve / Reject buttons (the typed "approve N" reply still works). */
+export const approvalCard = (id: number, text: string) => ({ cardId: `approval-${id}`, card: { sections: [{ widgets: [{ textParagraph: { text: esc(text) } }, { buttonList: { buttons: [button('Approve', id, 'approve'), button('Reject', id, 'reject')] } }] }] } });
+const resultCard = (id: number, text: string) => ({ cardId: `approval-${id}`, card: { sections: [{ widgets: [{ textParagraph: { text: esc(text) } }] }] } });
+
 export const isAllowed = (allowed: string[], e: Pick<ChatEvent, 'senderName' | 'senderEmail' | 'senderType'>): boolean =>
   e.senderType !== 'BOT' && allowed.length > 0 && allowed.some((a) => a.toLowerCase() === e.senderName.toLowerCase() || (e.senderEmail && a.toLowerCase() === e.senderEmail.toLowerCase()));
 
@@ -38,10 +60,23 @@ export class ChatBot implements Notifier {
     }
   }
   /** Notifier: proactive messages go to the DM space learned from your first message (or CHAT_NOTIFY_SPACE). */
-  async send(text: string): Promise<void> {
+  async send(text: string, opts?: NotifyOpts): Promise<void> {
     const space = kvGet(this.ctx.db, 'chat.space') ?? this.ctx.cfg.chat.notifySpace;
     if (!space) { console.warn('[chat] no DM space yet; message me once in Google Chat so I can reach you:', text.slice(0, 80)); return; }
+    if (opts?.approvalId) {
+      try { await gjson(this.sa, BOT_SCOPE, `${CHAT}/${space}/messages`, { method: 'POST', body: { cardsV2: [approvalCard(opts.approvalId, text.slice(0, 3000))] } }, this.fetchImpl); return; }
+      catch (e) { console.warn('[chat] button card failed, sending plain text:', (e as Error).message.slice(0, 120)); }
+    }
     await this.post(space, text);
+  }
+
+  /** Approve / Reject tapped on a card: do it, then turn the card into the outcome so it can't be tapped twice. */
+  async handleClick(c: ChatClick): Promise<void> {
+    if (!isAllowed(this.ctx.cfg.chat.allowedUsers, c)) { console.warn(`[chat] ignoring button from non-allowed user ${c.senderEmail || c.senderName}`); return; }
+    const result = await decide(this.ctx, c.id, c.approve);
+    const text = `Approval #${c.id}: ${result}`;
+    if (c.messageName) { try { await gjson(this.sa, BOT_SCOPE, `${CHAT}/${c.messageName}?updateMask=cardsV2`, { method: 'PATCH', body: { cardsV2: [resultCard(c.id, text)] } }, this.fetchImpl); return; } catch { /* fall through to a new message */ } }
+    if (c.space) await this.post(c.space, text);
   }
 
   /** Pulls pending Chat events from Pub/Sub (outbound only — no public endpoint), handles them, acks them. */
@@ -62,6 +97,7 @@ export class ChatBot implements Notifier {
   }
 
   async handleEvent(raw: unknown): Promise<void> {
+    const click = parseChatClick(raw); if (click) return this.handleClick(click);
     const e = parseChatEvent(raw);
     if (!e || !e.text || !e.space) return;
     if (!isAllowed(this.ctx.cfg.chat.allowedUsers, e)) { console.warn(`[chat] ignoring message from non-allowed user ${e.senderEmail || e.senderName}`); return; }
