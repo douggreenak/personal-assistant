@@ -8,8 +8,10 @@ const ROLES = ['primary', 'onPrimary', 'primaryContainer', 'onPrimaryContainer',
   'primaryFixed', 'primaryFixedDim', 'secondaryFixed', 'tertiaryFixed'];
 const kebab = (s) => s.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase());
 
+/** Pink and purple are not offered anywhere: a seed colour in that range is refused (and a saved one is ignored). */
+export const isBannedHue = (hex) => { try { const h = Hct.fromInt(argbFromHex(hex)); return h.chroma > 12 && (h.hue >= 278 || h.hue <= 12);  /* HCT hues: violet and purple 278–330, pink 330–360, hot pink and magenta 0–12 */ } catch { return false; } };
 export const prefs = {
-  get seed() { return localStorage.getItem('ui_seed') || '#1E6FD9'; },
+  get seed() { const v = localStorage.getItem('ui_seed'); return v && !isBannedHue(v) ? v : '#1E6FD9'; },
   get mode() { return localStorage.getItem('ui_mode') || 'auto'; },
   set(k, v) { localStorage.setItem('ui_' + k, v); applyTheme(); },
 };

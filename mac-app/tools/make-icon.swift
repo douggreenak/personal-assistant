@@ -8,7 +8,7 @@ func render(_ px: Int) -> Data {
     NSGraphicsContext.saveGraphicsState(); NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
     let s = CGFloat(px), inset = s * 0.08, r = NSRect(x: inset, y: inset, width: s - 2 * inset, height: s - 2 * inset)
     let path = NSBezierPath(roundedRect: r, xRadius: r.width * 0.2237, yRadius: r.width * 0.2237)
-    NSGradient(colors: [NSColor(srgbRed: 0.42, green: 0.36, blue: 0.91, alpha: 1), NSColor(srgbRed: 0.20, green: 0.55, blue: 0.95, alpha: 1)])!.draw(in: path, angle: -60)
+    NSGradient(colors: [NSColor(srgbRed: 0.18, green: 0.42, blue: 0.90, alpha: 1), NSColor(srgbRed: 0.20, green: 0.55, blue: 0.95, alpha: 1)])!.draw(in: path, angle: -60)
     let cfg = NSImage.SymbolConfiguration(pointSize: s * 0.5, weight: .semibold).applying(.init(paletteColors: [.white]))
     if let g = NSImage(systemSymbolName: "checkmark.bubble.fill", accessibilityDescription: nil)?.withSymbolConfiguration(cfg) {
         let size = g.size; g.draw(in: NSRect(x: (s - size.width) / 2, y: (s - size.height) / 2, width: size.width, height: size.height))

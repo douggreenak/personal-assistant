@@ -1,6 +1,6 @@
 import { api, clearToken, getToken } from '../api.js';
 import { h, icon, clear, chip, guarded, toast, dialog, confirmDialog, page, fmtDate } from '../ui.js';
-import { PRESETS, prefs, applyTheme } from '../theme.js';
+import { PRESETS, prefs, applyTheme, isBannedHue } from '../theme.js';
 import { restartServer } from './system.js';
 import { settingControl } from './settingControl.js';
 
@@ -30,7 +30,7 @@ export default async function settings(view) {
 
   // appearance + security (browser-side and password)
   const seed = h('input', { type: 'color', value: prefs.seed, 'aria-label': 'Custom color', style: 'width:52px;height:52px;border:0;background:none;padding:0;cursor:pointer' });
-  seed.addEventListener('input', () => { prefs.set('seed', seed.value); sw.forEach((b) => b.setAttribute('aria-pressed', 'false')); });
+  seed.addEventListener('input', () => { if (isBannedHue(seed.value)) { seed.value = prefs.seed; toast('Pink and purple are not available. Pick another color.'); return; } prefs.set('seed', seed.value); sw.forEach((b) => b.setAttribute('aria-pressed', 'false')); });
   const sw = PRESETS.map(([n, c]) => h('button', { class: 'swatch', title: n, 'aria-label': n, style: `background:${c}`, 'aria-pressed': String(prefs.seed.toLowerCase() === c.toLowerCase()), onclick: () => { prefs.set('seed', c); seed.value = c; sw.forEach((b) => b.setAttribute('aria-pressed', String(b === sw[PRESETS.findIndex((p) => p[1] === c)]))); } }));
   const modes = h('div', { class: 'seg' }); const drawModes = () => clear(modes).append(...[['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']].map(([v, l]) => h('button', { 'aria-pressed': String(prefs.mode === v), onclick: () => { prefs.set('mode', v); drawModes(); } }, l))); drawModes();
   const appearance = h('div', { class: 'card high' }, h('h2', {}, icon('palette'), 'Appearance'), h('div', { class: 'label' }, 'Theme'), modes, h('div', { class: 'label' }, 'Color'), h('div', { class: 'swatches' }, sw, seed), h('div', { class: 'help' }, 'Saved in this browser. The whole palette is generated from one color.'));
