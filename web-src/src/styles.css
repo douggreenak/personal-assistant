@@ -441,7 +441,7 @@ body { overscroll-behavior-y: none; }
 @media (display-mode: standalone) {
   .topbar { padding-top: max(8px, env(safe-area-inset-top)); }
   body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
-  textarea, input, .msgs, .code-msgs, .term, pre, .mono, .logs, .bubble, .code-pre { -webkit-user-select: text; user-select: text; }   /* chrome is not selectable, text still is */
+  textarea, input, .msgs, .code-msgs, .term, pre, .mono, .logs, .bubble, .code-pre, .code-perm, .code-perm *, .code-dialog { -webkit-user-select: text; user-select: text; }   /* chrome is not selectable, text still is */
 }
 
 /* ---- Tickets: package-tracker style stage bar ---- */
@@ -606,3 +606,7 @@ md-dialog { max-height: min(calc(100dvh - 48px), 980px); }
 .approval-from { margin-top: 8px; padding: 8px 12px; border-left: 3px solid var(--md-sys-color-outline-variant); background: var(--md-sys-color-surface-container); border-radius: 0 10px 10px 0; font-size: .9rem; overflow-wrap: anywhere; }
 .usage-bar { height: 8px; border-radius: 4px; background: var(--md-sys-color-surface-container-highest); overflow: hidden; margin-top: 6px; }
 .usage-bar > div { height: 100%; background: var(--md-sys-color-primary); border-radius: 4px; }
+
+/* Claude's question and what it wants to do: text you can select and copy (buttons stay unselectable) */
+.code-perm, .code-perm b, .code-dialog { -webkit-user-select: text; user-select: text; cursor: text; }
+.code-perm-btns, .code-perm-btns * { -webkit-user-select: none; user-select: none; cursor: pointer; }

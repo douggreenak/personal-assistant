@@ -177,7 +177,7 @@ export default async function code(view) {
     const base = ext ? '/code/external/' + sid : '/code/sessions/' + sid;
     const info = await guarded(() => api(ext ? base + '/info' : '/code/sessions/' + sid)); if (!info) { go(''); return; }
     const { session: s, project: p } = ext ? { session: { title: info.title, aiTitle: '', permissionMode: 'started outside the app', model: '' }, project: { id: '', name: info.name, path: info.path } } : info; if (!ext) lsSet(LAST, p.id);
-    let pendingCmd = null, title = s.aiTitle || s.title, running = false, scr = null, after = 0, view = 'chat', started = false, hidden = 0, stick = true;
+    let permSig = '', pendingCmd = null, title = s.aiTitle || s.title, running = false, scr = null, after = 0, view = 'chat', started = false, hidden = 0, stick = true;
     const msgs = h('div', { class: 'msgs code-msgs', role: 'log', 'aria-live': 'polite' }); const tools = new Map();
     const stateEl = h('span', {}); const infoEl = h('div', { class: 'muted s code-info' }); const titleEl = h('h2', { class: 'code-title' }, title);
     const permBox = h('div', {}); const term = h('pre', { class: 'term', 'aria-label': 'Terminal' }, ''); const termKeys = h('div', { class: 'term-keys' });
@@ -310,9 +310,11 @@ export default async function code(view) {
       clear(stateEl).append(stateChip(sc, running)); if (running !== wasRunning || !headBtns.childElementCount) drawHead(); layout();   // not on every poll: redrawing rebuilds the ⋯ menu and closes it
       infoEl.textContent = [scr?.working && '✻ ' + scr.working, scr?.mode, l.lastActivity && 'last activity ' + ago(l.lastActivity)].filter(Boolean).join(' · ');
       // permission question / dialog
-      clear(permBox);
+      // Rebuild the question card only when what it says changes. Rebuilding on every poll threw away anything the owner had selected to copy.
+      const sig = scr?.state === 'permission' ? 'p' + JSON.stringify(scr.permission) : scr?.state === 'dialog' || scr?.state === 'unknown' && l.dialogText ? 'd' + (l.dialogText || scr.hint || '') : '';
+      if (sig !== permSig) { permSig = sig; clear(permBox);
       if (scr?.state === 'permission') permBox.append(h('div', { class: 'card code-perm', role: 'alertdialog', 'aria-label': 'Claude is asking' }, h('b', {}, scr.permission.question), scr.permission.detail ? h('pre', { class: 'code-pre' }, scr.permission.detail) : '', h('div', { class: 'code-perm-btns' }, ...scr.permission.options.map((o) => h(o.selected ? 'md-filled-button' : 'md-outlined-button', { 'data-opt': o.key, onclick: () => key(o.key) }, o.label.replace(/\s*\(shift\+tab\)\s*$/, ''))), h('md-text-button', { onclick: () => key('Escape') }, 'Cancel'))));
-      else if (scr?.state === 'dialog' || scr?.state === 'unknown' && l.dialogText) permBox.append(h('div', { class: 'card code-dialog', role: 'dialog', 'aria-label': 'Claude Code' }, h('pre', { class: 'code-pre' }, (l.dialogText || scr.hint || '').split('\n').filter((x) => x.trim()).slice(-24).join('\n')), h('div', { class: 'code-perm-btns' }, ...[['↑', 'Up'], ['↓', 'Down'], ['←', 'Left'], ['→', 'Right'], ['Enter', 'Enter'], ['Tab', 'Tab'], ['Esc', 'Escape']].map(([lb, k]) => h('md-outlined-button', { 'data-key': k, onclick: () => key(k) }, lb)))));
+      else if (scr?.state === 'dialog' || scr?.state === 'unknown' && l.dialogText) permBox.append(h('div', { class: 'card code-dialog', role: 'dialog', 'aria-label': 'Claude Code' }, h('pre', { class: 'code-pre' }, (l.dialogText || scr.hint || '').split('\n').filter((x) => x.trim()).slice(-24).join('\n')), h('div', { class: 'code-perm-btns' }, ...[['↑', 'Up'], ['↓', 'Down'], ['←', 'Left'], ['→', 'Right'], ['Enter', 'Enter'], ['Tab', 'Tab'], ['Esc', 'Escape']].map(([lb, k]) => h('md-outlined-button', { 'data-key': k, onclick: () => key(k) }, lb))))); }
       composer.classList.toggle('busy', scr?.state === 'working'); stopBtn.hidden = scr?.state !== 'working';
     }
     // One poll at a time (two overlapping polls both used the same offset and drew every new message twice) and each message is drawn once.
