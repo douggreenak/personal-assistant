@@ -131,7 +131,10 @@ export default async function settings(view) {
   for (const n of names) { const sec = secs.get(n); panes.set(n, h('section', { class: 'set-pane', 'data-section': n }, h('h2', { class: 'title-l set-title' }, icon(sec.icon), n), sec.blurb && h('p', { class: 'muted' }, sec.blurb), ...sec.nodes.filter(Boolean))); }
   const content = h('div', { class: 'set-content' }, [...panes.values()]);
   const show = (n) => { cur = n; try { localStorage.setItem('settings_section', n); } catch { /* ignore */ } filter.value = ''; applyFilter(); };
-  const drawNav = () => clear(nav).append(...names.map((n) => h('button', { type: 'button', class: 'set-nav-item', 'aria-current': String(n === cur && !filter.value.trim()), onclick: () => show(n) }, icon(secs.get(n).icon), h('span', {}, n))));
+  const drawNav = () => {
+    clear(nav).append(...names.map((n) => h('button', { type: 'button', class: 'set-nav-item', 'aria-current': String(n === cur && !filter.value.trim()), onclick: () => show(n) }, icon(secs.get(n).icon), h('span', {}, n))));
+    const on = nav.querySelector('[aria-current=true]'); if (on && nav.scrollWidth > nav.clientWidth) nav.scrollLeft = Math.max(0, on.offsetLeft - nav.clientWidth / 2 + on.offsetWidth / 2);   // phones: the row scrolls sideways, keep the open section in view
+  };
   const fieldsOf = (pane) => [...pane.querySelectorAll('[data-q]')];
   function applyFilter() {
     const q = filter.value.trim().toLowerCase();

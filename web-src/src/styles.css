@@ -519,3 +519,65 @@ md-dialog { max-height: min(calc(100dvh - 48px), 980px); }
 
 .chat-empty { margin: auto; max-width: 30em; padding: 24px 16px; text-align: center; color: var(--md-sys-color-on-surface-variant); }
 .chat-empty p { margin: 6px 0 0; }
+
+/* ===== Phone: a Code session is a full-height app (messages scroll, the message box stays above the bottom bar), with a compact header ===== */
+@media (max-width: 900px) {
+  body.code-page main:has(.code-chat) { padding-bottom: 0; }
+  body.code-page .code-layout[data-pane=main]:has(.code-chat) { height: calc(100dvh - 48px - var(--navh, 82px) - env(safe-area-inset-bottom) - 6px); align-items: stretch; }
+  body.code-page .code-layout[data-pane=main]:has(.code-chat) .code-main { height: 100%; min-height: 0; overflow: hidden; gap: 10px; }
+  body.code-page .code-main:has(.code-chat) > * { flex: none; }
+  body.code-page .code-main > .code-chat { flex: 1 1 0; min-height: 0; margin-top: 0; }
+  body.code-page .code-main > .code-term { flex: 1 1 0; min-height: 0; margin-top: 0; }
+  body.code-page .code-main > .code-term .term { flex: 1; height: auto; min-height: 0; }
+  body.code-page .code-msgs { flex: 1; min-height: 0; max-height: none; }
+  body.code-page .code-main > [hidden] { display: none; }
+}
+@media (max-width: 600px), (max-width: 900px) and (max-height: 520px) {
+  .code-session-head { padding: 8px 10px; gap: 6px; border-radius: 20px; }
+  .code-session-head > .code-ph { flex-wrap: nowrap; gap: 4px; }
+  .code-session-head .code-ph > div[style] { flex: 1 1 0 !important; min-width: 0 !important; }
+  .code-session-head .code-title { font-size: 1rem; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .code-session-head .code-meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .code-head-btns { gap: 4px; flex: none; }
+  .code-head-btns .lbl, .code-only .lbl { display: none; }                         /* icon-only on a phone */
+  .code-head-btns > md-outlined-button, .code-head-btns > md-filled-tonal-button, .code-head-btns > md-filled-button { --md-outlined-button-container-height: 40px; --md-outlined-button-leading-space: 12px; --md-outlined-button-trailing-space: 12px; --md-outlined-button-with-leading-icon-leading-space: 12px; --md-outlined-button-with-leading-icon-trailing-space: 12px; min-width: 0; }
+  .code-head-btns .ic { margin: 0; }
+  .code-only { padding: 6px 9px; }
+  .code-sub .seg { flex: none; } .code-sub .seg button { padding: 7px 12px; font-size: .85rem; } .code-sub .tag, .code-sub [class*=state] { white-space: nowrap; flex: none; }
+  .code-sub > span { flex: none; white-space: nowrap; margin-left: auto; }
+  .code-sub { flex-wrap: nowrap; gap: 8px; } .code-sub .code-info, .code-sub .code-chips { display: none; }   /* the state badge says what Claude is doing; usage numbers live on the Usage page */
+}
+
+/* ===== Phone polish ===== */
+.filters-scroll { display: contents; }
+@media (max-width: 600px) {
+  /* the three filter groups sit in ONE row that scrolls sideways (they took three rows and pushed the list down the screen) */
+  .filters-scroll { display: flex; flex: 1 1 100%; gap: 8px; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; scroll-snap-type: x proximity; scroll-padding-left: var(--pad, 16px); margin: 0 calc(-1 * var(--pad, 16px)); padding: 0 var(--pad, 16px); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
+  .filters-scroll::-webkit-scrollbar { display: none; }
+  .filters-scroll .seg { flex: none; flex-wrap: nowrap; overflow-x: visible; scroll-snap-align: start; }
+  .stat .num { overflow-wrap: break-word; word-break: normal; }
+  .set-nav { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 calc(-1 * var(--pad, 16px)); padding: 6px var(--pad, 16px); scroll-padding: 0 var(--pad, 16px); mask-image: linear-gradient(to right, transparent 0, #000 12px, #000 calc(100% - 28px), transparent); }
+  .set-nav::-webkit-scrollbar { display: none; } .set-nav-item { flex: none; }
+  .page:has(md-fab) { padding-bottom: 88px; }          /* the + button must not sit on top of the last row's actions */
+}
+
+/* the chat's question card (permission prompt) scrolls inside the chat instead of spilling over the message box on small screens */
+@media (max-width: 900px) {
+  body.code-page .code-main > .code-chat { overflow: hidden; }
+  body.code-page .code-chat > .code-msgs { flex: 1 1 0; min-height: 56px; }
+  body.code-page .code-chat > div:not(.code-msgs) { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
+  body.code-page .code-chat .code-perm { max-height: none; overflow: visible; }
+}
+/* landscape phones: a slim bottom bar (icons only) so the conversation keeps its room */
+@media (max-width: 900px) and (max-height: 520px) {
+  :root { --navh: 52px; }
+  .bottom-nav { padding-top: 4px; padding-bottom: calc(4px + env(safe-area-inset-bottom)); }
+  .bottom-nav .dest > span:last-child { display: none; }
+  main { padding-bottom: 130px; }                        /* room for the + button above the bar */
+  .fab-slot { bottom: 64px !important; }
+}
+@media (max-width: 900px) {
+  body.code-page .code-main:has(.code-perm) > .code-quick { display: none; }       /* a question from Claude gets the room; the quick keys come back once it is answered */
+}
+@media (max-width: 900px) and (max-height: 520px) { body.code-page .code-main > .code-quick { display: none; } }
+@media (max-width: 359px) { .code-sub { flex-wrap: wrap !important; } .code-sub > span { margin-left: 0; } }
