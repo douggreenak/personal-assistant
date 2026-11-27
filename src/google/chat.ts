@@ -99,7 +99,11 @@ export class ChatBot implements Notifier {
   async handleEvent(raw: unknown): Promise<void> {
     const click = parseChatClick(raw); if (click) return this.handleClick(click);
     const e = parseChatEvent(raw);
-    if (!e || !e.text || !e.space) return;
+    if (!e || !e.text || !e.space) {
+      const r = raw as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+      console.warn('[chat] ignored an event that is not a message or an approval tap; keys:', Object.keys(r ?? {}).join(','), 'chat:', Object.keys(r?.chat ?? {}).join(','), 'fn:', r?.commonEventObject?.invokedFunction ?? r?.action?.actionMethodName ?? r?.type ?? '');
+      return;
+    }
     if (!isAllowed(this.ctx.cfg.chat.allowedUsers, e)) { console.warn(`[chat] ignoring message from non-allowed user ${e.senderEmail || e.senderName}`); return; }
     if (/DIRECT_MESSAGE|DM/.test(e.spaceType)) kvSet(this.ctx.db, 'chat.space', e.space);
     if (e.messageName) {   // the same Chat message is never answered twice, even across restarts or re-deliveries
