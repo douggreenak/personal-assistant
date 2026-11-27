@@ -55,6 +55,7 @@ export default async function code(view) {
   }
 
   let mainToken = 0;
+  let creating = false;   // declared up here: everything below `return cleanup` is only functions, and a `let` there would never be set
   async function renderMain() {
     const tok = ++mainToken; mainTimers.forEach(clearInterval); mainTimers = []; const tm = mainTimers;
     layout.dataset.pane = ['s', 'u', 't', 'x', 'p'].includes(r.kind) ? 'main' : 'list';
@@ -132,7 +133,6 @@ export default async function code(view) {
         h('md-icon-button', { 'aria-label': 'Delete session', title: 'Delete session', onclick: async () => { if (await confirmDialog('Delete this session?', `“${title}” is stopped and removed from the list. The conversation file stays on disk.`, 'Delete')) { if (await guarded(() => api('/code/sessions/' + s.id, { method: 'DELETE' }), 'Deleted')) { const j = await api('/code/projects'); const np = j.projects.find((x) => x.id === p.id); if (np) draw(np); } } } }, icon('delete'))));
   }
   /** No form: a new session starts at once (Sonnet, permission prompts skipped — the server's defaults) and opens straight to the chat. */
-  let creating = false;
   async function newSessionDialog(p) {
     if (creating) return; creating = true;
     try { const j = await guarded(() => api(`/code/projects/${p.id}/sessions`, { method: 'POST', body: {} })); if (j) go('s/' + j.session.id); } finally { creating = false; }
