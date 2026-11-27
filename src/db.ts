@@ -98,6 +98,7 @@ CREATE INDEX code_queue_key ON code_queue(key);
   CREATE TABLE llm_usage (id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, purpose TEXT NOT NULL, model TEXT NOT NULL DEFAULT '', input INTEGER NOT NULL DEFAULT 0, output INTEGER NOT NULL DEFAULT 0, cache_read INTEGER NOT NULL DEFAULT 0, cache_write INTEGER NOT NULL DEFAULT 0, cost REAL NOT NULL DEFAULT 0, ms INTEGER NOT NULL DEFAULT 0, chars INTEGER NOT NULL DEFAULT 0, ok INTEGER NOT NULL DEFAULT 1);
   CREATE INDEX llm_usage_at ON llm_usage (at);
 `, `
+-- UNUSED (credentials moved to a plain file); kept so existing databases keep their schema version.
 CREATE TABLE credentials (
   name TEXT PRIMARY KEY,             -- UPPER_SNAKE, e.g. GITHUB_PAT
   service TEXT NOT NULL DEFAULT '', username TEXT NOT NULL DEFAULT '', url TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '',

@@ -24,7 +24,6 @@ import { indexPaths } from './index/indexer.ts';
 import { activity, connectorsFull, deleteConnector, integrations, listMessages, retryMessage, saveServiceAccount, setConnectorStatus, setSecret, skipMessage, status } from './admin.ts';
 import { readOverrides, saveSettings, viewSettings } from './settings.ts';
 import { usageSummary } from './llmusage.ts';
-import { listCredentials, getCredential, saveCredential, deleteCredential, credentialLog } from './credentials.ts';
 import { consentUrl, exchangeCode } from './google/connect.ts';
 /** A setting's current value: what was saved on the Settings page (not yet applied until a restart), else the environment. */
 const effective = (ctx: Ctx, key: string): string => readOverrides(ctx.cfg.dataDir)[key] || process.env[key] || '';
@@ -245,17 +244,6 @@ export function createHttp(ctx: Ctx, deps: HttpDeps): Server {
     if ((m = /^\/secrets\/([A-Z0-9_]+)$/.exec(path)) && method === 'PUT') {
       try { setSecret(ctx, m[1], String((await readJson(req)).value ?? '') || null); } catch (e) { throw new HttpError(400, (e as Error).message); }
       return send(res, 200, { ok: true });
-    }
-    // Central credentials store for every agent (Code sessions, scripts): save, look up, list. Full token only; values come back only from GET /credentials/{name}.
-    if (path === '/credentials' && method === 'GET') return send(res, 200, { credentials: listCredentials(ctx, url.searchParams.get('q') ?? '') });
-    if (path === '/credentials/log' && method === 'GET') return send(res, 200, { log: credentialLog(ctx, url.searchParams.get('name') ?? undefined) });
-    if ((m = /^\/credentials\/([A-Z][A-Z0-9_]{2,60})$/.exec(path))) {
-      const agent = String(req.headers['x-agent'] ?? '').slice(0, 80) || 'api';
-      try {
-        if (method === 'GET') { const c = getCredential(ctx, m[1], agent); if (!c) throw new HttpError(404, 'No such credential.'); return send(res, 200, { credential: c }); }
-        if (method === 'PUT') { const b = await readJson(req); return send(res, 200, { credential: saveCredential(ctx, m[1], { ...b, secret: String(b.secret ?? '') }, String(b.agent ?? '') || agent) }); }
-        if (method === 'DELETE') return send(res, 200, { ok: deleteCredential(ctx, m[1], agent) });
-      } catch (e) { if (e instanceof HttpError) throw e; throw new HttpError(400, (e as Error).message); }
     }
     if (path === '/integrations/guides' && method === 'GET') return send(res, 200, { guides: GUIDES });
     if ((m = /^\/integrations\/([a-z]+)\/setup$/.exec(path)) && method === 'POST') {

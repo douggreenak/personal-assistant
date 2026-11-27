@@ -35,8 +35,5 @@ Anyone who can send you a text, an email or a chat message can put words in fron
 ## Secrets and the public repo
 This repository is public; **no secrets are in it**. Git-ignored: `.env`, `data/` (database, `secrets.json`, service-account key), `claude-home/` (your Claude login), `*.db`. Keep `.env` at mode 600. Never paste tokens into issues. If a token is ever exposed, rotate it (new `ASSISTANT_TOKEN`/`TICKETS_TOKEN`, revoke Canopy tokens in Canopy, revoke Google access at <https://myaccount.google.com/permissions>).
 
-## Credentials store
-Agents save logins and API keys to one place (`/credentials`, see [API](api.md#credentials-central-store-for-agents)). Values are encrypted with AES-256-GCM (bound to their name) and the key sits in `data/credentials.key`, not in the database, so a database copy or a backup made *without* secrets reveals nothing. Anything holding `ASSISTANT_TOKEN` can read every value — give agents that token only if you trust them with all of it. Reads are logged by agent name. The message-reading model has no tools and no route to this store.
-
 ## Reporting a problem
 Open an issue **without** secrets or private message content, or contact the maintainer privately for anything sensitive.
