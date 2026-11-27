@@ -176,7 +176,7 @@ export function describeAction(a: Action, item?: Item): string {
   const t = item?.title ?? a.title ?? '';
   switch (a.op) {
     case 'create': return `Create ${a.kind}: "${a.title}"${a.dueAt ? ` due ${a.dueAt}` : ''}${a.classHint ? ` in ${a.classHint}` : ''}`;
-    case 'update': return `Update "${t}"${a.title ? ` → "${a.title}"` : ''}${a.dueAt ? ` due ${a.dueAt}` : ''}`;
+    case 'update': { const ch = [a.title ? `rename to "${a.title}"` : '', a.dueAt ? `due ${a.dueAt}` : '', a.priority ? `priority ${a.priority}` : '', a.detail ? `note: ${a.detail.replace(/\s+/g, ' ').slice(0, 200)}` : ''].filter(Boolean); return `Update "${t}"${ch.length ? ' — ' + ch.join('; ') : ''}`; }
     case 'stage': return `Move "${t}" to stage ${a.stageId}`;
     case 'complete': return `Mark done: "${t}"`;
     case 'drop': return `Drop: "${t}"`;

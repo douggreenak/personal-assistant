@@ -17,7 +17,7 @@ export function decide(a: Action, cfg: Pick<Config, 'autoApplyMinConfidence'>, a
   if (risky.length) return { mode: 'ask', reason: `involves ${risky.join(', ').replace('_', ' ')}` };
   if (a.op === 'drop') return { mode: 'ask', reason: 'dropping an item is never automatic' };
   if (a.op === 'create') return { mode: 'apply', reason: 'new item' };
-  if (a.flags.includes('uncertain')) return { mode: 'ask', reason: 'model was unsure which item this affects' };
+  if (a.flags.includes('uncertain')) return { mode: 'ask', reason: "I'm not sure this message is about that item" };
   if (a.confidence < cfg.autoApplyMinConfidence) return { mode: 'ask', reason: `low confidence (${a.confidence.toFixed(2)})` };
   return { mode: 'apply', reason: 'confident match' };
 }

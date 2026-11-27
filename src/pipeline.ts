@@ -63,7 +63,7 @@ export async function processMessage(ctx: Ctx, msg: MessageRow): Promise<Process
     const m = a.op === 'connector_call' ? writes.get(`${a.connectorId}.${a.actionId}`) : undefined;
     const d = decide(a, ctx.cfg, !!m && fromOwner && m.action.method !== 'DELETE' && isAutoAllowed(ctx, a.connectorId!, a.actionId!));
     if (d.mode === 'ask') {
-      createApproval(ctx, { kind: 'action', summary: describeAction(a, item), reason: d.reason, payload: { action: a }, messageId: msg.id });
+      createApproval(ctx, { kind: 'action', summary: describeAction(a, item), reason: a.why && !/^(involves|dropping|low confidence)/.test(d.reason) ? `${d.reason}. ${a.why}` : d.reason, payload: { action: a, trigger: { source: msg.source, sender: msg.sender, subject: msg.subject, excerpt: msg.body.replace(/\s+/g, ' ').slice(0, 300) } }, messageId: msg.id });
       report.queued.push(describeAction(a, item));
       continue;
     }
