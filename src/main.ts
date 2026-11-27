@@ -21,7 +21,8 @@ import { processNextReport } from './pipeline.ts';
 import { canopySync } from './sync/canopy.ts';
 import { runConnectors } from './connectors.ts';
 import { nightlyBackupTick } from './backup.ts';
-import { bootResume } from './code/manager.ts';
+import { bootResume, restoreManagedQueues } from './code/manager.ts';
+import { restoreExternalQueues } from './code/external.ts';
 import { createHttp } from './http.ts';
 import type { Ctx } from './ctx.ts';
 
@@ -65,7 +66,8 @@ every('nag', 30_000, () => nagTick(ctx));
 every('approvals', 10_000, () => announcePending(ctx));
 every('connectors', 60_000, () => runConnectors(ctx));
 every('backup', 5 * 60_000, () => nightlyBackupTick(ctx), true);
-void bootResume(ctx).then((n) => n && console.log(`[code] resumed ${n} session(s)`)).catch((e) => console.error('[code]', (e as Error).message));
+void bootResume(ctx).then((n) => n && console.log(`[code] resumed ${n} session(s)`)).catch((e) => console.error('[code]', (e as Error).message))
+  .then(() => { const n = restoreManagedQueues(ctx) + restoreExternalQueues(ctx); if (n) console.log(`[code] restored ${n} queued message(s)`); });   // after the sessions are back up
 if (cfg.canopy) every('canopy', 15 * 60_000, () => canopySync(ctx));
 if (cfg.gmail.enabled && user) every('gmail', 60_000, () => pollGmail(ctx, user));
 if (cfg.chat.readUserSpaces && user) every('chat-read', 90_000, () => pollChatSpaces(ctx, user));

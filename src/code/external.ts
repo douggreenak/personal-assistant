@@ -4,7 +4,7 @@ import type { Ctx } from '../ctx.ts';
 import { makeTmux } from './tmux.ts';
 import { parseScreen, type ScreenInfo } from './screen.ts';
 import { encodeCwd, readBack, readDelta, scanUsage, estimateCost, type Msg } from './transcript.ts';
-import { queuedTexts, sendOrQueue, submitText, CodeError, listCommandsAt, commandOutputOf, writeUpload } from './manager.ts';
+import { queuedTexts, queueStore, restoreSavedQueues, sendOrQueue, submitText, CodeError, listCommandsAt, commandOutputOf, writeUpload } from './manager.ts';
 
 /** Claude Code sessions that were started outside this app: any tmux server on the host whose socket the container can see
  *  (the app's own is skipped; its sessions are managed). Found by looking for a pane running `claude`. */
@@ -92,7 +92,11 @@ export async function send(ctx: Ctx, key: string, textIn: string): Promise<void>
 /** Like send, but waits for Claude to finish when it is busy. Returns how many messages are waiting (0 = sent now). */
 export async function sendOrQueueExternal(ctx: Ctx, key: string, text: string): Promise<number> {
   const x = await target(ctx, key);
-  return sendOrQueue('x:' + key, text, async () => ((await x.t.panes()).some((p) => p.pane === x.pane) ? parseScreen(await x.t.capture(x.pane)) : null), () => send(ctx, key, text));
+  return sendOrQueue('x:' + key, text, async () => ((await x.t.panes()).some((p) => p.pane === x.pane) ? parseScreen(await x.t.capture(x.pane)) : null), () => send(ctx, key, text), queueStore(ctx, 'x:' + key));
+}
+/** After a restart: put the messages that were waiting for panes started outside the app back in line. */
+export function restoreExternalQueues(ctx: Ctx): number {
+  return restoreSavedQueues(ctx, 'x', (key) => ({ screen: async () => { try { const x = await target(ctx, key); return parseScreen(await x.t.capture(x.pane)); } catch { return null; } }, deliver: (text) => send(ctx, key, text) }));
 }
 export async function keys(ctx: Ctx, key: string, list: string[], allowed: Set<string>, text?: string): Promise<void> {
   const x = await target(ctx, key);

@@ -146,30 +146,58 @@ const waiting = new Map<string, { texts: string[]; draining: boolean }>();
 export const queuedCount = (key: string): number => waiting.get(key)?.texts.length ?? 0;
 /** The messages still waiting (shown dotted in the chat until they go in). */
 export const queuedTexts = (key: string): string[] => [...(waiting.get(key)?.texts ?? [])];
+/** Where a queue is kept between restarts (the database); optional so the queue itself stays testable on its own. */
+export interface QueueStore { save(texts: string[]): void }
+export const queueStore = (ctx: Ctx, key: string): QueueStore => ({ save: (texts) => { try {
+  ctx.db.prepare('DELETE FROM code_queue WHERE key = ?').run(key);
+  const ins = ctx.db.prepare('INSERT INTO code_queue (key, text, created_at) VALUES (?, ?, ?)'); const now = new Date().toISOString(); for (const t of texts) ins.run(key, t, now);
+} catch (e) { console.error('[code] could not save the message queue', (e as Error).message); } } });
+/** A queued message is only ever removed once it was really delivered (or the session is gone for good): a failed delivery or an unreadable screen waits and tries again. */
+function drain(key: string, q: { texts: string[]; draining: boolean }, screen: () => Promise<ScreenInfo | null>, deliver: (text: string) => Promise<void>, store?: QueueStore): void {
+  if (q.draining) return;
+  q.draining = true;
+  void (async () => {
+    const give = Date.now() + 6 * 3600_000;
+    try {
+      let odd = 0, gone = 0;
+      while (q.texts.length && Date.now() < give) {
+        await sleep(1200);
+        let s: ScreenInfo | null; try { s = await screen(); } catch { continue; }          // a read that failed is not "the session ended": look again
+        if (!s) { if (++gone >= 10) { q.texts.length = 0; store?.save([]); break; } continue; }   // really gone only after ~12 seconds of it
+        gone = 0;
+        odd = s.state === 'unknown' ? odd + 1 : 0;                   // a screen we cannot read for a while (e.g. just after a compact) is not 'busy' forever
+        if (s.state === 'idle' || odd >= 5) {
+          odd = 0; const next = q.texts[0];
+          try { await deliver(next); if (q.texts[0] === next) q.texts.shift(); store?.save(q.texts); }
+          catch { /* it asked a question or hiccuped: keep it and try again when the prompt is free */ }
+          await sleep(2500);
+        }
+      }
+    } finally { q.draining = false; if (!q.texts.length) waiting.delete(key); }
+  })();
+}
 /** Sends now if the session is idle and nothing is ahead of it; otherwise queues it. Returns how many messages are waiting (0 = sent). */
-export async function sendOrQueue(key: string, text: string, screen: () => Promise<ScreenInfo | null>, deliver: (text: string) => Promise<void>): Promise<number> {
-  const q = waiting.get(key) ?? { texts: [], draining: false }; waiting.set(key, q);
+export async function sendOrQueue(key: string, text: string, screen: () => Promise<ScreenInfo | null>, deliver: (text: string) => Promise<void>, store?: QueueStore): Promise<number> {
   const sc = await screen();
+  const q = waiting.get(key) ?? { texts: [], draining: false };
   if (!q.texts.length && sc && sc.state !== 'working') { await deliver(text); return 0; }
   if (q.texts.length >= 20) throw new CodeError('Too many messages are already waiting.');
-  q.texts.push(text);
-  if (!q.draining) {
-    q.draining = true;
-    void (async () => {
-      const give = Date.now() + 6 * 3600_000;
-      try {
-        let odd = 0;
-        while (q.texts.length && Date.now() < give) {
-          await sleep(1200);
-          const s = await screen().catch(() => null);
-          if (!s) { q.texts.length = 0; break; }                      // the session ended
-          odd = s.state === 'unknown' ? odd + 1 : 0;                   // a screen we cannot read for a while (e.g. just after a compact) is not 'busy' forever
-          if (s.state === 'idle' || odd >= 5) { odd = 0; const next = q.texts.shift()!; try { await deliver(next); } catch { /* it asked a question or ended: drop it */ } await sleep(2500); }
-        }
-      } finally { q.draining = false; if (!q.texts.length) waiting.delete(key); }
-    })();
-  }
+  q.texts.push(text); waiting.set(key, q); store?.save(q.texts);   // (set again: the queue may have been dropped from the map while the screen was being read)
+  drain(key, q, screen, deliver, store);
   return q.texts.length;
+}
+/** Restores every queue saved in the database (managed sessions here; panes started outside the app via external.ts). */
+export function restoreSavedQueues(ctx: Ctx, kind: 's' | 'x', mk: (id: string) => { screen: () => Promise<ScreenInfo | null>; deliver: (text: string) => Promise<void> }): number {
+  let n = 0; let rows: { key: string; text: string }[] = [];
+  try { rows = ctx.db.prepare('SELECT key, text FROM code_queue ORDER BY id').all() as unknown as { key: string; text: string }[]; } catch { return 0; }
+  const by = new Map<string, string[]>(); for (const r of rows) if (r.key.startsWith(kind + ':')) by.set(r.key, [...(by.get(r.key) ?? []), r.text]);
+  for (const [key, texts] of by) { try { const { screen, deliver } = mk(key.slice(2)); restoreQueue(key, texts, screen, deliver, queueStore(ctx, key)); n += texts.length; } catch { /* its session is gone */ } }
+  return n;
+}
+/** After a restart: put the messages that were still waiting back in line (their sessions are started again by bootResume). */
+export function restoreQueue(key: string, texts: string[], screen: () => Promise<ScreenInfo | null>, deliver: (text: string) => Promise<void>, store?: QueueStore): void {
+  if (!texts.length || waiting.has(key)) return;
+  const q = { texts: texts.slice(0, 20), draining: false }; waiting.set(key, q); drain(key, q, screen, deliver, store);
 }
 
 export async function sendMessage(ctx: Ctx, id: string, textIn: string): Promise<void> {
@@ -197,10 +225,14 @@ export async function submitText(t: Tmux, target: string, text: string, capture:
     await t.keys(target, ['Enter']);                                      // still sitting there (an extra Enter on an empty box does nothing)
   }
 }
+export function restoreManagedQueues(ctx: Ctx): number {
+  return restoreSavedQueues(ctx, 's', (id) => { const name = tmuxName(id);
+    return { screen: async () => { const t = tm(ctx); return (await t.has(name)) ? parseScreen(await t.capture(name)) : null; }, deliver: (text) => sendMessage(ctx, id, text) }; });
+}
 /** What the Code tab calls: sends, or queues behind the work in progress. */
 export async function sendOrQueueMessage(ctx: Ctx, id: string, text: string): Promise<number> {
   const t = await needTmux(ctx); getSession(ctx, id); const name = tmuxName(id);
-  return sendOrQueue('s:' + id, text, async () => ((await t.has(name)) ? parseScreen(await t.capture(name)) : null), () => sendMessage(ctx, id, text));
+  return sendOrQueue('s:' + id, text, async () => ((await t.has(name)) ? parseScreen(await t.capture(name)) : null), () => sendMessage(ctx, id, text), queueStore(ctx, 's:' + id));
 }
 /** Esc: stop what Claude is doing right now (the session stays up). */
 export async function interrupt(ctx: Ctx, id: string): Promise<void> {

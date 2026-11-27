@@ -91,6 +91,9 @@ ALTER TABLE messages ADD COLUMN counterpart TEXT NOT NULL DEFAULT '';   -- the o
 CREATE INDEX messages_thread ON messages(thread, id);
 CREATE TABLE message_items (message_id INTEGER NOT NULL, item_id TEXT NOT NULL, op TEXT NOT NULL, PRIMARY KEY (message_id, item_id, op));
 CREATE INDEX message_items_item ON message_items(item_id);
+`, `
+CREATE TABLE code_queue (id INTEGER PRIMARY KEY AUTOINCREMENT, key TEXT NOT NULL, text TEXT NOT NULL, created_at TEXT NOT NULL);   -- Code-tab messages waiting for Claude to be free; survives a restart
+CREATE INDEX code_queue_key ON code_queue(key);
 `];
 
 export function openDb(path: string): Db {
