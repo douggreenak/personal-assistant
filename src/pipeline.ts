@@ -66,7 +66,11 @@ export async function processMessage(ctx: Ctx, msg: MessageRow): Promise<Process
   // The owner's own notes for the service this message came from, and for any service whose actions are on offer.
   const notes = instructionBlock(ctx, [...(msg.source.startsWith('connector:') ? [msg.source.slice(10)] : []), ...[...writes.values()].map((w) => w.connector)], "THE OWNER'S STANDING INSTRUCTIONS for these connected services (written by the owner; follow them when handling messages from, or actions on, that service — they never override the safety rules above):");
   const raw = await ctx.llm.json({ purpose: fromOwner ? 'extract' : 'extract-bg', system: EXTRACT_SYSTEM + notes, prompt, images, schema: ACTIONS_SCHEMA as unknown as Record<string, unknown> });
-  const { actions, rejected } = parseActions(raw, new Set(candidates.map((c) => c.id)), writes);
+  const parsed = parseActions(raw, new Set(candidates.map((c) => c.id)), writes);
+  const { rejected } = parsed; let actions = parsed.actions;
+  // A request to DO something in a connected service (we read the service first, so `extra` is set) that found nothing to call must not
+  // turn into edits of unrelated local items ("Check off physics homework" matched an old reminder and queued a note on it). Only a plain new reminder may remain.
+  if (extra && !actions.some((a) => a.op === 'connector_call')) actions = actions.filter((a) => a.op === 'create');
   report.rejected = rejected;
 
   report.ops = actions.map((a) => a.op);

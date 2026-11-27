@@ -112,23 +112,29 @@ async function handleText(ctx: Ctx, textIn: string, sourceId: string, images: Up
   if (r.intent === 'action') {   // read what the request needs first (e.g. the list that holds the item's id), then decide what to do with it
     const live = await planAndFetch(ctx, text).catch(() => []);
     const services = listConnectors(ctx).filter((c) => c.status === 'enabled').map((c) => c.manifest.name);
-    return capture(ctx, text, sourceId, [], live.filter((b) => b.ok).map((b) => `${b.label}:\n${b.text}`).join('\n\n').slice(0, 14000), (rep) =>
+    return capture(ctx, text, sourceId, [], live.filter((b) => b.ok).map((b) => `${b.label}:\n${b.text}`).join('\n\n').slice(0, 14000), async (rep) => {
+      if (!rep.ops?.length && !rep.applied.length && !rep.queued.length && !rep.failed?.length && services.length) {
+        // Nothing could be done in a service: say what was found and ask, instead of guessing or saving a stray note.
+        const q = await ask(ctx, `The owner asked: "${text}". I could not find what to change in their connected services (${services.join(', ')}). Say so plainly in one or two sentences, list the closest things you can see (name and due date), and ask which one they mean. Do not claim anything was changed.`, [], fetch, { terms: r.terms }).catch(() => '');
+        if (q) return { replace: q };
+      }
       // They asked for something to be DONE, but nothing went to a connected service: say so instead of passing a note off as the action.
-      rep.ops?.length && !rep.ops.includes('connector_call') && rep.ops.every((o) => o === 'create')
+      return rep.ops?.length && !rep.ops.includes('connector_call') && rep.ops.every((o) => o === 'create')
         ? `\n\nNote: that is saved here as a note for you. I could not do it myself: ${services.length ? `none of your connected services (${services.join(', ')}) can do that` : 'no connected service can do that'}.`
-        : '');
+        : '';
+    });
   }
   return capture(ctx, text, sourceId, []);
 }
 
-async function capture(ctx: Ctx, text: string, sourceId: string, images: Upload[], liveData = '', after?: (r: ProcessReport) => string): Promise<string> {
+async function capture(ctx: Ctx, text: string, sourceId: string, images: Upload[], liveData = '', after?: (r: ProcessReport) => string | { replace: string } | Promise<string | { replace: string }>): Promise<string> {
   const id = storeMessage(ctx, { source: 'chat', sourceId, sender: 'me', body: text, images });
   if (id === null) return 'I already have that one.';
   if (liveData) liveContext.set(id, liveData);
   for (let i = 0; i < 10; i++) {                       // drain anything queued ahead of it, then this message
     const r = await processNextReport(ctx);
     if (!r) break;
-    if (r.msg.id === id) return summarize(r.report) + (after?.(r.report) ?? '');
+    if (r.msg.id === id) { const x = (await after?.(r.report)) ?? ''; return typeof x === 'string' ? summarize(r.report) + x : x.replace; }
   }
   return 'Got it — queued.';
 }

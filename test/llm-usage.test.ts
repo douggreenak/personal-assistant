@@ -94,3 +94,17 @@ test('chat routing: an action that no connected service can do is saved as a not
   const reply = await handleOwnerText(ctx, 'Send Sam an email saying I will be late');
   assert.match(reply, /Email Sam/); assert.match(reply, /saved here as a note[\s\S]*could not do it myself/);
 });
+
+test('a request to act in a service that finds nothing to call does not edit unrelated local items', async () => {
+  const { ctx } = mk(() => ({ actions: [] }));
+  const old = ctx.items.create({ kind: 'reminder', title: 'Check off physics homework in Canopy' }).item;
+  const { liveContext, processNextReport } = await import('../src/pipeline.ts');
+  const llm = ctx.llm as unknown as { responder: unknown };
+  (ctx.llm as unknown as { responder: unknown }).responder = () => ({ actions: [{ op: 'update', itemId: old.id, note: 'asked again', confidence: 0.9, flags: [], why: 'same request' }] });
+  void llm;
+  const id = storeMessage(ctx, { source: 'chat', sourceId: 'x1', sender: 'me', body: 'Mark my physics homework as done' })!;
+  liveContext.set(id, 'Canopy › List assignments:\nDigital Electronics HW 5\nExt Seminar reading');
+  const r = await processNextReport(ctx);
+  assert.deepEqual(r?.report.queued, []); assert.deepEqual(r?.report.applied, []);
+  assert.equal((await import('../src/approvals.ts')).listApprovals(ctx).length, 0, 'no approval about an unrelated item');
+});
