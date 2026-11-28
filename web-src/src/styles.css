@@ -655,7 +655,7 @@ md-dialog { max-height: min(calc(100dvh - 48px), 980px); }
 .code-tool.error { outline: none; border-color: var(--md-sys-color-error); }
 .code-think { background: none; padding: 0 10px; color: var(--md-sys-color-on-surface-variant); font-size: .86rem; } .code-think summary { cursor: pointer; font-style: italic; }
 @keyframes code-pulse { 50% { transform: scale(1.5); opacity: .35; } }
-.code-working { display: flex; align-items: center; gap: 10px; padding: 8px 4px; color: var(--md-sys-color-on-surface-variant); font-size: .9rem; } .code-working[hidden] { display: none; }
+.code-working { display: flex; align-items: center; gap: 10px; padding: 8px 16px; color: var(--md-sys-color-on-surface-variant); font-size: .9rem; } .code-working[hidden] { display: none; }
 .code-working .spark { color: var(--md-sys-color-primary); font-size: 1.15rem; display: inline-block; animation: code-spin 2.4s linear infinite; }
 .code-working .wlabel { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @keyframes code-spin { to { transform: rotate(360deg); } }
