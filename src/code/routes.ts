@@ -3,8 +3,19 @@ import * as X from './external.ts';
 import { ALLOWED_KEYS } from './tmux.ts';
 import { makeTmux } from './tmux.ts';
 import type { Ctx } from '../ctx.ts';
+import { realpathSync, statSync, readFileSync } from 'node:fs';
+import { basename, dirname, extname } from 'node:path';
 
-export interface RouteHelpers { json(limit?: number): Promise<Record<string, unknown>>; body(limit: number): Promise<Buffer>; send(status: number, body: unknown): void }
+const TYPES: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', bmp: 'image/bmp', avif: 'image/avif', heic: 'image/heic', pdf: 'application/pdf', txt: 'text/plain; charset=utf-8', md: 'text/plain; charset=utf-8', csv: 'text/plain; charset=utf-8', json: 'text/plain; charset=utf-8', log: 'text/plain; charset=utf-8' };
+/** Only files the Code tab itself saved (in a .claude-uploads folder) can be read back; nothing else on disk is reachable through this. */
+function uploadedFile(path: string): { data: Buffer; type: string } {
+  let real: string; try { real = realpathSync(path); } catch { throw new C.CodeError('No such file.', 404); }
+  if (!path.startsWith('/') || basename(dirname(real)) !== '.claude-uploads' || !statSync(real).isFile()) throw new C.CodeError('Not an uploaded file.', 403);
+  if (statSync(real).size > 51 * 1024 * 1024) throw new C.CodeError('Too large.', 413);
+  return { data: readFileSync(real), type: TYPES[extname(real).slice(1).toLowerCase()] ?? 'application/octet-stream' };
+}
+
+export interface RouteHelpers { json(limit?: number): Promise<Record<string, unknown>>; body(limit: number): Promise<Buffer>; send(status: number, body: unknown): void; raw(data: Buffer, type: string): void }
 
 /** The Code tab's API (everything under /code). Returns false when the path is not one of ours. */
 export async function codeRoutes(ctx: Ctx, path: string, method: string, query: URLSearchParams, h: RouteHelpers): Promise<boolean> {
@@ -53,6 +64,7 @@ export async function codeRoutes(ctx: Ctx, path: string, method: string, query: 
     if ((m = /^\/code\/sessions\/([\w-]+)\/commands$/.exec(path)) && method === 'GET') return ok({ commands: C.listCommands(ctx, m[1]) });
     if ((m = /^\/code\/sessions\/([\w-]+)\/usage$/.exec(path)) && method === 'GET') return ok(C.sessionUsage(ctx, m[1]));
     if ((m = /^\/code\/sessions\/([\w-]+)\/upload$/.exec(path)) && method === 'POST') return ok({ path: C.saveUpload(ctx, m[1], await h.body(51 * 1024 * 1024), query.get('name') ?? 'file') });
+    if (path === '/code/file' && method === 'GET') { const f = uploadedFile(query.get('path') ?? ''); h.raw(f.data, f.type); return true; }
     if (path === '/code/usage' && method === 'GET') return ok(C.usageOverview(ctx, Math.min(90, Math.max(1, Number(query.get('days') ?? 14) || 14))));
     if (path === '/code/usage/plan' && method === 'GET') return ok(await C.planUsage(ctx, query.get('force') === '1'));
     if (path === '/code/external' && method === 'GET') return ok({ sessions: (await X.discover(ctx)).map(({ socket, ...e }) => ({ ...e, socketName: socket.split('/').pop() })) });

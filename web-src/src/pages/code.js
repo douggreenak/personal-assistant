@@ -18,6 +18,42 @@ const stateChip = (s, running) => { const [t, c] = running === false ? STATE.sto
 const route = () => { const m = /^#\/code(?:\/(p|s|u|t|x)(?:\/([\w-]+))?)?/.exec(location.hash) || []; return { kind: m[1] || '', id: m[2] || '' }; };
 const go = (path) => { location.hash = '#/code' + (path ? '/' + path : ''); };
 
+// ---- attachments in the conversation: "@/…/.claude-uploads/file" lines become cards; pictures open in a viewer with a download button ----
+const ATT = /^@(\/.*\/\.claude-uploads\/[^/\n]+)[ \t]*$/gm;
+const IMG = /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i;
+const blobs = new Map();
+const blobOf = (path) => { if (!blobs.has(path)) blobs.set(path, fetch('/code/file?path=' + encodeURIComponent(path), { headers: { authorization: 'Bearer ' + getToken() } }).then(async (r) => { if (!r.ok) throw new Error('missing'); const b = await r.blob(); return { blob: b, url: URL.createObjectURL(b) }; }).catch((e) => { blobs.delete(path); throw e; })); return blobs.get(path); };
+const niceName = (path) => path.split('/').pop().replace(/^\d{10,}-/, '');
+const bytes = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1e3)) + ' KB');
+const saveAs = (url, name) => { const a = h('a', { href: url, download: name }); document.body.append(a); a.click(); a.remove(); };
+function lightbox(path) {
+  const name = niceName(path); const img = h('img', { alt: name, class: 'lb-img' }); const dl = h('a', { class: 'lb-btn', title: 'Download', 'aria-label': 'Download', download: name }, icon('download'));
+  const close = () => { box.remove(); document.removeEventListener('keydown', onKey, true); };
+  const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
+  const box = h('div', { class: 'code-lightbox', role: 'dialog', 'aria-label': name, onclick: (e) => { if (e.target === box || e.target.classList.contains('lb-stage')) close(); } },
+    h('div', { class: 'lb-bar' }, h('span', { class: 'lb-name' }, name), dl, h('button', { class: 'lb-btn', type: 'button', title: 'Close', 'aria-label': 'Close', onclick: close }, icon('close'))), h('div', { class: 'lb-stage' }, img));
+  document.addEventListener('keydown', onKey, true); document.body.append(box);
+  blobOf(path).then((b) => { img.src = b.url; dl.href = b.url; }).catch(() => { img.replaceWith(h('p', { class: 'muted' }, 'This picture is no longer on the server.')); });
+}
+function attachCard(path) {
+  const name = niceName(path); const ext = (/\.([A-Za-z0-9]+)$/.exec(name)?.[1] || 'file').toUpperCase();
+  if (IMG.test(path)) {
+    const card = h('button', { type: 'button', class: 'code-att pic', title: name, 'aria-label': 'View ' + name, onclick: () => lightbox(path) }, h('span', { class: 'att-ph' }, icon('image')));
+    blobOf(path).then((b) => { const im = h('img', { src: b.url, alt: name, loading: 'lazy' }); card.replaceChildren(im); }).catch(() => card.classList.add('gone'));
+    return card;
+  }
+  const meta = h('span', { class: 'att-meta' }, ext);
+  const card = h('button', { type: 'button', class: 'code-att file', title: 'Download ' + name, onclick: async () => { try { const b = await blobOf(path); saveAs(b.url, name); } catch { toast('That file is no longer on the server.', { error: true }); } } }, icon(/\.(zip|gz|tar|7z)$/i.test(name) ? 'inventory_2' : 'description'), h('span', { class: 'att-text' }, h('span', { class: 'att-name' }, name), meta), icon('download'));
+  blobOf(path).then((b) => { meta.textContent = ext + ' · ' + bytes(b.blob.size); }).catch(() => card.classList.add('gone'));
+  return card;
+}
+/** A message you sent: its attachment lines as cards, the rest as text. */
+function userBody(text) {
+  const paths = []; const rest = String(text).replace(ATT, (_, p) => { paths.push(p); return ''; }).trim();
+  const parts = []; if (paths.length) parts.push(h('div', { class: 'code-atts' }, ...paths.map(attachCard))); if (rest) parts.push(md(rest));
+  return parts.length ? parts : [md(text)];
+}
+
 export default async function code(view) {
   const status = await api('/code/status');
   const timers = []; let mainTimers = []; document.body.classList.add('code-page'); const cleanup = () => { page.soft = null; mainTimers.forEach(clearInterval); timers.forEach(clearInterval); document.body.classList.remove('code-page'); };
@@ -300,7 +336,7 @@ export default async function code(view) {
     function addMsg(m, into = msgs) {
       if (m.t === 'title') { if (into !== msgs) return; title = m.title; titleEl.textContent = title; return; }
       if (m.t === 'mode') return;
-      if (m.t === 'user') return void into.append(h('div', { class: 'bubble me code-user' + (m.command ? ' cmd' : '') }, m.command ? h('code', {}, m.text) : md(m.text)));
+      if (m.t === 'user') return void into.append(h('div', { class: 'bubble me code-user' + (m.command ? ' cmd' : '') }, m.command ? h('code', {}, m.text) : userBody(m.text)));
       if (m.t === 'note' && m.kind === 'compact') return void into.append(h('div', { class: 'code-compact', role: 'separator' }, h('span', { class: 'wave' }), h('span', { class: 'lbl' }, icon(/clear/i.test(m.text) ? 'cleaning_services' : 'compress'), m.text || 'Conversation compacted'), h('span', { class: 'wave' })));
       if (m.t === 'note') return void into.append(h('div', { class: 'code-note' }, m.text));
       if (m.t === 'assistant') for (const b of m.blocks) {
@@ -314,7 +350,7 @@ export default async function code(view) {
     const queueEl = h('div', { class: 'code-queue' }); let queueSig = '';
     function drawQueue(q) {
       const sig = q.join('\u0000'); if (sig === queueSig && queueEl.isConnected && msgs.lastElementChild === queueEl) return; queueSig = sig;
-      clear(queueEl).append(...q.map((t) => h('div', { class: 'bubble me code-user queued', title: 'Waiting for Claude to finish — it goes in automatically' }, md(t), h('div', { class: 'queued-note' }, icon('schedule'), 'Waiting'))));
+      clear(queueEl).append(...q.map((t) => h('div', { class: 'bubble me code-user queued', title: 'Waiting for Claude to finish — it goes in automatically' }, userBody(t), h('div', { class: 'queued-note' }, icon('schedule'), 'Waiting'))));
       msgs.append(queueEl); if (q.length && stick) msgs.scrollTop = msgs.scrollHeight;
     }
     /** An option that means "let me say it in words" (Type something, No and tell Claude what to do differently, Other…): a text box opens in the card; Send picks the option, types the words and presses Enter. */
