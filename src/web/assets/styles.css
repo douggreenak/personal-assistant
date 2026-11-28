@@ -714,3 +714,12 @@ md-dialog { max-height: min(calc(100dvh - 48px), 980px); }
 .code-head-btns .lbl { display: none; } .code-head-btns md-outlined-button { --md-outlined-button-container-height: 36px; --md-outlined-button-leading-space: 10px; --md-outlined-button-trailing-space: 10px; --md-outlined-button-with-leading-icon-leading-space: 10px; --md-outlined-button-with-leading-icon-trailing-space: 10px; min-width: 0; }
 .code-lightbox { background: rgba(0,0,0,.94); } .code-att.file { align-self: center; }
 @media (max-width: 600px) { .code-head-right .ctx-cost { display: none; } .code-head-right .code-chips { display: flex; } }
+/* Code tab, desktop: the app's search/sign-out icons share the session bar's row, so the bar is the top of the right-hand pane (sidebar full height on the left), like Claude's apps */
+@media (min-width: 901px) {
+  body.code-page main { padding-top: 8px; }
+  body.code-page .topbar { position: absolute; top: 8px; right: var(--pad); padding: 0; background: none; box-shadow: none; z-index: 13; height: 52px; align-items: center; }
+  body.code-page .code-layout { height: calc(100dvh - 24px); }
+  body.code-page .code-main > :first-child { padding-right: 112px; box-sizing: border-box; }
+  body.code-page .code-main > .code-chat, body.code-page .code-main > .code-composer { margin-top: 0; }
+  body.code-page .code-session-head { padding-top: 6px; min-height: 52px; box-sizing: border-box; justify-content: center; }
+}

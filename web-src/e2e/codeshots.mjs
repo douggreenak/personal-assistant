@@ -26,6 +26,7 @@ for (const [tag, w, h] of [['d', 1600, 900], ['m', 390, 844]]) {
   const page = await (await browser.newContext({ viewport: { width: w, height: h } })).newPage(); await page.goto(base + '/'); await page.locator('md-outlined-text-field[label="Password"]').first().evaluate((el, v) => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); }, PW);
   await page.locator('md-filled-button', { hasText: 'Sign in' }).click(); await wait(1500);
   await page.goto(`${base}/#/code/s/${s.id}`); await wait(2500); await page.screenshot({ path: join(out, `${tag}-session.png`) });
+  await page.goto(`${base}/#/code/p/${p.id}`); await wait(1500); await page.screenshot({ path: join(out, `${tag}-project.png`) }); await page.goto(`${base}/#/code/s/${s.id}`); await wait(1500);
   await page.locator('.code-att.pic').first().click(); await wait(800); await page.screenshot({ path: join(out, `${tag}-viewer.png`) }); await page.keyboard.press('Escape');
   await page.locator('input[aria-label="Choose files"]').setInputFiles({ name: 'notes.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 hi') }); await wait(1200); await page.screenshot({ path: join(out, `${tag}-attaching.png`) });
   await page.locator('.code-composer textarea').fill('SLOW please'); await page.keyboard.press('Enter'); await wait(2500); await page.screenshot({ path: join(out, `${tag}-working.png`) });
