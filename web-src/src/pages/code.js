@@ -404,21 +404,22 @@ export default async function code(view) {
         : running ? 'No messages to display yet. Say something to Claude Code below.' : 'No messages to display. This session is stopped: start it to begin.';
       emptyEl.hidden = false; if (emptyEl !== msgs.lastElementChild) msgs.append(emptyEl);
     }
-    let curFile = '';
+    let curFile = ''; let skipClearNote = false;
     async function pollOnce() {
       if (document.hidden) return;
       try {
         const l = await api(started ? `${base}/live?after=${after}` : `${base}/live?tail=40`); const first = !started;
-        if (started && (l.next < after || (l.fileKey && curFile && l.fileKey !== curFile))) { { const lastReal = [...msgs.children].filter((n) => n !== queueEl).pop(); if (lastReal && !lastReal.classList.contains('code-compact') && msgs.querySelector('.bubble')) addMsg({ t: 'note', id: 'clear-' + Date.now(), ts: '', text: 'Conversation cleared', kind: 'compact' }); } topNote.hidden = true; tools.clear(); seen.clear(); orphans.clear(); oldest = 0; started = false; after = 0; again = true; return; }   // the conversation file was replaced (e.g. /clear): start over
+        if (started && (l.next < after || (l.fileKey && curFile && l.fileKey !== curFile))) { { const lastReal = [...msgs.children].filter((n) => n !== queueEl && n !== emptyEl && n !== topNote && n !== loadingEl).pop(); if (!lastReal || !lastReal.classList.contains('code-compact')) addMsg({ t: 'note', id: 'clear-' + Date.now(), ts: '', text: 'Conversation cleared', kind: 'compact' }); } skipClearNote = true; topNote.hidden = true; tools.clear(); seen.clear(); orphans.clear(); oldest = 0; started = false; after = 0; again = true; if (stick) msgs.scrollTop = msgs.scrollHeight; usageInfo(); return; }   // the conversation file was replaced (e.g. /clear): start over
         curFile = l.fileKey || curFile; loadingEl.remove(); started = true; after = l.next || after; if (first) { oldest = l.start || 0; topNote.hidden = oldest <= 0; setTimeout(fillUp, 100); }
-        let list = l.msgs.filter((m) => { if (m.t === 'title' || m.t === 'mode') return true; const k = m.id; if (seen.has(k)) return false; seen.add(k); return true; }); if (first && list.length > 300) { hidden = list.length - 300; list = list.slice(-300); msgs.append(h('div', { class: 'code-note' }, `${hidden} earlier messages are not shown here (they are in the terminal's scrollback and the conversation file).`)); }
-        for (const m of list) addMsg(m); if (list.length && stick) msgs.scrollTop = msgs.scrollHeight;
+        let list = l.msgs.filter((m) => { if (skipClearNote && m.t === 'note' && m.kind === 'compact' && /clear/i.test(m.text)) { seen.add(m.id); return false; } if (m.t === 'title' || m.t === 'mode') return true; const k = m.id; if (seen.has(k)) return false; seen.add(k); return true; }); if (first && list.length > 300) { hidden = list.length - 300; list = list.slice(-300); msgs.append(h('div', { class: 'code-note' }, `${hidden} earlier messages are not shown here (they are in the terminal's scrollback and the conversation file).`)); }
+        if (l.msgs.length) skipClearNote = false; for (const m of list) addMsg(m); if (list.length) usageSoon(); if (list.length && stick) msgs.scrollTop = msgs.scrollHeight;
         drawLive(l); drawQueue(l.queue || []); updateEmpty();
         if (pendingCmd && l.screen?.state === 'idle' && Date.now() - pendingCmd.at > 900) { const c = pendingCmd; pendingCmd = null; try { const o = await api(`${base}/output?cmd=${encodeURIComponent(c.cmd)}`); if (o.text && !list.some((m) => m.t === 'note')) { msgs.append(h('pre', { class: 'code-pre code-cmdout' }, o.text)); if (stick) msgs.scrollTop = msgs.scrollHeight; } } catch { /* ignore */ } }
       } catch (e) { infoEl.textContent = e.message; }
     }
     async function pollTerm() { if (view !== 'term' || document.hidden) return; try { const j = await api(`${base}/screen`); term.textContent = j.running ? noEmoji(j.text.replace(/\n{3,}/g, '\n\n')) : '(stopped)'; term.scrollTop = term.scrollHeight; } catch { /* retry */ } }
-    async function usageInfo() { try { const u = await api(`${base}/usage`); if (u.messages) { const win = /1m/i.test(u.model || '') || u.context > 200000 ? 1e6 : 2e5; const pct = Math.min(100, Math.round((u.context / win) * 100)); const C = 2 * Math.PI * 9;
+    let usageAt = 0; function usageSoon() { if (Date.now() - usageAt > 2500) usageInfo(); }
+    async function usageInfo() { usageAt = Date.now(); try { const u = await api(`${base}/usage`); { const win = /1m/i.test(u.model || '') || u.context > 200000 ? 1e6 : 2e5; const pct = Math.min(100, Math.round((u.context / win) * 100)); const C = 2 * Math.PI * 9;
         const ring = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); ring.setAttribute('viewBox', '0 0 24 24'); ring.setAttribute('class', 'ctx-ring ' + (pct >= 90 ? 'hot' : pct >= 70 ? 'warm' : ''));
         ring.innerHTML = `<circle cx="12" cy="12" r="9" class="trk"/><circle cx="12" cy="12" r="9" class="val" stroke-dasharray="${(C * pct / 100).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 12 12)"/>`;
         chipHost.replaceChildren(h('span', { class: 'ctx-meter', role: 'img', 'aria-label': `Context ${pct}% full` }, ring, h('span', {}, pct + '%')), h('span', { class: 'ctx-cost' }, '≈' + usd(u.cost))); chipHost.title = `Context: ${kfmt(u.context)} of ${kfmt(win)} tokens (${pct}%)\n${kfmt(u.input + u.output)} in/out · ≈${usd(u.cost)}`; } } catch { /* ignore */ } }
