@@ -704,3 +704,9 @@ md-dialog { max-height: min(calc(100dvh - 48px), 980px); }
 .lb-bar { display: flex; align-items: center; gap: 8px; padding: 10px 14px; color: #fff; } .lb-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .lb-btn { all: unset; cursor: pointer; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; color: #fff; } .lb-btn:hover, .lb-btn:focus-visible { background: #fff3; } .lb-btn .ic { width: 24px; height: 24px; }
 .lb-stage { flex: 1; min-height: 0; display: grid; place-items: center; padding: 0 16px 16px; } .lb-img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px; background: #fff1; } .lb-stage p { color: #fff; }
+.code-tools .grow { flex: 1; } .code-pill { margin-right: 0 !important; }
+.code-head-right .code-chips { display: flex; align-items: center; gap: 10px; }
+.ctx-meter { display: inline-flex; align-items: center; gap: 5px; font-size: .78rem; font-weight: 650; color: var(--md-sys-color-on-surface-variant); }
+.ctx-ring { width: 22px; height: 22px; } .ctx-ring circle { fill: none; stroke-width: 3.2; stroke-linecap: round; } .ctx-ring .trk { stroke: var(--md-sys-color-outline-variant); } .ctx-ring .val { stroke: var(--md-sys-color-primary); transition: stroke-dasharray .4s; }
+.ctx-ring.warm .val { stroke: var(--md-sys-color-tertiary); } .ctx-ring.hot .val { stroke: var(--md-sys-color-error); }
+.ctx-cost { font-size: .78rem; font-weight: 650; color: var(--md-sys-color-on-surface-variant); }

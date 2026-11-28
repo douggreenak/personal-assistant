@@ -247,7 +247,7 @@ export default async function code(view) {
     const drawCmds = () => { const m = matches(); cmdBox.hidden = !m.length || (m.length === 1 && m[0].name === ta.value); clear(cmdBox).append(...m.map((c) => h('button', { type: 'button', role: 'option', 'data-cmd': c.name, onclick: () => { ta.value = c.name + ' '; grow(); drawCmds(); ta.focus(); } }, h('b', {}, c.name), h('span', { class: 'muted' }, c.description)))); };
     ta.addEventListener('input', drawCmds);
     const modeChip = h('button', { type: 'button', class: 'code-pill', title: 'Permissions and model', hidden: true, onclick: () => settingsDialog() }); const hintEl = h('span', { class: 'code-hint' }, 'Enter to send · Shift+Enter for a new line');
-    const composer = h('div', { class: 'composer code-composer' }, strip, ta, h('div', { class: 'code-tools' }, pics.button, ext ? '' : modeChip, hintEl, stopBtn, sendBtn));
+    const composer = h('div', { class: 'composer code-composer' }, strip, ta, h('div', { class: 'code-tools' }, pics.button, ext ? '' : modeChip, hintEl, h('span', { class: 'grow' }), stopBtn, sendBtn));
 
     async function send(text) {
       text = (text ?? ta.value).trim(); if (!text && !files.length) return;
@@ -418,7 +418,10 @@ export default async function code(view) {
       } catch (e) { infoEl.textContent = e.message; }
     }
     async function pollTerm() { if (view !== 'term' || document.hidden) return; try { const j = await api(`${base}/screen`); term.textContent = j.running ? noEmoji(j.text.replace(/\n{3,}/g, '\n\n')) : '(stopped)'; term.scrollTop = term.scrollHeight; } catch { /* retry */ } }
-    async function usageInfo() { try { const u = await api(`${base}/usage`); if (u.messages) { chipHost.replaceChildren(chip(`context ${kfmt(u.context)}`), chip(`≈${usd(u.cost)}`)); chipHost.title = `${kfmt(u.input + u.output)} in/out`; } } catch { /* ignore */ } }
+    async function usageInfo() { try { const u = await api(`${base}/usage`); if (u.messages) { const win = /1m/i.test(u.model || '') || u.context > 200000 ? 1e6 : 2e5; const pct = Math.min(100, Math.round((u.context / win) * 100)); const C = 2 * Math.PI * 9;
+        const ring = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); ring.setAttribute('viewBox', '0 0 24 24'); ring.setAttribute('class', 'ctx-ring ' + (pct >= 90 ? 'hot' : pct >= 70 ? 'warm' : ''));
+        ring.innerHTML = `<circle cx="12" cy="12" r="9" class="trk"/><circle cx="12" cy="12" r="9" class="val" stroke-dasharray="${(C * pct / 100).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 12 12)"/>`;
+        chipHost.replaceChildren(h('span', { class: 'ctx-meter', role: 'img', 'aria-label': `Context ${pct}% full` }, ring, h('span', {}, pct + '%')), h('span', { class: 'ctx-cost' }, '≈' + usd(u.cost))); chipHost.title = `Context: ${kfmt(u.context)} of ${kfmt(win)} tokens (${pct}%)\n${kfmt(u.input + u.output)} in/out · ≈${usd(u.cost)}`; } } catch { /* ignore */ } }
     
     await poll(); usageInfo(); setTimeout(() => { msgs.scrollTop = msgs.scrollHeight; }, 50);
     tm.push(setInterval(poll, 800), setInterval(pollTerm, 1200), setInterval(() => { if (!document.hidden) usageInfo(); }, 15000));
