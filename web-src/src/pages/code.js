@@ -210,7 +210,8 @@ export default async function code(view) {
     const matches = () => { const v = ta.value; if (!v.startsWith('/') || /\s/.test(v)) return []; return cmds.filter((c) => c.name.startsWith(v.toLowerCase())).slice(0, 8); };
     const drawCmds = () => { const m = matches(); cmdBox.hidden = !m.length || (m.length === 1 && m[0].name === ta.value); clear(cmdBox).append(...m.map((c) => h('button', { type: 'button', role: 'option', 'data-cmd': c.name, onclick: () => { ta.value = c.name + ' '; grow(); drawCmds(); ta.focus(); } }, h('b', {}, c.name), h('span', { class: 'muted' }, c.description)))); };
     ta.addEventListener('input', drawCmds);
-    const composer = h('div', { class: 'composer code-composer' }, pics.button, ta, stopBtn, sendBtn);
+    const modeChip = h('button', { type: 'button', class: 'code-pill', title: 'Permissions and model', hidden: true, onclick: () => settingsDialog() }); const hintEl = h('span', { class: 'code-hint' }, 'Enter to send · Shift+Enter for a new line');
+    const composer = h('div', { class: 'composer code-composer' }, ta, h('div', { class: 'code-tools' }, pics.button, ext ? '' : modeChip, hintEl, stopBtn, sendBtn));
 
     async function send(text) {
       text = (text ?? ta.value).trim(); if (!text && !files.length) return;
@@ -245,6 +246,7 @@ export default async function code(view) {
     const act = (label, ic, fn, cls = 'md-outlined-button') => h(cls, { onclick: fn, 'aria-label': label, title: label }, icon(ic), h('span', { class: 'lbl' }, label));   // (the label is hidden on phones: icon only)
     const headBtns = h('div', { class: 'code-head-btns' });
     const MODE_NAMES = { manual: 'Manual — ask for everything', acceptEdits: 'Accept edits automatically', auto: 'Auto — Claude judges risk', plan: 'Plan only — no changes', dontAsk: "Don't ask", bypassPermissions: 'Bypass permissions (no prompts)' };
+    const MODE_SHORT = { manual: 'Ask first', acceptEdits: 'Accept edits', auto: 'Auto', plan: 'Plan', dontAsk: "Don't ask", bypassPermissions: 'Bypass' };
     const MODE_FROM_SCREEN = (m) => { m = String(m || ''); return /accept edits/.test(m) ? 'acceptEdits' : /plan/.test(m) ? 'plan' : /auto/.test(m) ? 'auto' : /manual/.test(m) ? 'manual' : /bypass/.test(m) ? 'bypassPermissions' : /ask/.test(m) ? 'dontAsk' : ''; };
     function settingsDialog() {
       const cur = MODE_FROM_SCREEN(scr?.mode) || s.permissionMode || 'manual';
@@ -267,7 +269,9 @@ export default async function code(view) {
     const onlyBtn = h('button', { class: 'code-only', type: 'button', title: 'Show only Claude\'s replies and your messages — hide tool calls, thinking and commands', onclick: () => { only = !only; lsSet(KEY_H, only ? '1' : '0'); drawOnly(); } });
     const drawOnly = () => { onlyBtn.setAttribute('aria-pressed', String(only)); clear(onlyBtn).append(icon(only ? 'visibility_off' : 'visibility'), h('span', { class: 'lbl' }, only ? 'Replies only' : 'All activity')); onlyBtn.setAttribute('aria-label', only ? 'Replies only (tap to show all activity)' : 'All activity (tap for replies only)'); msgs.classList.toggle('replies-only', only); fillUp(); if (emptyReady) updateEmpty(); if (stick) msgs.scrollTop = msgs.scrollHeight; };
     const seg = h('div', { class: 'seg' }); const drawSeg = () => clear(seg).append(...[['chat', 'Conversation'], ['term', 'Terminal']].map(([v, l]) => h('button', { 'aria-pressed': String(view === v), 'data-view': v, onclick: () => { view = v; drawSeg(); layout(); if (v === 'term') pollTerm(); } }, l))); drawSeg();
-    const chatPane = h('div', { class: 'code-chat' }, msgs, permBox);
+    const workEl = h('div', { class: 'code-working', role: 'status', hidden: true }, h('span', { class: 'spark' }, '✻'), h('span', { class: 'wlabel' }, 'Working…'));
+    const jump = h('button', { type: 'button', class: 'code-jump', hidden: true, 'aria-label': 'Jump to latest', title: 'Jump to latest', onclick: () => { stick = true; msgs.scrollTo({ top: msgs.scrollHeight, behavior: 'smooth' }); } }, icon('keyboard_arrow_down'));
+    const chatPane = h('div', { class: 'code-chat' }, h('div', { class: 'code-msgs-wrap' }, msgs, jump), workEl, permBox);
     const termPane = h('div', { class: 'code-term' }, term, termKeys, h('div', { class: 'code-term-send' }, (() => { const f = h('md-outlined-text-field', { label: 'Type into the terminal', class: 'grow' }); const go2 = async (enter) => { const t = f.value; f.value = ''; await guarded(() => api(`${base}/keys`, { method: 'POST', body: { text: t, keys: enter ? ['Enter'] : undefined } })); pollTerm(); }; f.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); go2(true); } }); return [f, h('md-filled-tonal-button', { onclick: () => go2(true) }, 'Send + Enter'), h('md-text-button', { onclick: () => go2(false) }, 'Type only')]; })()));
     for (const [l, k] of [['Enter', 'Enter'], ['Esc', 'Escape'], ['↑', 'Up'], ['↓', 'Down'], ['←', 'Left'], ['→', 'Right'], ['Tab', 'Tab'], ['⇧Tab', 'BTab'], ['Ctrl+C', 'C-c'], ['1', '1'], ['2', '2'], ['3', '3'], ['y', 'y'], ['n', 'n']]) termKeys.append(h('md-outlined-button', { 'data-key': k, onclick: () => key(k) }, l));
     const quick = h('div', { class: 'code-quick' }, ...[['Interrupt', 'stop', () => key('Escape')], ['Cycle mode', 'sync', () => key('BTab')], ['/ Commands', 'terminal', () => { ta.value = '/'; ta.focus(); drawCmds(); }]].map(([l, ic, fn]) => h('md-assist-chip', { label: l, onclick: fn })));
@@ -278,7 +282,7 @@ export default async function code(view) {
 
     // rendering the conversation
     const near = () => msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 80;
-    msgs.addEventListener('scroll', () => { stick = near(); });
+    msgs.addEventListener('scroll', () => { stick = near(); jump.hidden = stick; });
     const fileOf = (i) => String(i.file_path || i.path || i.notebook_path || '');
     const toolBody = (b) => { const i = b.input || {}; const n = b.name;
       if (n === 'Bash') return h('pre', { class: 'code-pre' }, i.command || '');
@@ -287,6 +291,12 @@ export default async function code(view) {
       if (n === 'TodoWrite') return h('ul', { class: 'code-todos' }, (i.todos || []).map((t) => h('li', { class: t.status }, icon(t.status === 'completed' ? 'check_box' : t.status === 'in_progress' ? 'timelapse' : 'check_box_outline_blank'), ' ' + (t.content || ''))));
       return h('pre', { class: 'code-pre' }, JSON.stringify(i, null, 2).slice(0, 2500)); };
     const toolSummary = (b) => { const i = b.input || {}; return b.name === 'Bash' ? String(i.description || i.command || '').split('\n')[0] : fileOf(i) || i.pattern || i.query || i.url || i.description || i.prompt?.slice?.(0, 80) || ''; };
+    const copy = async (text, btn) => { try { await navigator.clipboard.writeText(text); } catch { const t = h('textarea', {}); t.value = text; document.body.append(t); t.select(); try { document.execCommand('copy'); } catch { /* ignore */ } t.remove(); } const old = btn.firstChild; btn.replaceChildren(icon('check')); setTimeout(() => btn.replaceChildren(old), 1200); };
+    /** Copy buttons: one on every code block, one on the whole reply (appears on hover). */
+    function decorate(el, text) {
+      for (const pre of el.querySelectorAll('pre')) { const b = h('button', { type: 'button', class: 'code-copy', 'aria-label': 'Copy code', title: 'Copy code' }, icon('content_copy')); b.onclick = () => copy(pre.innerText.replace(/\n$/, ''), b); pre.classList.add('has-copy'); pre.append(b); }
+      const all = h('button', { type: 'button', class: 'code-copy-msg', 'aria-label': 'Copy reply', title: 'Copy reply' }, icon('content_copy')); all.onclick = () => copy(text, all); el.append(all);
+    }
     function addMsg(m, into = msgs) {
       if (m.t === 'title') { if (into !== msgs) return; title = m.title; titleEl.textContent = title; return; }
       if (m.t === 'mode') return;
@@ -294,11 +304,11 @@ export default async function code(view) {
       if (m.t === 'note' && m.kind === 'compact') return void into.append(h('div', { class: 'code-compact', role: 'separator' }, h('span', { class: 'wave' }), h('span', { class: 'lbl' }, icon(/clear/i.test(m.text) ? 'cleaning_services' : 'compress'), m.text || 'Conversation compacted'), h('span', { class: 'wave' })));
       if (m.t === 'note') return void into.append(h('div', { class: 'code-note' }, m.text));
       if (m.t === 'assistant') for (const b of m.blocks) {
-        if (b.type === 'text') into.append(h('div', { class: 'bubble bot code-bot' }, md(b.text)));
+        if (b.type === 'text') { const el = h('div', { class: 'bubble bot code-bot' }, md(b.text)); decorate(el, b.text); into.append(el); }
         else if (b.type === 'thinking') into.append(h('details', { class: 'code-think' }, h('summary', {}, 'Thinking'), h('div', { class: 'muted' }, md(b.text))));
-        else { const out = h('div', { class: 'code-out' }); const card = h('details', { class: 'code-tool', 'data-tool': b.name }, h('summary', {}, h('span', { class: 'code-dot' }, '●'), h('b', {}, b.name), ' ', h('span', { class: 'mono muted' }, toolSummary(b).slice(0, 140))), toolBody(b), out); tools.set(b.id, out); if (orphans.has(b.id)) { out.append(orphans.get(b.id)); orphans.delete(b.id); } if (b.name === 'TodoWrite') card.open = true; into.append(card); }
+        else { const out = h('div', { class: 'code-out' }); const card = h('details', { class: 'code-tool pending', 'data-tool': b.name }, h('summary', {}, h('span', { class: 'code-dot' }), h('b', {}, b.name), h('span', { class: 'mono muted code-tsum' }, toolSummary(b).slice(0, 140)), icon('keyboard_arrow_down')), toolBody(b), out); tools.set(b.id, out); if (orphans.has(b.id)) { out.append(orphans.get(b.id)); orphans.delete(b.id); } if (b.name === 'TodoWrite') card.open = true; into.append(card); }
       }
-      if (m.t === 'result') { const out = tools.get(m.toolUseId); const pre = h('pre', { class: 'code-pre' + (m.isError ? ' err' : '') }, m.text.length > 3000 ? m.text.slice(0, 3000) + '\n…' : m.text || '(no output)'); if (out) { out.append(pre); if (m.isError) out.closest('details')?.classList.add('error'); } else orphans.set(m.toolUseId, pre); }   // its tool call is further up: shown when that part is loaded
+      if (m.t === 'result') { const out = tools.get(m.toolUseId); const pre = h('pre', { class: 'code-pre' + (m.isError ? ' err' : '') }, m.text.length > 3000 ? m.text.slice(0, 3000) + '\n…' : m.text || '(no output)'); if (out) { out.append(pre); const d = out.closest('details'); d?.classList.remove('pending'); if (m.isError) d?.classList.add('error'); } else orphans.set(m.toolUseId, pre); }   // its tool call is further up: shown when that part is loaded
     }
     // messages still waiting for Claude to finish: dotted outline (like a scheduled iMessage) at the end of the chat until they go in
     const queueEl = h('div', { class: 'code-queue' }); let queueSig = '';
@@ -330,7 +340,9 @@ export default async function code(view) {
       if (sig !== permSig) { permSig = sig; clear(permBox);
       if (scr?.state === 'permission') permBox.append(h('div', { class: 'card code-perm', role: 'alertdialog', 'aria-label': 'Claude is asking' }, h('b', {}, scr.permission.question), scr.permission.detail ? h('pre', { class: 'code-pre' }, scr.permission.detail) : '', h('div', { class: 'code-perm-btns' }, ...scr.permission.options.map((o) => h(o.selected ? 'md-filled-button' : 'md-outlined-button', { 'data-opt': o.key, onclick: (ev) => (FREE_TEXT.test(o.label) ? typeAnswer(ev.currentTarget.closest('.code-perm'), o) : key(o.key)) }, o.label.replace(/\s*\(shift\+tab\)\s*$/, ''))), h('md-text-button', { onclick: () => key('Escape') }, 'Cancel'))));
       else if (scr?.state === 'dialog' || scr?.state === 'unknown' && l.dialogText) permBox.append(h('div', { class: 'card code-dialog', role: 'dialog', 'aria-label': 'Claude Code' }, h('pre', { class: 'code-pre' }, (l.dialogText || scr.hint || '').split('\n').filter((x) => x.trim()).slice(-24).join('\n')), h('div', { class: 'code-perm-btns' }, ...[['↑', 'Up'], ['↓', 'Down'], ['←', 'Left'], ['→', 'Right'], ['Enter', 'Enter'], ['Tab', 'Tab'], ['Esc', 'Escape']].map(([lb, k]) => h('md-outlined-button', { 'data-key': k, onclick: () => key(k) }, lb))))); }
-      composer.classList.toggle('busy', scr?.state === 'working'); stopBtn.hidden = scr?.state !== 'working';
+      composer.classList.toggle('busy', scr?.state === 'working'); stopBtn.hidden = scr?.state !== 'working'; hintEl.hidden = scr?.state === 'working';
+      const working = running && scr?.state === 'working'; workEl.hidden = !working || view !== 'chat'; if (working) { workEl.querySelector('.wlabel').textContent = (scr.working || 'Working…').replace(/^✻\s*/, ''); if (stick) msgs.scrollTop = msgs.scrollHeight; }
+      const mn = (MODE_FROM_SCREEN(scr?.mode) || s.permissionMode || ''); modeChip.hidden = !running || ext; clear(modeChip).append(icon('tune'), h('span', {}, (MODE_SHORT[mn] || 'Permissions') + (s.model ? ' · ' + s.model : '')));
     }
     // One poll at a time (two overlapping polls both used the same offset and drew every new message twice) and each message is drawn once.
     let polling = false, again = false; const seen = new Set(), orphans = new Map(); let oldest = 0, loadingOld = false;
