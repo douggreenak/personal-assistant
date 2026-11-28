@@ -710,3 +710,7 @@ md-dialog { max-height: min(calc(100dvh - 48px), 980px); }
 .ctx-ring { width: 22px; height: 22px; } .ctx-ring circle { fill: none; stroke-width: 3.2; stroke-linecap: round; } .ctx-ring .trk { stroke: var(--md-sys-color-outline-variant); } .ctx-ring .val { stroke: var(--md-sys-color-primary); transition: stroke-dasharray .4s; }
 .ctx-ring.warm .val { stroke: var(--md-sys-color-tertiary); } .ctx-ring.hot .val { stroke: var(--md-sys-color-error); }
 .ctx-cost { font-size: .78rem; font-weight: 650; color: var(--md-sys-color-on-surface-variant); }
+/* top-bar actions are icon-only (the label is in the tooltip) */
+.code-head-btns .lbl { display: none; } .code-head-btns md-outlined-button { --md-outlined-button-container-height: 36px; --md-outlined-button-leading-space: 10px; --md-outlined-button-trailing-space: 10px; --md-outlined-button-with-leading-icon-leading-space: 10px; --md-outlined-button-with-leading-icon-trailing-space: 10px; min-width: 0; }
+.code-lightbox { background: rgba(0,0,0,.94); } .code-att.file { align-self: center; }
+@media (max-width: 600px) { .code-head-right .ctx-cost { display: none; } .code-head-right .code-chips { display: flex; } }

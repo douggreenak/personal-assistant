@@ -463,7 +463,7 @@ try {
     assert.equal(await page.locator('.code-only').getAttribute('aria-pressed'), 'true');   // replies only is the default
     assert.equal(await page.locator('.code-bot', { hasText: 'Echo: hello e2e' }).isVisible(), true); await page.locator('.code-only').click(); assert.equal(await page.locator('.code-only').getAttribute('aria-pressed'), 'false');   // switched to all activity for the steps below
     await btn('Settings').click(); await dlg().waitFor(); await dlg().locator('md-outlined-select[label="Permissions"]').evaluate((el) => { el.value = 'plan'; el.dispatchEvent(new Event('change', { bubbles: true })); }); await btn('Apply', dlg()).click();
-    await page.locator('.code-sub', { hasText: 'plan' }).waitFor({ timeout: 15000 }); await page.locator('md-dialog[open]').waitFor({ state: 'detached', timeout: 15000 });   // permission mode changed from the UI
+    await page.locator('.code-pill', { hasText: 'Plan' }).waitFor({ timeout: 15000 }); await page.locator('md-dialog[open]').waitFor({ state: 'detached', timeout: 15000 });   // permission mode changed from the UI
     await page.locator('.code-composer textarea').fill('/co'); await page.locator('.code-cmds [data-cmd="/context"]').waitFor(); assert.ok(await page.locator('.code-cmds [data-cmd="/compact"]').count());
     await page.keyboard.press('Tab'); assert.equal(await page.locator('.code-composer textarea').inputValue(), '/compact ');   // Tab completes the first match
     await page.locator('.code-composer textarea').fill('/context'); await page.keyboard.press('Enter');

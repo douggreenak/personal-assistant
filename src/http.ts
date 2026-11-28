@@ -59,7 +59,7 @@ const tokenOk = (h: string | undefined, token: string): boolean => {
 // The web UI is static files (built from web-src/); they hold no data and every API call needs the bearer token.
 const WEB_DIR = new URL('./web/', import.meta.url).pathname;
 const MIME: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.woff2': 'font/woff2', '.svg': 'image/svg+xml', '.json': 'application/json', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
-const CSP = "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'";
+const CSP = "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'";
 const assetCache = new Map<string, Buffer>();
 function webFile(rel: string): { body: Buffer; type: string } | null {
   if (!/^[\w./-]+$/.test(rel) || rel.includes('..')) return null;
