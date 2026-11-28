@@ -723,3 +723,14 @@ md-dialog { max-height: min(calc(100dvh - 48px), 980px); }
   body.code-page .code-main > .code-chat, body.code-page .code-main > .code-composer { margin-top: 0; }
   body.code-page .code-session-head { padding-top: 6px; min-height: 52px; box-sizing: border-box; justify-content: center; }
 }
+/* tighten the gaps */
+.code-msgs { gap: 6px; padding: 8px 2px 12px; }
+.code-msgs .bubble.bot { padding: 0; } .code-msgs .bubble.bot:has(.code-copy-msg) { margin-bottom: 0; }
+.code-copy-msg { bottom: auto; top: -2px; left: auto; right: 0; background: var(--md-sys-color-surface-container-high); }
+.code-msgs .bubble.me { padding: 8px 14px; margin-top: 8px; } .code-msgs .bubble.bot { margin-top: 2px; }
+.code-msgs .md > :first-child, .code-msgs .md > :last-child { margin-top: 0; margin-bottom: 0; } .code-msgs .md p, .code-msgs .md ul, .code-msgs .md ol { margin: 0 0 .5em; } .code-msgs .md > :last-child { margin-bottom: 0; }
+.code-atts { justify-content: flex-start; gap: 6px; margin-bottom: 6px; }
+.code-att.pic { width: 140px; height: 100px; }
+.code-quick { margin-top: 4px; } .code-composer { margin-top: 4px; }
+.code-layout { gap: 10px; } .code-main { gap: 8px; }
+.code-tool summary { padding: 4px 10px; }
