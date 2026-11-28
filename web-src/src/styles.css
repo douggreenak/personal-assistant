@@ -671,3 +671,9 @@ md-dialog { max-height: min(calc(100dvh - 48px), 980px); }
 .code-quick { margin-top: 8px; }
 @media (max-width: 600px) { .code-hint { display: none; } .code-tools:has(.code-pill) { gap: 2px; } .code-pill { margin-right: auto; } }
 @media (prefers-reduced-motion: reduce) { .code-working .spark, .code-tool.pending .code-dot { animation: none; } }
+/* top bar: title on the left, everything else (state, usage, view switch, buttons) on the right like Claude's apps */
+.code-head-right { margin-left: auto; display: flex; align-items: center; justify-content: flex-end; gap: 8px 10px; flex-wrap: wrap; }
+.code-head-right .seg { flex: none; } .code-head-right .seg button { padding: 6px 12px; font-size: .85rem; }
+.code-session-head > .code-ph { flex-wrap: wrap; row-gap: 6px; }
+.code-session-head .code-info { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+@media (max-width: 600px) { .code-head-right { margin-left: 0; width: 100%; justify-content: flex-start; } }

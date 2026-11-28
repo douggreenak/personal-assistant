@@ -181,7 +181,7 @@ export default async function code(view) {
     const { session: s, project: p } = ext ? { session: { title: info.title, aiTitle: '', permissionMode: 'started outside the app', model: '' }, project: { id: '', name: info.name, path: info.path } } : info; if (!ext) lsSet(LAST, p.id);
     let permSig = '', pendingCmd = null, title = s.aiTitle || s.title, running = false, scr = null, after = 0, view = 'chat', started = false, hidden = 0, stick = true;
     const msgs = h('div', { class: 'msgs code-msgs', role: 'log', 'aria-live': 'polite' }); const tools = new Map();
-    const stateEl = h('span', {}); const infoEl = h('div', { class: 'muted s code-info' }); const titleEl = h('h2', { class: 'code-title' }, title);
+    const chipHost = h('div', { class: 'code-chips' }); const stateEl = h('span', {}); const infoEl = h('div', { class: 'muted s code-info' }); const titleEl = h('h2', { class: 'code-title' }, title);
     const permBox = h('div', {}); const term = h('pre', { class: 'term', 'aria-label': 'Terminal' }, ''); const termKeys = h('div', { class: 'term-keys' });
     const ta = h('textarea', { rows: 1, 'data-primary': '', placeholder: 'Message Claude Code…', title: 'Enter sends · Shift+Enter adds a line · / for commands', 'aria-label': 'Message' });
     const KEY_D = 'code-draft:' + (ext ? 'x:' : '') + sid; try { ta.value = lsGet(KEY_D) || ''; } catch { /* none */ }
@@ -277,7 +277,7 @@ export default async function code(view) {
     const quick = h('div', { class: 'code-quick' }, ...[['Interrupt', 'stop', () => key('Escape')], ['Cycle mode', 'sync', () => key('BTab')], ['/ Commands', 'terminal', () => { ta.value = '/'; ta.focus(); drawCmds(); }]].map(([l, ic, fn]) => h('md-assist-chip', { label: l, onclick: fn })));
     const layout = () => { chatPane.hidden = view !== 'chat'; termPane.hidden = view !== 'term'; composer.hidden = view !== 'chat' || !running; quick.hidden = view !== 'chat' || !running; if (view !== 'chat' || !running) cmdBox.hidden = true; startNote.hidden = running; };
     const startNote = h('div', { class: 'card code-stopped' }, h('b', {}, 'This session is stopped.'), h('span', { class: 'muted' }, ' Start it to continue the conversation — everything said so far is kept.'));
-    clear(el).append(h('div', { class: 'card high code-session-head' }, h('div', { class: 'code-ph' }, h('md-icon-button', { 'aria-label': 'Back to ' + p.name, onclick: () => go(ext ? '' : 'p/' + p.id) }, icon('arrow_back')), h('div', { style: 'flex:1 1 180px;min-width:0' }, titleEl, h('div', { class: 'muted s code-meta' }, p.name + ' · ' + (s.permissionMode || 'default permissions') + (s.model ? ' · ' + s.model : ''))), headBtns), h('div', { class: 'code-sub' }, seg, onlyBtn, stateEl, infoEl)),
+    clear(el).append(h('div', { class: 'card high code-session-head' }, h('div', { class: 'code-ph' }, h('md-icon-button', { 'aria-label': 'Back to ' + p.name, onclick: () => go(ext ? '' : 'p/' + p.id) }, icon('arrow_back')), h('div', { style: 'flex:1 1 180px;min-width:0' }, titleEl, h('div', { class: 'muted s code-meta' }, p.name + ' · ' + (s.permissionMode || 'default permissions') + (s.model ? ' · ' + s.model : '')), infoEl), h('div', { class: 'code-head-right' }, stateEl, chipHost, seg, onlyBtn, headBtns))),
       chatPane, termPane, startNote, quick, cmdBox, composer, pics.strip, pics.input); drawHead(); layout(); drawOnly();
 
     // rendering the conversation
@@ -383,7 +383,7 @@ export default async function code(view) {
     }
     async function pollTerm() { if (view !== 'term' || document.hidden) return; try { const j = await api(`${base}/screen`); term.textContent = j.running ? noEmoji(j.text.replace(/\n{3,}/g, '\n\n')) : '(stopped)'; term.scrollTop = term.scrollHeight; } catch { /* retry */ } }
     async function usageInfo() { try { const u = await api(`${base}/usage`); if (u.messages) { chipHost.replaceChildren(chip(`context ${kfmt(u.context)}`), chip(`${kfmt(u.input + u.output)} in/out`), chip(`≈${usd(u.cost)}`)); } } catch { /* ignore */ } }
-    const chipHost = h('div', { class: 'code-chips' }); infoEl.after(chipHost);
+    
     await poll(); usageInfo(); setTimeout(() => { msgs.scrollTop = msgs.scrollHeight; }, 50);
     tm.push(setInterval(poll, 800), setInterval(pollTerm, 1200), setInterval(() => { if (!document.hidden) usageInfo(); }, 15000));
     if (running) setTimeout(() => ta.focus({ preventScroll: true }), 100);
