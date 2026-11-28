@@ -211,7 +211,7 @@ export default async function code(view) {
     const drawCmds = () => { const m = matches(); cmdBox.hidden = !m.length || (m.length === 1 && m[0].name === ta.value); clear(cmdBox).append(...m.map((c) => h('button', { type: 'button', role: 'option', 'data-cmd': c.name, onclick: () => { ta.value = c.name + ' '; grow(); drawCmds(); ta.focus(); } }, h('b', {}, c.name), h('span', { class: 'muted' }, c.description)))); };
     ta.addEventListener('input', drawCmds);
     const modeChip = h('button', { type: 'button', class: 'code-pill', title: 'Permissions and model', hidden: true, onclick: () => settingsDialog() }); const hintEl = h('span', { class: 'code-hint' }, 'Enter to send · Shift+Enter for a new line');
-    const composer = h('div', { class: 'composer code-composer' }, ta, h('div', { class: 'code-tools' }, pics.button, ext ? '' : modeChip, hintEl, stopBtn, sendBtn));
+    const composer = h('div', { class: 'composer code-composer' }, strip, ta, h('div', { class: 'code-tools' }, pics.button, ext ? '' : modeChip, hintEl, stopBtn, sendBtn));
 
     async function send(text) {
       text = (text ?? ta.value).trim(); if (!text && !files.length) return;
@@ -277,8 +277,8 @@ export default async function code(view) {
     const quick = h('div', { class: 'code-quick' }, ...[['Interrupt', 'stop', () => key('Escape')], ['Cycle mode', 'sync', () => key('BTab')], ['/ Commands', 'terminal', () => { ta.value = '/'; ta.focus(); drawCmds(); }]].map(([l, ic, fn]) => h('md-assist-chip', { label: l, onclick: fn })));
     const layout = () => { chatPane.hidden = view !== 'chat'; termPane.hidden = view !== 'term'; composer.hidden = view !== 'chat' || !running; quick.hidden = view !== 'chat' || !running; if (view !== 'chat' || !running) cmdBox.hidden = true; startNote.hidden = running; };
     const startNote = h('div', { class: 'card code-stopped' }, h('b', {}, 'This session is stopped.'), h('span', { class: 'muted' }, ' Start it to continue the conversation — everything said so far is kept.'));
-    clear(el).append(h('div', { class: 'card high code-session-head' }, h('div', { class: 'code-ph' }, h('md-icon-button', { 'aria-label': 'Back to ' + p.name, onclick: () => go(ext ? '' : 'p/' + p.id) }, icon('arrow_back')), h('div', { style: 'flex:1 1 180px;min-width:0' }, titleEl, h('div', { class: 'muted s code-meta' }, p.name + ' · ' + (s.permissionMode || 'default permissions') + (s.model ? ' · ' + s.model : '')), infoEl), h('div', { class: 'code-head-right' }, stateEl, chipHost, seg, onlyBtn, headBtns))),
-      chatPane, termPane, startNote, quick, cmdBox, composer, pics.strip, pics.input); drawHead(); layout(); drawOnly();
+    clear(el).append(h('div', { class: 'card high code-session-head' }, h('div', { class: 'code-ph' }, h('md-icon-button', { 'aria-label': 'Back to ' + p.name, onclick: () => go(ext ? '' : 'p/' + p.id) }, icon('arrow_back')), h('div', { style: 'flex:1 1 180px;min-width:0' }, titleEl, h('div', { class: 'muted s code-meta' }, p.name + ' · ' + (s.permissionMode || 'default permissions') + (s.model ? ' · ' + s.model : ''))), h('div', { class: 'code-head-right' }, stateEl, chipHost, seg, onlyBtn, headBtns))),
+      chatPane, termPane, startNote, quick, cmdBox, composer, pics.input); drawHead(); layout(); drawOnly();
 
     // rendering the conversation
     const near = () => msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 80;
@@ -333,7 +333,7 @@ export default async function code(view) {
     function drawLive(l) {
       const wasRunning = running; running = l.running; scr = l.screen; if (running && !wasRunning && view === 'chat') setTimeout(() => ta.focus({ preventScroll: true }), 150); const sc = l.screen?.state || 'stopped';
       clear(stateEl).append(stateChip(sc, running)); if (running !== wasRunning || !headBtns.childElementCount) drawHead(); layout();   // not on every poll: redrawing rebuilds the ⋯ menu and closes it
-      infoEl.textContent = [scr?.working && '✻ ' + scr.working, scr?.mode, l.lastActivity && 'last activity ' + ago(l.lastActivity)].filter(Boolean).join(' · ');
+      infoEl.title = infoEl.textContent = [scr?.working && '✻ ' + scr.working, scr?.mode, l.lastActivity && 'last activity ' + ago(l.lastActivity)].filter(Boolean).join(' · ');
       // permission question / dialog
       // Rebuild the question card only when what it says changes. Rebuilding on every poll threw away anything the owner had selected to copy.
       const sig = scr?.state === 'permission' ? 'p' + JSON.stringify(scr.permission) : scr?.state === 'dialog' || scr?.state === 'unknown' && l.dialogText ? 'd' + (l.dialogText || scr.hint || '') : '';
@@ -382,7 +382,7 @@ export default async function code(view) {
       } catch (e) { infoEl.textContent = e.message; }
     }
     async function pollTerm() { if (view !== 'term' || document.hidden) return; try { const j = await api(`${base}/screen`); term.textContent = j.running ? noEmoji(j.text.replace(/\n{3,}/g, '\n\n')) : '(stopped)'; term.scrollTop = term.scrollHeight; } catch { /* retry */ } }
-    async function usageInfo() { try { const u = await api(`${base}/usage`); if (u.messages) { chipHost.replaceChildren(chip(`context ${kfmt(u.context)}`), chip(`${kfmt(u.input + u.output)} in/out`), chip(`≈${usd(u.cost)}`)); } } catch { /* ignore */ } }
+    async function usageInfo() { try { const u = await api(`${base}/usage`); if (u.messages) { chipHost.replaceChildren(chip(`context ${kfmt(u.context)}`), chip(`≈${usd(u.cost)}`)); chipHost.title = `${kfmt(u.input + u.output)} in/out`; } } catch { /* ignore */ } }
     
     await poll(); usageInfo(); setTimeout(() => { msgs.scrollTop = msgs.scrollHeight; }, 50);
     tm.push(setInterval(poll, 800), setInterval(pollTerm, 1200), setInterval(() => { if (!document.hidden) usageInfo(); }, 15000));

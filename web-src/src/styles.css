@@ -677,3 +677,16 @@ md-dialog { max-height: min(calc(100dvh - 48px), 980px); }
 .code-session-head > .code-ph { flex-wrap: wrap; row-gap: 6px; }
 .code-session-head .code-info { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
 @media (max-width: 600px) { .code-head-right { margin-left: 0; width: 100%; justify-content: flex-start; } }
+/* slimmer top bar */
+.code-session-head { padding: 2px 4px 8px; } .code-session-head > .code-ph { flex-wrap: nowrap; gap: 8px; }
+.code-session-head .code-meta, .code-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.code-head-right { flex-wrap: nowrap; flex: none; gap: 6px; } .code-head-right .code-chips { flex-wrap: nowrap; }
+.code-head-right .code-only .lbl { display: none; } .code-head-right .code-only { padding: 6px 8px; min-width: 0; }
+.code-head-right .chip, .code-head-right .tag { white-space: nowrap; }
+@media (max-width: 900px) { .code-head-right .code-chips { display: none; } }
+@media (max-width: 600px) { .code-session-head > .code-ph { flex-wrap: wrap; } .code-head-right { flex-wrap: wrap; } }
+/* attachments: small chips inside the message box */
+.code-composer .code-files { padding: 0 0 6px; margin: 0; gap: 4px; }
+.code-file { padding: 2px 2px 2px 8px; gap: 5px; font-size: .78rem; max-width: 200px; border-radius: 12px; }
+.code-file .ic { width: 15px; height: 15px; } .code-file .fname { min-width: 0; } .code-file > .muted { white-space: nowrap; flex: none; font-size: .7rem; }
+.code-file button { width: 20px; height: 20px; } .code-file button .ic { width: 14px; height: 14px; }
