@@ -734,3 +734,14 @@ md-dialog { max-height: min(calc(100dvh - 48px), 980px); }
 .code-quick { margin-top: 4px; } .code-composer { margin-top: 4px; }
 .code-layout { gap: 10px; } .code-main { gap: 8px; }
 .code-tool summary { padding: 4px 10px; }
+/* no side gutters: the conversation uses the whole pane, the bar touches the sidebar and the window edge */
+.code-main > .code-chat, .code-main > .code-composer, .code-main > .code-quick, .code-main > .code-files, .code-main > .code-cmds, .code-main > .code-stopped { max-width: none; margin-inline: 0; }
+.code-main > .code-composer, .code-main > .code-quick, .code-main > .code-cmds { width: auto; margin-inline: 16px; }
+.code-msgs { padding-inline: 20px 12px; }
+@media (min-width: 901px) {
+  body.code-page main { padding-right: 0; }
+  body.code-page .topbar { right: 12px; }
+  body.code-page .code-layout { gap: 0; }
+  body.code-page .code-main { padding-right: 0; }
+  body.code-page .code-session-head { border-radius: 0; }
+}
